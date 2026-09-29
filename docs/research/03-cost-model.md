@@ -114,3 +114,8 @@ as reported by OpenRouter per request.
 
 Prompt input was only 450–2,300 tokens because research was empty, versus the 12k assumed above. With ~5k tokens of research the
 total should stay around $0.01–0.02/question (estimate). Re-measure with research before closing B-10.
+
+**Update, same day, with research** (config `m1-baseline-2026-09-30c`, Gemini grounded search now billed): mean **$0.008/question**
+over the same 8 questions (max $0.016). Gemini research adds ~$0.0015/question as a token estimate at list price. Google's per-search
+grounding fee is **not** included and is unknown to us; check the Google billing console after the first real runs before trusting
+this number.

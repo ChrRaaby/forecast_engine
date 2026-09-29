@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 
-CONFIG_VERSION = "m1-baseline-2026-09-30b"
+CONFIG_VERSION = "m1-baseline-2026-09-30c"
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,11 @@ class ForecasterSpec:
 class ResearchConfig:
     # Tried in order; each available provider contributes items. Providers without credentials are skipped.
     providers: tuple[str, ...] = ("asknews_latest", "gemini_grounded")
-    gemini_model: str = "gemini-3.5-flash-lite"  # Google AI Studio model id (free grounding quota)
+    gemini_model: str = "gemini-3.5-flash-lite"  # Google AI Studio model id; grounding needs billing on the project
+    # Google doesn't return a cost, so we estimate from tokens at list price (same as OpenRouter's listing for this
+    # model, checked 2026-09-29). Any per-search grounding fee is NOT included; check the Google billing console.
+    gemini_usd_per_m_in: float = 0.30
+    gemini_usd_per_m_out: float = 2.50
     asknews_n_articles: int = 8
 
 

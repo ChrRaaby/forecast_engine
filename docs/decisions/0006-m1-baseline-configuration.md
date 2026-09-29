@@ -41,7 +41,9 @@ live OpenRouter list on 2026-09-29 (`tools/check_models.py`).
 ## Consequences
 - Measured cost on 8 bot-testing-area questions without research: **$0.007/question** (range $0.004–0.010), about 70× under the ceiling.
   Research will add input tokens; re-measure once it works (B-10).
-- **Open problem found in the dry run:** the free Gemini key returns "quota exceeded" for grounded search on every model tried, while
-  plain calls work. Grounding appears to need billing on the Google project (inferred, not confirmed). Until AskNews or another source
-  works, the bot cannot publish.
+- **Research:** the free Gemini key returned "quota exceeded" for grounded search while plain calls worked. After Christian enabled
+  billing on the Google project (2026-09-29), grounded search works. Gemini now costs money: the bot records a token-based estimate at
+  list price, but **any per-search grounding fee is not in the records**; check it in the Google billing console after the first runs.
+- Measured with research (config `m1-baseline-2026-09-30c`, same 8 questions): **$0.008/question** mean, of which Gemini research
+  ~$0.0015 (token estimate).
 - Regex parsing will occasionally drop a forecaster; parse failures are visible in the records, so their rate can be measured.

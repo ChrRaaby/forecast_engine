@@ -3,7 +3,7 @@
 Live providers (M1):
   - asknews_latest: AskNews "latest news" search, exactly one call per question (grant: 1,000 calls/month;
     archive calls are reserved for backtests, research/03 addendum b). Items carry publication dates.
-  - gemini_grounded: Gemini with Google Search grounding via Google AI Studio (free quota). Items are undated,
+  - gemini_grounded: Gemini with Google Search grounding via Google AI Studio (billing enabled). Items are undated,
     so this provider can never be used in backtests (evaluation protocol T2).
 Providers without credentials are skipped and noted in `errors`. The as-of guard and research cache arrive in M2 (B-28).
 """
@@ -95,7 +95,6 @@ async def _gemini_grounded(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfi
         params={"tools": ["google_search"]},
         prompt=prompt,
         requested_at=clock.now(),
-        cost_usd=0.0,  # free AI Studio quota
     )
     start = time.monotonic()
     try:
@@ -108,6 +107,12 @@ async def _gemini_grounded(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfi
         call.output = text
         call.tokens_in = usage.get("promptTokenCount")
         call.tokens_out = usage.get("candidatesTokenCount")
+        thinking = usage.get("thoughtsTokenCount") or 0
+        call.extra["thinking_tokens"] = thinking
+        call.cost_usd = (
+            (call.tokens_in or 0) * cfg.gemini_usd_per_m_in + ((call.tokens_out or 0) + thinking) * cfg.gemini_usd_per_m_out
+        ) / 1e6
+        call.extra["cost_note"] = "estimated from tokens at list price; grounding fee not included"
         call.extra["search_queries"] = meta.get("webSearchQueries", [])
         call.extra["sources"] = [{"title": s.get("title"), "uri": s.get("uri")} for s in sources]
         if not text.strip():
