@@ -1,0 +1,59 @@
+"""All model IDs and tunable settings live here (ADR-0003: one file for model IDs).
+
+Model IDs are checked against the live provider lists by `python tools/check_models.py`; never edit them from memory.
+Any change to this file that alters forecasts must bump CONFIG_VERSION (evaluation protocol §6.5).
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field
+
+CONFIG_VERSION = "m1-baseline-2026-09-30b"
+
+
+@dataclass(frozen=True)
+class ForecasterSpec:
+    model: str  # OpenRouter model id
+    # max_tokens covers reasoning + answer. The first dry run showed DeepSeek spending all 8k tokens on reasoning and
+    # returning no answer, so reasoning effort is capped and the budget raised.
+    max_tokens: int = 16000
+    reasoning_effort: str = "medium"  # OpenRouter unified reasoning parameter
+
+
+@dataclass(frozen=True)
+class ResearchConfig:
+    # Tried in order; each available provider contributes items. Providers without credentials are skipped.
+    providers: tuple[str, ...] = ("asknews_latest", "gemini_grounded")
+    gemini_model: str = "gemini-3.5-flash-lite"  # Google AI Studio model id (free grounding quota)
+    asknews_n_articles: int = 8
+
+
+@dataclass(frozen=True)
+class BotConfig:
+    # Scenario B (research/03), ADR-0006: three cheap forecasters from different vendors, median.
+    forecasters: tuple[ForecasterSpec, ...] = (
+        ForecasterSpec("openai/gpt-6-luna"),
+        ForecasterSpec("google/gemini-3.5-flash-lite"),
+        ForecasterSpec("deepseek/deepseek-v4.1-flash"),
+    )
+    aggregation: str = "median"
+    # Template default: keep binary forecasts in [0.01, 0.99]. Tighter capping is experiment B-11, not a default.
+    binary_clip: tuple[float, float] = (0.01, 0.99)
+    min_successful_forecasters: int = 2
+    research: ResearchConfig = field(default_factory=ResearchConfig)
+    prompt_version: str = "template-2026-09-26"  # prompts ported from metac-bot-template c16d91f
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    def config_hash(self) -> str:
+        blob = json.dumps(self.to_dict(), sort_keys=True).encode()
+        return hashlib.sha256(blob).hexdigest()[:12]
+
+
+DEFAULT_CONFIG = BotConfig()
+
+# Run-level safety rails (live adapter only).
+DEFAULT_MAX_QUESTIONS_PER_RUN = 20
+DEFAULT_MAX_RUN_COST_USD = 2.00

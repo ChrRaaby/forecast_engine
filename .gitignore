@@ -1,0 +1,40 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets & env
+.env
+.env.*
+!.env.template
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
+
+# Bot outputs: forecast records, research bundles, run logs (uploaded as workflow artifacts, never committed;
+# they may contain licensed news text). See ADR-0002.
+data/
+
+# Data & model artefacts
+*.parquet
+*.pkl
+models/
+
+# Template-specific
+benchmarks/
+sandbox.py
+
+# Generated
+dashboard/

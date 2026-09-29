@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "forecast-engine"
+version = "0.1.0"
+description = "LLM judgmental-forecasting bot for Metaculus (based on metac-bot-template)"
+authors = ["Christian"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+python-decouple = "^3.8"
+requests = "^2.32.3"
+asknews = "^0.13.11"
+numpy = "^2.3.0"
+openai = "^2.0.0"
+python-dotenv = "^1.0.1"
+# ^0.2.x (template default) cannot reach 0.3; 0.3.1 is the first release pointing at Fall 2026 FutureEval (ADR-0006).
+forecasting-tools = "^0.3.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pytest-asyncio = "^0.24"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

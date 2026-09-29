@@ -1,0 +1,50 @@
+name: Forecast on new AI tournament questions
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Two independent entries: GitHub drops many scheduled firings (nostreambot measured ~22% delivered), and a run
+    # that finds no new questions costs ~nothing. Already-forecasted questions are skipped. (B-06)
+    - cron: "7,27,47 * * * *"
+    - cron: "17,37,57 * * * *"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  forecast_job:
+    # Live publishing is off until the repository variable LIVE_ENABLED is set to "true"
+    # (Settings → Secrets and variables → Actions → Variables). Manual runs are allowed regardless.
+    if: ${{ vars.LIVE_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+      - name: Run bot
+        run: poetry run python main.py --mode tournament --publish
+        env:
+          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
+          ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
+      - name: Upload forecast records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forecasts-${{ github.run_id }}
+          path: data/forecasts/
+          if-no-files-found: ignore
+          retention-days: 90
