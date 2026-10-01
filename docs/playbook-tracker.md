@@ -55,3 +55,4 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 |---|---|---|---|---|---|---|
 | 2026-09-30 | m1-baseline-2026-09-30b | bot-testing-area (dry run, no research) | 8 | $/question | mean $0.0069, max $0.0098 | 23/24 forecaster outputs parsed after the parser fixes; not a skill measure |
 | 2026-09-30 | m1-baseline-2026-09-30c | bot-testing-area (dry run, Gemini research) | 8 | $/question | mean $0.0080, max $0.0155 | 24/24 parsed. Excludes Google's grounding fee (unknown) |
+| 2026-10-01 | m1-baseline-2026-09-30c | bot-testing-area (GitHub Actions, published) | 5 | $/question | $0.0066 | First published forecasts; end-to-end path works in CI |
