@@ -12,11 +12,13 @@ The page is published as a private Claude artifact (see CLAUDE.md, "Monitor").
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -42,6 +44,30 @@ def gh_exe() -> str:
 def gh_json(args: list[str]):
     out = subprocess.run([gh_exe(), *args], capture_output=True, text=True, encoding="utf-8", check=True).stdout
     return json.loads(out)
+
+
+def openssl_exe() -> str:
+    for cand in (shutil.which("openssl"), r"C:\Program Files\Git\usr\bin\openssl.exe", r"C:\Program Files\Git\mingw64\bin\openssl.exe"):
+        if cand and Path(cand).exists():
+            return cand
+    sys.exit("openssl not found (it ships with Git for Windows)")
+
+
+def decrypt_records(dest: Path) -> None:
+    """Artifacts hold records.tar.gz.enc (see the workflows). Decrypt with ARCHIVE_KEY and unpack into dest."""
+    enc = dest / "records.tar.gz.enc"
+    if not enc.exists():
+        return  # older, unencrypted artifact
+    key = os.getenv("ARCHIVE_KEY")
+    if not key:
+        sys.exit("ARCHIVE_KEY is not set in .env; cannot decrypt run records")
+    plain = subprocess.run(
+        [openssl_exe(), "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "200000", "-pass", "env:ARCHIVE_KEY", "-in", str(enc)],
+        capture_output=True, check=True, env={**os.environ, "ARCHIVE_KEY": key},
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz") as tar:
+        tar.extractall(dest, filter="data")
+    enc.unlink()
 
 
 def sync(repo: str) -> list[str]:
@@ -71,6 +97,7 @@ def sync(repo: str) -> list[str]:
             warnings.append(f"artifact {a['name']} expires {expires:%Y-%m-%d}; downloading now")
         dest.mkdir(parents=True, exist_ok=True)
         subprocess.run([gh_exe(), "run", "download", run_id, "-R", repo, "-n", a["name"], "-D", str(dest)], check=True)
+        decrypt_records(dest)
         run = gh_json(["run", "view", run_id, "-R", repo, "--json", "workflowName,createdAt,event,conclusion,url"])
         # Run logs expire with the artifact, so keep them too.
         log = subprocess.run([gh_exe(), "run", "view", run_id, "-R", repo, "--log"], capture_output=True, text=True, encoding="utf-8", errors="replace")

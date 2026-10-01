@@ -30,10 +30,22 @@ jobs:
           ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
           ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
           ASKNEWS_API_KEY: ${{ secrets.ASKNEWS_API_KEY }}
-      - name: Upload forecast records
+      # Records can contain licensed news text (AskNews), and artifacts on a public repo are downloadable by anyone, so they
+      # are encrypted with ARCHIVE_KEY. tools/build_monitor.py decrypts them into the private archive. Never upload plaintext.
+      - name: Encrypt forecast records
+        if: always()
+        env:
+          ARCHIVE_KEY: ${{ secrets.ARCHIVE_KEY }}
+        run: |
+          if ls data/forecasts/*/forecasts.jsonl >/dev/null 2>&1; then
+            if [ -z "$ARCHIVE_KEY" ]; then echo "ARCHIVE_KEY secret is missing; refusing to upload records unencrypted"; exit 1; fi
+            mkdir -p upload
+            tar czf - data/forecasts | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:ARCHIVE_KEY -out upload/records.tar.gz.enc
+          fi
+      - name: Upload encrypted forecast records
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: forecasts-${{ github.run_id }}
-          path: data/forecasts/
+          path: upload/records.tar.gz.enc
           if-no-files-found: ignore
