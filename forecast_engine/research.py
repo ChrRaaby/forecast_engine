@@ -27,8 +27,8 @@ async def gather_research(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfig
     bundle = ResearchBundle(as_of=clock.now(), providers=[], items=[], calls=[])
     for provider in cfg.providers:
         if provider == "asknews_latest":
-            if not (os.getenv("ASKNEWS_CLIENT_ID") and os.getenv("ASKNEWS_SECRET")):
-                bundle.errors.append("asknews_latest skipped: ASKNEWS_CLIENT_ID/ASKNEWS_SECRET not set")
+            if not ((os.getenv("ASKNEWS_CLIENT_ID") and os.getenv("ASKNEWS_SECRET")) or os.getenv("ASKNEWS_API_KEY")):
+                bundle.errors.append("asknews_latest skipped: no AskNews credentials (ASKNEWS_API_KEY or ASKNEWS_CLIENT_ID/SECRET)")
                 continue
             await _asknews_latest(q, clock, cfg, bundle)
         elif provider == "gemini_grounded":
@@ -54,11 +54,11 @@ async def _asknews_latest(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfig
     )
     start = time.monotonic()
     try:
-        async with AsyncAskNewsSDK(
-            client_id=os.getenv("ASKNEWS_CLIENT_ID"),
-            client_secret=os.getenv("ASKNEWS_SECRET"),
-            scopes={"news"},
-        ) as ask:
+        if os.getenv("ASKNEWS_CLIENT_ID") and os.getenv("ASKNEWS_SECRET"):
+            creds = {"client_id": os.getenv("ASKNEWS_CLIENT_ID"), "client_secret": os.getenv("ASKNEWS_SECRET")}
+        else:
+            creds = {"api_key": os.getenv("ASKNEWS_API_KEY")}
+        async with AsyncAskNewsSDK(**creds, scopes={"news"}) as ask:
             resp = await ask.news.search_news(
                 query=q.question_text,
                 n_articles=cfg.asknews_n_articles,

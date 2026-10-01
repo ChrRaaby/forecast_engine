@@ -37,7 +37,8 @@
   GitHub Actions run artifacts into `data/runs/` (gitignored, kept forever; artifacts on GitHub expire after 90 days) and writes
   `dashboard/monitor.html`. Published copy: https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS. On "refresh the monitor": run it, then republish to that URL. A Windows scheduled
   task "forecast_engine archive runs" on Christian's PC runs `--sync-only` daily at 09:00 and at logon (also saves each run's log);
-  it appends to `data/runs/_sync.log`. `data/` exists only on that PC, so it needs a backup of its own.
+  it appends to `data/runs/_sync.log`. `data/` is its own git repo, pushed after each sync to the
+  **private** repo ChrRaaby/forecast_engine_data (never make it public: it holds licensed news text).
 
 ## How to work
 - For any non-trivial task: propose a plan first, wait for approval, then implement.

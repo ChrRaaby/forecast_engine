@@ -4,7 +4,8 @@
     poetry run python tools/build_monitor.py --no-sync  # rebuild from the local cache only
     poetry run python tools/build_monitor.py --sync-only  # just archive new runs (what the daily Windows task runs)
 
-Artifacts on GitHub expire after 90 days; the local cache under data/runs/ (gitignored) does not. Run this at least every
+Artifacts on GitHub expire after 90 days; the local cache under data/runs/ (gitignored here) does not, and data/ is itself a
+git repo that is pushed to the private ChrRaaby/forecast_engine_data after every sync. Run this at least every
 couple of months so nothing expires before it is downloaded; the script warns about artifacts close to expiry.
 The page is published as a private Claude artifact (see CLAUDE.md, "Monitor").
 """
@@ -79,6 +80,21 @@ def sync(repo: str) -> list[str]:
     return warnings
 
 
+def push_archive() -> str:
+    """Commit and push data/ to the private archive repo (ChrRaaby/forecast_engine_data), if it is one."""
+    data = ROOT / "data"
+    if not (data / ".git").exists():
+        return "data/ is not a git repo; archive not pushed"
+    git = ["git", "-C", str(data), "-c", "user.name=forecast_engine archiver", "-c", "user.email=archiver@localhost"]
+    subprocess.run([*git, "add", "-A"], check=True)
+    if subprocess.run([*git, "diff", "--cached", "--quiet"]).returncode == 0:
+        return "archive up to date"
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    subprocess.run([*git, "commit", "-q", "-m", f"Archive sync {stamp}"], check=True)
+    subprocess.run([*git, "push", "-q", "origin", "main"], check=True)
+    return "archive pushed"
+
+
 def _clip(text: str | None) -> str:
     text = text or ""
     return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + "\n\n[... trimmed for the monitor; full text in the run artifact]"
@@ -148,6 +164,11 @@ def main() -> int:
     args = ap.parse_args()
     load_dotenv(ROOT / ".env")
     warnings = [] if args.no_sync else sync(args.repo)
+    if not args.no_sync:
+        try:
+            print(push_archive())
+        except subprocess.CalledProcessError as e:
+            warnings.append(f"pushing the data archive failed: {e}")
     if args.sync_only:
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with (CACHE / "_sync.log").open("a", encoding="utf-8") as f:

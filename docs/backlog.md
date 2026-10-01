@@ -12,7 +12,7 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 ## Now: M1 baseline bot live
 | Rank | ID | Item | Why | Owner | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | B-01 | Fill in the Metaculus participation form (includes the LLM credits application) ✓ done 2026-09-29. AskNews bot-access request sent 2026-09-29 (asked about archive use for backtests); waiting for reply. Don't buy a plan meanwhile (research/03 addendum) | R-01, R-10: credits decide what we can afford | Christian | S | Blocked |
+| 1 | B-01 | Fill in the Metaculus participation form (includes the LLM credits application) ✓ done 2026-09-29. AskNews bot access confirmed 2026-10-01; waiting for API credentials in `.env` + GitHub secret. Archive use for backtests still unconfirmed. Don't buy a plan meanwhile (research/03 addendum) | R-01, R-10: credits decide what we can afford | Christian | S | Blocked |
 | 2 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Live since 2026-10-01 20:43 UTC (`LIVE_ENABLED=true`). First run found no open questions (FutureEval questions open for ~3 h windows). Close once it has forecast real tournament questions | M1; R-04, R-15 | Claude Code | M | Doing |
 
 ## Next: reliability → evaluation harness (M2) → experiments
