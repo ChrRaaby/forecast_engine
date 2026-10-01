@@ -20,6 +20,9 @@ from .config import ResearchConfig
 from .prompts import research_prompt
 from .schema import LlmCall, QuestionSnapshot, ResearchBundle, ResearchItem
 
+_ASKNEWS_LOCK = asyncio.Lock()  # serialises AskNews calls across concurrently researched questions
+_asknews_last_call = [float("-inf")]
+
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
@@ -58,13 +61,27 @@ async def _asknews_latest(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfig
             creds = {"client_id": os.getenv("ASKNEWS_CLIENT_ID"), "client_secret": os.getenv("ASKNEWS_SECRET")}
         else:
             creds = {"api_key": os.getenv("ASKNEWS_API_KEY")}
-        async with AsyncAskNewsSDK(**creds, scopes={"news"}) as ask:
-            resp = await ask.news.search_news(
-                query=q.question_text,
-                n_articles=cfg.asknews_n_articles,
-                return_type="dicts",
-                strategy="latest news",
-            )
+        resp = None
+        async with _ASKNEWS_LOCK:
+            for attempt in range(2):  # one retry after a rate-limit error
+                wait = cfg.asknews_min_interval_s - (time.monotonic() - _asknews_last_call[0])
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                try:
+                    async with AsyncAskNewsSDK(**creds, scopes={"news"}) as ask:
+                        call.extra["asknews_calls"] = call.extra.get("asknews_calls", 0) + 1
+                        resp = await ask.news.search_news(
+                            query=q.question_text,
+                            n_articles=cfg.asknews_n_articles,
+                            return_type="dicts",
+                            strategy="latest news",
+                        )
+                    break
+                except Exception as e:
+                    if "RateLimit" not in type(e).__name__ or attempt == 1:
+                        raise
+                finally:
+                    _asknews_last_call[0] = time.monotonic()
         articles = resp.as_dicts or []
         for a in articles:
             bundle.items.append(
@@ -77,7 +94,6 @@ async def _asknews_latest(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfig
                 )
             )
         call.extra["n_articles_returned"] = len(articles)
-        call.extra["asknews_calls"] = 1
         bundle.providers.append("asknews_latest")
     except Exception as e:
         call.error = f"{type(e).__name__}: {e}"

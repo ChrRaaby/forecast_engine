@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 
-CONFIG_VERSION = "m1-baseline-2026-09-30c"
+CONFIG_VERSION = "m1-baseline-2026-10-01"
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,8 @@ class ResearchConfig:
     gemini_usd_per_m_in: float = 0.30
     gemini_usd_per_m_out: float = 2.50
     asknews_n_articles: int = 8
+    # The bot grant is rate-limited (the first CI run got a 429 with 3 questions in parallel). The template waits 12 s.
+    asknews_min_interval_s: float = 12.0
 
 
 @dataclass(frozen=True)

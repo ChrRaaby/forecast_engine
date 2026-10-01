@@ -33,6 +33,8 @@
   resolve it, then rebuild and republish. Claude can only reply to and resolve threads that were sent to Claude
   ("Send to Claude" or @claude in the thread); plain comments are read and acted on, but stay open for Christian to resolve.
 
+- Run records are uploaded as artifacts **encrypted** with `ARCHIVE_KEY` (in `.env` and GitHub secrets; never upload plaintext:
+  they contain AskNews text and the code repo is public). Losing the key makes not-yet-synced artifacts unreadable.
 - Bot monitor (forecasts, model answers, research, costs per run): `poetry run python tools/build_monitor.py` downloads new
   GitHub Actions run artifacts into `data/runs/` (gitignored, kept forever; artifacts on GitHub expire after 90 days) and writes
   `dashboard/monitor.html`. Published copy: https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS. On "refresh the monitor": run it, then republish to that URL. A Windows scheduled
