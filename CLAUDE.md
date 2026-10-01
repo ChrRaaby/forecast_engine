@@ -35,8 +35,9 @@
 
 - Bot monitor (forecasts, model answers, research, costs per run): `poetry run python tools/build_monitor.py` downloads new
   GitHub Actions run artifacts into `data/runs/` (gitignored, kept forever; artifacts on GitHub expire after 90 days) and writes
-  `dashboard/monitor.html`. Published copy: https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS. On "refresh the monitor": run it, then republish to that URL. Run it at least
-  every couple of months so no artifact expires before it is downloaded (the script warns).
+  `dashboard/monitor.html`. Published copy: https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS. On "refresh the monitor": run it, then republish to that URL. A Windows scheduled
+  task "forecast_engine archive runs" on Christian's PC runs `--sync-only` daily at 09:00 and at logon (also saves each run's log);
+  it appends to `data/runs/_sync.log`. `data/` exists only on that PC, so it needs a backup of its own.
 
 ## How to work
 - For any non-trivial task: propose a plan first, wait for approval, then implement.

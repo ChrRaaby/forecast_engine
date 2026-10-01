@@ -2,6 +2,7 @@
 
     poetry run python tools/build_monitor.py            # sync new artifacts, then build dashboard/monitor.html
     poetry run python tools/build_monitor.py --no-sync  # rebuild from the local cache only
+    poetry run python tools/build_monitor.py --sync-only  # just archive new runs (what the daily Windows task runs)
 
 Artifacts on GitHub expire after 90 days; the local cache under data/runs/ (gitignored) does not. Run this at least every
 couple of months so nothing expires before it is downloaded; the script warns about artifacts close to expiry.
@@ -70,6 +71,9 @@ def sync(repo: str) -> list[str]:
         dest.mkdir(parents=True, exist_ok=True)
         subprocess.run([gh_exe(), "run", "download", run_id, "-R", repo, "-n", a["name"], "-D", str(dest)], check=True)
         run = gh_json(["run", "view", run_id, "-R", repo, "--json", "workflowName,createdAt,event,conclusion,url"])
+        # Run logs expire with the artifact, so keep them too.
+        log = subprocess.run([gh_exe(), "run", "view", run_id, "-R", repo, "--log"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        (dest / "_run.log").write_text(log.stdout, encoding="utf-8")
         (dest / "_run.json").write_text(json.dumps(run, indent=2), encoding="utf-8")
         print(f"downloaded {a['name']} ({run['workflowName']}, {run['createdAt']})")
     return warnings
@@ -140,9 +144,18 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=DEFAULT_REPO)
     ap.add_argument("--no-sync", action="store_true")
+    ap.add_argument("--sync-only", action="store_true", help="download new run artifacts and logs, don't build the page")
     args = ap.parse_args()
     load_dotenv(ROOT / ".env")
     warnings = [] if args.no_sync else sync(args.repo)
+    if args.sync_only:
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with (CACHE / "_sync.log").open("a", encoding="utf-8") as f:
+            archived = len(list(CACHE.glob("*/_run.json")))
+            f.write(f"{stamp} ok {archived} runs archived" + "".join(f" | WARNING {w}" for w in warnings) + "\n")
+        for w in warnings:
+            print(f"WARNING: {w}")
+        return 0
     rows, runs = load_rows()
     data = {
         "built_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
