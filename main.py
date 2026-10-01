@@ -69,6 +69,7 @@ def to_snapshot(q: MetaculusQuestion) -> QuestionSnapshot:
         resolution_criteria=q.resolution_criteria or "",
         fine_print=q.fine_print or "",
         page_url=q.page_url or "",
+        tournaments=tuple(q.tournament_slugs or ()),
         open_time=q.open_time,
         scheduled_resolution_time=q.scheduled_resolution_time,
         unit_of_measure=q.unit_of_measure or "",

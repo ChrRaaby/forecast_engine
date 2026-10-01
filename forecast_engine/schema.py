@@ -23,6 +23,7 @@ class QuestionSnapshot:
     resolution_criteria: str = ""
     fine_print: str = ""
     page_url: str = ""
+    tournaments: tuple[str, ...] = ()  # slugs, for monitoring only; never shown to the forecaster
     open_time: datetime | None = None
     scheduled_resolution_time: datetime | None = None
     # multiple choice

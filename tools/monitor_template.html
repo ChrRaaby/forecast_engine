@@ -1,0 +1,257 @@
+<title>CrystalBallMcGee Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: status header and headline tiles, then spend + per-model health, then the forecast log with expandable rows.
+   Shares the backlog dashboard's tokens (slate neutrals, one steel-blue accent, semantic status colours). */
+:root {
+  --bg:#f5f7f9; --surface:#ffffff; --fg:#17202b; --muted:#5b6674; --line:#dde3ea; --accent:#2e5f8f; --accent-soft:#e3edf7;
+  --ok:#2f7d4f; --ok-soft:#e1f1e7; --warn:#a4620f; --warn-soft:#fbeedb; --bad:#b03a3a; --bad-soft:#f8e3e3; --idle:#8a95a3; --idle-soft:#eceff3;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif; --mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#10151c; --surface:#171e27; --fg:#e4e9ef; --muted:#9aa6b4; --line:#2a3440; --accent:#7fb1e3; --accent-soft:#1d2d3f;
+  --ok:#6cc690; --ok-soft:#173226; --warn:#e8a653; --warn-soft:#3a2a14; --bad:#ec8080; --bad-soft:#3b1d1d; --idle:#7c8896; --idle-soft:#222b36; color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#10151c; --surface:#171e27; --fg:#e4e9ef; --muted:#9aa6b4; --line:#2a3440; --accent:#7fb1e3; --accent-soft:#1d2d3f;
+  --ok:#6cc690; --ok-soft:#173226; --warn:#e8a653; --warn-soft:#3a2a14; --bad:#ec8080; --bad-soft:#3b1d1d; --idle:#7c8896; --idle-soft:#222b36; color-scheme:dark; }
+body { background:var(--bg); color:var(--fg); font:15px/1.5 var(--body); }
+.wrap { max-width:1180px; margin:0 auto; padding-inline:clamp(16px,4vw,40px); padding-block:28px 64px; display:grid; gap:32px; }
+header { display:grid; gap:6px; }
+.eyebrow { font:500 12px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+h1 { font:700 clamp(28px,4vw,40px)/1.1 var(--display); margin:0; letter-spacing:-.01em; text-wrap:balance; }
+h2 { font:700 22px var(--display); margin:0; text-wrap:balance; }
+.meta { color:var(--muted); font-size:13px; }
+a { color:var(--accent); }
+a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.warnbox { background:var(--warn-soft); color:var(--warn); border-radius:8px; padding:10px 14px; font-size:14px; display:grid; gap:4px; }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; }
+.tile { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; display:grid; gap:4px; align-content:start; min-width:0; }
+.tile .k { font:600 11.5px var(--body); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.tile .v { font:700 28px/1.1 var(--display); font-variant-numeric:tabular-nums; }
+.tile .s { font-size:12.5px; color:var(--muted); }
+.meter { height:6px; border-radius:3px; background:var(--idle-soft); overflow:hidden; margin-top:4px; }
+.meter span { display:block; height:100%; background:var(--accent); }
+.meter span.hot { background:var(--warn); }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; align-items:start; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; display:grid; gap:10px; min-width:0; }
+.panel h3 { font:600 15px var(--display); margin:0; }
+.sub { font-size:12.5px; color:var(--muted); }
+svg text { fill:var(--muted); font:11px var(--mono); }
+.scroll { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; }
+th { text-align:left; font:600 11px var(--body); letter-spacing:.05em; text-transform:uppercase; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+td { padding:9px 10px; border-top:1px solid var(--line); vertical-align:top; }
+tbody tr:first-child td { border-top:0; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.mono { font:12px var(--mono); }
+.chip { font:500 11.5px var(--body); padding:2px 9px; border-radius:999px; white-space:nowrap; background:var(--idle-soft); color:var(--muted); display:inline-block; }
+.chip.ok { background:var(--ok-soft); color:var(--ok); } .chip.bad { background:var(--bad-soft); color:var(--bad); }
+.chip.warn { background:var(--warn-soft); color:var(--warn); } .chip.acc { background:var(--accent-soft); color:var(--accent); }
+.filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.filters select, .filters input { font:14px var(--body); color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+.filters input { min-width:0; flex:1 1 180px; }
+.log { background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+.log table { min-width:820px; }
+tr.q { cursor:pointer; }
+tr.q:hover td { background:var(--accent-soft); }
+tr.q td.title { max-width:420px; }
+tr.q td.title b { font-weight:500; }
+tr.detail td { background:var(--bg); padding:16px 18px; }
+.detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+.box { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:12px 14px; display:grid; gap:6px; min-width:0; }
+.box h4 { margin:0; font:600 13px var(--body); display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.box pre { margin:0; white-space:pre-wrap; word-break:break-word; font:12.5px/1.5 var(--body); max-height:320px; overflow:auto; }
+.strip { display:block; }
+.empty { color:var(--muted); background:var(--surface); border:1px dashed var(--line); border-radius:10px; padding:14px 18px; margin:0; }
+button.more { font:500 13px var(--body); color:var(--accent); background:transparent; border:1px solid var(--line); border-radius:6px; padding:4px 12px; cursor:pointer; }
+footer { color:var(--muted); font-size:12px; }
+code { font:12px var(--mono); background:var(--idle-soft); padding:1px 4px; border-radius:4px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">CrystalBallMcGee-bot · Metaculus FutureEval</span>
+    <h1>Bot monitor</h1>
+    <span class="meta" id="meta"></span>
+  </header>
+  <div class="warnbox" id="warnings" hidden></div>
+  <section class="tiles" id="tiles" aria-label="Headline numbers"></section>
+  <section class="grid2">
+    <div class="panel">
+      <h3>Spend per day</h3>
+      <div class="sub">OpenRouter cost reported per request, plus Gemini research estimated from tokens. Google's per-search fee is not included.</div>
+      <div id="spend"></div>
+    </div>
+    <div class="panel">
+      <h3>Forecasters</h3>
+      <div class="sub">An unreadable answer means the model replied but the bot could not parse a forecast from it.</div>
+      <div class="scroll"><table id="models"></table></div>
+    </div>
+  </section>
+  <section style="display:grid; gap:12px">
+    <h2>Forecasts</h2>
+    <div class="filters">
+      <label class="sub" for="f-mode">Source</label>
+      <select id="f-mode"><option value="tournament">Tournaments</option><option value="test">Bot-testing area</option><option value="">All</option></select>
+      <label class="sub" for="f-type">Type</label>
+      <select id="f-type"><option value="">All types</option><option>binary</option><option>multiple_choice</option><option>numeric</option><option>discrete</option></select>
+      <label class="sub" for="f-status">Status</label>
+      <select id="f-status"><option value="">All</option><option value="ok">Published / ok</option><option value="problem">Failed or refused</option><option value="partial">Missing a forecaster</option></select>
+      <input id="f-q" type="search" placeholder="Search questions" aria-label="Search questions">
+    </div>
+    <div class="log scroll"><table>
+      <thead><tr><th>When</th><th>Question</th><th>Type</th><th>Forecast</th><th>Models</th><th>Status</th><th class="num">Cost</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <p class="empty" id="norows" hidden>No forecasts match these filters yet. Live forecasts appear here after the next refresh.</p>
+    <div><button class="more" id="more" hidden>Show more</button></div>
+  </section>
+  <section class="panel">
+    <h3>Runs</h3>
+    <div class="scroll"><table id="runs"></table></div>
+  </section>
+  <footer>Built by <code>poetry run python tools/build_monitor.py</code> from GitHub Actions run artifacts. Ask Claude to "refresh the monitor" to update it.</footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const usd = (v, d = 4) => (v == null ? "n/a" : "$" + Number(v).toFixed(d));
+const pct = (v) => (v * 100).toFixed(v < 0.1 || v > 0.9 ? 1 : 0) + "%";
+const short = (m) => m.split("/").pop();
+const day = (iso) => (iso || "").slice(0, 10);
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toISOString().slice(5, 16).replace("T", " "); };
+const fmtNum = (v) => Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-US") : Number(v.toPrecision(4)).toString();
+
+function predText(type, p) {
+  if (p == null) return "none";
+  if (type === "binary") return pct(p);
+  if (type === "multiple_choice") {
+    const top = Object.entries(p).sort((a, b) => b[1] - a[1]);
+    return top.slice(0, 2).map(([k, v]) => `${k} ${pct(v)}`).join(", ") + (top.length > 2 ? ", …" : "");
+  }
+  const at = (q) => p.find((x) => Math.abs(x[0] - q) < 1e-9)?.[1];
+  const p10 = at(0.1), p90 = at(0.9), p40 = at(0.4), p60 = at(0.6);
+  const mid = p40 != null && p60 != null ? (p40 + p60) / 2 : null;
+  return `${fmtNum(p10)} to ${fmtNum(p90)}` + (mid != null ? ` (mid ≈ ${fmtNum(mid)})` : "");
+}
+
+// Binary only: a 0-100% strip showing each model's dot and the median tick, so disagreement is visible at a glance.
+function binaryStrip(r) {
+  if (r.type !== "binary") return "";
+  const w = 120, h = 14, x = (p) => 4 + p * (w - 8);
+  const dots = r.members.filter((m) => m.pred != null)
+    .map((m) => `<circle cx="${x(m.pred).toFixed(1)}" cy="7" r="3.2" fill="var(--idle)"><title>${esc(short(m.model))}: ${pct(m.pred)}</title></circle>`).join("");
+  const med = r.aggregate != null ? `<line x1="${x(r.aggregate).toFixed(1)}" x2="${x(r.aggregate).toFixed(1)}" y1="1" y2="13" stroke="var(--accent)" stroke-width="2"/>` : "";
+  return `<svg class="strip" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="model spread"><line x1="4" x2="${w - 4}" y1="7" y2="7" stroke="var(--line)" stroke-width="2"/>${med}${dots}</svg>`;
+}
+
+function statusOf(r) {
+  if (r.status === "failed") return ["Failed", "bad"];
+  if (r.status === "refused_no_research") return ["No research", "warn"];
+  const missing = r.members.some((m) => m.pred == null);
+  if (r.published) return [missing ? "Published, 2/3" : "Published", missing ? "warn" : "ok"];
+  return [missing ? "Dry run, 2/3" : "Not published", missing ? "warn" : "acc"];
+}
+
+function renderHeader() {
+  $("meta").textContent = `Built ${DATA.built_at.replace("T", " ")} UTC from ${DATA.runs.length} run(s) in ${DATA.repo}`;
+  if (DATA.warnings.length) { $("warnings").hidden = false; $("warnings").innerHTML = DATA.warnings.map((w) => `<div>${esc(w)}</div>`).join(""); }
+}
+
+function renderTiles(rows) {
+  const live = rows.filter((r) => r.mode === "tournament");
+  const pub = live.filter((r) => r.published).length;
+  const failed = live.filter((r) => r.status !== "ok").length;
+  const spend = rows.reduce((s, r) => s + (r.cost || 0), 0);
+  const liveSpend = live.reduce((s, r) => s + (r.cost || 0), 0);
+  const members = rows.flatMap((r) => r.members);
+  const unread = members.filter((m) => m.pred == null).length;
+  const or = DATA.openrouter;
+  const orUsed = or && or.usage != null ? or.usage : null, orLimit = or && or.limit ? or.limit : null;
+  const share = orUsed != null && orLimit ? Math.min(1, orUsed / orLimit) : null;
+  const tiles = [
+    ["Tournament forecasts", String(live.length), `${pub} published · ${failed} failed`],
+    ["Spend per question", live.length ? usd(liveSpend / live.length, 4) : "n/a", `${usd(liveSpend, 2)} on tournaments · ${usd(spend, 2)} all runs`],
+    ["OpenRouter key", orUsed != null ? usd(orUsed, 2) : "n/a", orLimit ? `of ${usd(orLimit, 0)} limit` : "limit unknown", share],
+    ["Unreadable answers", members.length ? pct(unread / members.length) : "n/a", `${unread} of ${members.length} model answers`],
+  ];
+  $("tiles").innerHTML = tiles.map(([k, v, s, m]) => `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${m != null ? `<div class="meter"><span class="${m > 0.8 ? "hot" : ""}" style="width:${(m * 100).toFixed(1)}%"></span></div>` : ""}</div>`).join("");
+}
+
+function renderSpend(rows) {
+  const byDay = {};
+  rows.forEach((r) => { byDay[day(r.at)] = (byDay[day(r.at)] || 0) + (r.cost || 0); });
+  const days = Object.keys(byDay).sort().slice(-30);
+  if (!days.length) { $("spend").innerHTML = `<p class="empty">No runs yet.</p>`; return; }
+  const max = Math.max(...days.map((d) => byDay[d]), 0.001);
+  const W = 520, H = 160, L = 44, B = 22, T = 8, bw = Math.max(4, Math.min(28, (W - L - 8) / days.length - 4));
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const ticks = [0, max / 2, max];
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Spend per day">`;
+  ticks.forEach((t) => { s += `<line x1="${L}" x2="${W - 4}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="var(--line)"/><text x="${L - 6}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end">$${t.toFixed(t < 0.1 ? 3 : 2)}</text>`; });
+  const step = (W - L - 8) / days.length;
+  days.forEach((d, i) => {
+    const cx = L + 4 + step * i + step / 2, v = byDay[d];
+    s += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(H - B - y(v)).toFixed(1)}" rx="2" fill="var(--accent)"><title>${d}: ${usd(v, 4)}</title></rect>`;
+    if (days.length <= 10 || i % Math.ceil(days.length / 8) === 0) s += `<text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle">${d.slice(5)}</text>`;
+  });
+  $("spend").innerHTML = s + "</svg>";
+}
+
+function renderModels(rows) {
+  const stats = {};
+  rows.forEach((r) => r.members.forEach((m) => {
+    const s = (stats[m.model] ||= { n: 0, bad: 0, cost: 0, tout: 0 });
+    s.n++; if (m.pred == null) s.bad++; s.cost += m.cost || 0; s.tout += m.tout || 0;
+  }));
+  const body = Object.entries(stats).map(([model, s]) => `<tr><td class="mono">${esc(model)}</td><td class="num">${s.n}</td><td class="num">${pct(s.bad / s.n)}</td><td class="num">${usd(s.cost / s.n, 4)}</td><td class="num">${Math.round(s.tout / s.n).toLocaleString("en-US")}</td></tr>`).join("");
+  $("models").innerHTML = `<thead><tr><th>Model</th><th class="num">Answers</th><th class="num">Unreadable</th><th class="num">$ / answer</th><th class="num">Output tokens</th></tr></thead><tbody>${body || `<tr><td colspan="5" class="sub">No answers yet.</td></tr>`}</tbody>`;
+}
+
+function detailHtml(r) {
+  const members = r.members.map((m) => `<div class="box"><h4>${esc(short(m.model))} <span class="chip ${m.pred == null ? "bad" : "acc"}">${esc(m.pred == null ? (m.error || "no forecast") : predText(r.type, m.pred))}</span><span class="sub">${usd(m.cost, 4)} · ${m.tin ?? "?"} in / ${m.tout ?? "?"} out</span></h4><pre>${esc(m.output || "(no output)")}</pre></div>`).join("");
+  const research = `<div class="box"><h4>Research <span class="sub">${esc(r.providers.join(", ") || "none")} · ${usd(r.research_cost, 4)}</span></h4><pre>${esc(r.research || "(no research)")}</pre>${r.research_errors.length ? `<div class="sub">${esc(r.research_errors.join(" | "))}</div>` : ""}</div>`;
+  const facts = `<div class="sub">Question ${r.qid} · ${esc(r.tournaments.join(", ") || r.mode)} · config <code>${esc(r.config)}</code> · <a href="${esc(r.run_url)}" target="_blank" rel="noopener">run ${esc(r.run)}</a>${r.errors.length ? ` · errors: ${esc(r.errors.join(" | "))}` : ""}${r.cost_complete ? "" : " · cost incomplete"}</div>`;
+  return `<tr class="detail"><td colspan="7"><div style="display:grid;gap:12px">${facts}<div class="detail-grid">${research}${members}</div></div></td></tr>`;
+}
+
+let shown = 50;
+const open = new Set();
+function filtered() {
+  const mode = $("f-mode").value, type = $("f-type").value, st = $("f-status").value, q = $("f-q").value.trim().toLowerCase();
+  return DATA.rows.filter((r) => (!mode || r.mode === mode) && (!type || r.type === type)
+    && (!st || (st === "ok" && r.status === "ok") || (st === "problem" && r.status !== "ok") || (st === "partial" && r.members.some((m) => m.pred == null)))
+    && (!q || r.title.toLowerCase().includes(q)));
+}
+function renderRows() {
+  const rows = filtered();
+  $("norows").hidden = rows.length > 0;
+  $("more").hidden = rows.length <= shown;
+  $("rows").innerHTML = rows.slice(0, shown).map((r, i) => {
+    const key = r.run + ":" + r.qid;
+    const [label, cls] = statusOf(r);
+    const ok = r.members.filter((m) => m.pred != null).length;
+    const row = `<tr class="q" data-key="${esc(key)}" tabindex="0" aria-expanded="${open.has(key)}"><td class="mono">${when(r.at)}</td><td class="title"><b>${esc(r.title)}</b><br><a class="sub" href="${esc(r.url)}" target="_blank" rel="noopener">${esc((r.url || "").replace("https://www.", ""))}</a></td><td><span class="chip">${esc(r.type.replace("_", " "))}</span></td><td>${esc(predText(r.type, r.aggregate))}${binaryStrip(r)}</td><td class="num">${ok}/${r.members.length}</td><td><span class="chip ${cls}">${label}</span></td><td class="num mono">${usd(r.cost, 4)}</td></tr>`;
+    return row + (open.has(key) ? detailHtml(r) : "");
+  }).join("");
+}
+function renderRuns() {
+  const runs = [...DATA.runs].sort((a, b) => (b.at || "").localeCompare(a.at || "")).slice(0, 30);
+  $("runs").innerHTML = `<thead><tr><th>Started</th><th>Workflow</th><th class="num">Questions</th><th class="num">Cost</th><th>Result</th></tr></thead><tbody>${runs.map((r) => `<tr><td class="mono">${when(r.at)}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.workflow)}</a></td><td class="num">${r.questions}</td><td class="num mono">${usd(r.cost, 4)}</td><td><span class="chip ${r.conclusion === "success" ? "ok" : "bad"}">${esc(r.conclusion || "?")}</span></td></tr>`).join("") || `<tr><td colspan="5" class="sub">No runs downloaded yet.</td></tr>`}</tbody>`;
+}
+
+function toggle(tr) { const k = tr.dataset.key; open.has(k) ? open.delete(k) : open.add(k); renderRows(); }
+$("rows").addEventListener("click", (e) => { if (e.target.closest("a")) return; const tr = e.target.closest("tr.q"); if (tr) toggle(tr); });
+$("rows").addEventListener("keydown", (e) => { const tr = e.target.closest("tr.q"); if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(tr); } });
+["f-mode", "f-type", "f-status", "f-q"].forEach((id) => $(id).addEventListener("input", () => { shown = 50; renderRows(); }));
+$("more").addEventListener("click", () => { shown += 50; renderRows(); });
+try { const saved = localStorage.getItem("monitor-mode"); if (saved !== null) $("f-mode").value = saved; } catch (e) {}
+$("f-mode").addEventListener("change", () => { try { localStorage.setItem("monitor-mode", $("f-mode").value); } catch (e) {} });
+if (!DATA.rows.some((r) => r.mode === "tournament") && $("f-mode").value === "tournament") $("f-mode").value = "";
+
+renderHeader(); renderTiles(DATA.rows); renderSpend(DATA.rows); renderModels(DATA.rows); renderRows(); renderRuns();
+</script>

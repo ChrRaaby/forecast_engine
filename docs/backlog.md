@@ -13,7 +13,7 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 | Rank | ID | Item | Why | Owner | Size | Status |
 |---|---|---|---|---|---|---|
 | 1 | B-01 | Fill in the Metaculus participation form (includes the LLM credits application) ✓ done 2026-09-29. AskNews bot-access request sent 2026-09-29 (asked about archive use for backtests); waiting for reply. Don't buy a plan meanwhile (research/03 addendum) | R-01, R-10: credits decide what we can afford | Christian | S | Blocked |
-| 2 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Built, on GitHub, Test Bot published 5 forecasts to the bot-testing area 2026-10-01. Not live: waiting for Christian to set `LIVE_ENABLED` | M1; R-04, R-15 | Claude Code | M | Doing |
+| 2 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Live since 2026-10-01 20:43 UTC (`LIVE_ENABLED=true`). First run found no open questions (FutureEval questions open for ~3 h windows). Close once it has forecast real tournament questions | M1; R-04, R-15 | Claude Code | M | Doing |
 
 ## Next: reliability → evaluation harness (M2) → experiments
 _Evaluation-first: nothing below rank 10 changes the live bot until the harness (ranks 4–10) passes its validation. See `docs/evaluation-protocol.md`._
@@ -64,5 +64,6 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | B-06 | Redundant scheduling | 2026-09-30 | Two cron entries (7/27/47 and 17/37/57), gated by repo variable `LIVE_ENABLED`. External dispatcher not set up (see research/04) |
 | B-36 | Working research source for live | 2026-09-29 | Christian enabled billing on the Google project; Gemini grounded search works. Grounding fee not yet known: check the billing console |
 | B-07 | Public GitHub repo + secrets | 2026-10-01 | https://github.com/ChrRaaby/forecast_engine; history scanned for the .env values before push; METACULUS_TOKEN, OPENROUTER_API_KEY, GEMINI_API_KEY set from .env; Tests CI green; Test Bot run published 5 bot-testing-area forecasts ($0.033), records uploaded as artifact |
+| B-37 | Bot monitor: forecasts, per-model answers and reasoning, research, cost, OpenRouter key usage | 2026-10-01 | `tools/build_monitor.py` + `tools/monitor_template.html`; published at https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS; refreshed on request |
 | B-35 | Spec §7 Architecture + ADRs 0001–0005 (template, hosting, OpenRouter, $0.50/q ceiling, core/adapter split) | 2026-09-29 | All accepted (ADR-0005 by Christian 2026-09-29). M0 done; M1 unblocked |
 | B-03 | Regenerate the Metaculus token | 2026-09-29 | Dropped by Christian: keeping the current token |

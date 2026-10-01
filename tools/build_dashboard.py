@@ -233,7 +233,7 @@ td.id .cbtn {{ display:block; margin-top:6px; }}
     <span class="eyebrow">CrystalBallMcGee-bot · Metaculus FutureEval</span>
     <h1>forecast_engine</h1>
     <span class="meta">Source files last updated {updated} · page built {built} · read-only view of <code>docs/backlog.md</code> and <code>docs/playbook-tracker.md</code></span>
-    <nav aria-label="Sections"><a href="#backlog">Backlog</a><a href="#playbook">Playbook tracker</a></nav>
+    <nav aria-label="Sections"><a href="#backlog">Backlog</a><a href="#playbook">Playbook tracker</a><a href="https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS">Bot monitor</a></nav>
     <p class="input-note" id="general-input" data-comment-target data-label="General input"><span>Comment on any item to give input. Claude picks comments up when you ask it to process the dashboard input, updates the repo files and replies in the thread.</span><button type="button" class="cbtn" hidden>General comment</button></p>
   </header>
   <div class="summary">

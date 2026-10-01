@@ -33,6 +33,11 @@
   resolve it, then rebuild and republish. Claude can only reply to and resolve threads that were sent to Claude
   ("Send to Claude" or @claude in the thread); plain comments are read and acted on, but stay open for Christian to resolve.
 
+- Bot monitor (forecasts, model answers, research, costs per run): `poetry run python tools/build_monitor.py` downloads new
+  GitHub Actions run artifacts into `data/runs/` (gitignored, kept forever; artifacts on GitHub expire after 90 days) and writes
+  `dashboard/monitor.html`. Published copy: https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS. On "refresh the monitor": run it, then republish to that URL. Run it at least
+  every couple of months so no artifact expires before it is downloaded (the script warns).
+
 ## How to work
 - For any non-trivial task: propose a plan first, wait for approval, then implement.
 - Work one milestone at a time; keep changes small and reviewable.
