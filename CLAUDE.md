@@ -33,6 +33,8 @@
   resolve it, then rebuild and republish. Claude can only reply to and resolve threads that were sent to Claude
   ("Send to Claude" or @claude in the thread); plain comments are read and acted on, but stay open for Christian to resolve.
 
+- Scheduling: GitHub cron is unreliable (~8% delivered), so a cron-job.org job (Christian's account) triggers the tournament workflow
+  every 10 min via `workflow_dispatch`, with a fine-grained token that expires **2027-10-01**.
 - Run records are uploaded as artifacts **encrypted** with `ARCHIVE_KEY` (in `.env` and GitHub secrets; never upload plaintext:
   they contain AskNews text and the code repo is public). Losing the key makes not-yet-synced artifacts unreadable.
 - Bot monitor (forecasts, model answers, research, costs per run): `poetry run python tools/build_monitor.py` downloads new
