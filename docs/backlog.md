@@ -53,12 +53,22 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 7 | B-22 | Jev as a cheap news-relevance filter (A/B in the backtest) | I-03 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 8 | B-34 | Backtest ↔ live agreement check per config era (≥ 50 resolved live Qs) | Protocol §9 | Claude Code | S | Todo | Opus 5.5 · PC |
 
+## Side branch: trading (paper only, no real money)
+_Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gate, the B-44 check and Christian's explicit go-ahead. See `docs/research/06-trading-branch.md`._
+
+| Rank | ID | Item | Why | Owner | Size | Status | Model |
+|---|---|---|---|---|---|---|---|
+| 1 | B-41 | Market question feed + price-snapshot logger: liquid binary markets (Polymarket, Manifold, Kalshi read-only APIs) as a question source for the core; record mid, bid/ask and volume at forecast time; price kept out of the prompt | I-15; research/06 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 2 | B-42 | Paper-trading evaluator: edge vs. market price, fractional Kelly sizing, fees and spread, bootstrap CI (reuses B-31); defines the go/no-go gate | I-15; research/06 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 3 | B-43 | Feasibility check: can Polymarket/Manifold price history give leakage-free paired forecast/price backtests? | I-15; research/06 | Claude | S | Todo | Haiku 4.5 · PC |
+| 4 | B-44 | Denmark legality and tax check for prediction-market trading (gather sources; Christian decides) | I-15; spec §9 | Christian | S | Todo | Haiku 4.5 · PC |
+
 ## Parked
 | ID | Item | Why parked | Revisit when |
 |---|---|---|---|
 | B-23 | Graph DB for analysing past forecasts, then as a reasoning aid | Needs B-20 data first | After M2 |
 | B-24 | Fine-tune an open-weight model on resolved questions (4090) | Promising (R-12) but a large effort | After M3, if gap to frontier remains |
-| B-25 | Prediction-market trading | Non-goal for v1; legal/tax check needed | After proven calibration |
+| B-25 | Prediction-market trading with real money | Non-goal for v1; legal/tax check needed. Paper-trading side branch: B-41…B-44 | After the B-42 gate and B-44 check |
 | B-26 | `docs/research/01-silver.md`: Silver notes | Low urgency | When the book is finished |
 
 ## Done
