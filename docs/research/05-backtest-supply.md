@@ -45,9 +45,24 @@ endpoints, for bot-tournament and main-site questions alike (checked 2026-10-03 
 `score_data` is empty too, and the public question page returns only a stub to scripts. So the hiding is not specific to bot accounts
 (my earlier guess was wrong). Outcomes are currently not available through the API to us.
 
+### Metaculus's own guidance (resources page, post 38928, read 2026-10-03; found by Christian)
+- **Facts.** "For closed questions, you can access the text and resolution value of any question you have predicted on." That is why
+  both tokens see `null`: neither account forecast on those questions. Our bot **will** see outcomes for everything it forecasts, so
+  live records become scorable (B-38 is viable).
+- A **Bot Benchmarking Access Tier** gives ~250 open and ~250 resolved questions with resolution and Community Prediction, "intended
+  for training and evaluation". Requested via the Metaculus Data Needs Form.
+- Recommended feedback routes, slowest to fastest: end of the seasonal tournament; end of each 2-week MiniBench; pastcasting after the
+  model cutoff (citing the leakage pitfalls paper we already use); comparison with the community prediction (now noisy, since bots are
+  close to it).
+- Bots may test on closed tournament questions and on **main-site questions** (bot comments there stay private). The **Metaculus Cup**
+  accepts bots (no prizes) for comparison with humans. **Market Pulse** ($7k, bots prize-eligible) needs numeric group questions and
+  continuous forecast updates.
+- **Judgement.** The census pool above has no outcomes for us unless it overlaps the benchmarking tier. The fastest real data engine is
+  to forecast more questions live: every question the bot forecasts unlocks its outcome later, with leakage-free research already stored.
+
 Decisions: Christian accepted the **evaluation-model cutoff of about 2025-12-01** (2026-10-03).
 
 ## Next
-1. Get outcomes: ask Metaculus how bot builders are meant to get resolutions for backtests; fallbacks in the session log.
+1. Get outcomes: apply for the Bot Benchmarking Access Tier (B-39), and widen live coverage (B-40).
 2. Verify evaluation-model release dates; pick the roster (ADR).
 3. Find past MiniBench round ids; then build frozen DEV/HOLDOUT manifests.
