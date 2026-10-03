@@ -12,11 +12,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import time
 from datetime import timedelta
 
 import dotenv
+import requests
 
 from bot_helpers import check_environment, print_run_summary_banner, silence_noisy_dependencies
 
@@ -38,7 +40,7 @@ from forecasting_tools.data_models.data_organizer import DataOrganizer  # noqa: 
 from forecasting_tools.data_models.forecast_report import ForecastReport  # noqa: E402
 from forecasting_tools.data_models.multiple_choice_report import PredictedOption  # noqa: E402
 
-from forecast_engine import parsing  # noqa: E402
+from forecast_engine import guards, parsing  # noqa: E402
 from forecast_engine.clock import Clock, SystemClock  # noqa: E402
 from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
@@ -102,6 +104,7 @@ def to_prediction(q: MetaculusQuestion, aggregate):
     if isinstance(q, BinaryQuestion):
         return float(aggregate)
     if isinstance(q, MultipleChoiceQuestion):
+        guards.check_mc_options(aggregate, q.options)
         return PredictedOptionList(
             predicted_options=[PredictedOption(option_name=k, probability=v) for k, v in aggregate.items()]
         )
@@ -209,6 +212,11 @@ class EngineBot(ForecastBot):
             )
             published = False
             if self.publish_reports_to_metaculus:
+                ok, why = question_forecastable(question, self.clock)
+                if not ok:  # the run can take minutes; re-check right before publishing (B-09)
+                    record.errors.append(f"not published: {why}")
+                    self.writer.write(record, published=False, status="failed")
+                    raise RuntimeError(f"not published: {why}")
                 try:
                     await report.publish_report_to_metaculus(metaculus_client=self.metaculus_client)
                 except Exception as e:
@@ -231,6 +239,24 @@ class EngineBot(ForecastBot):
 
     async def _run_forecast_on_numeric(self, question, research):  # pragma: no cover
         raise NotImplementedError
+
+
+def question_forecastable(q: MetaculusQuestion, clock: Clock) -> tuple[bool, str]:
+    state = q.state.value if q.state is not None else None
+    return guards.forecastable(state, q.close_time, q.resolution_string, clock.now())
+
+
+def check_clock(clock: Clock) -> None:
+    """Wrong-"today" guard (B-09, R-18): abort if our clock disagrees with Metaculus's server by more than a day."""
+    resp = requests.get("https://www.metaculus.com/api/posts/", params={"limit": 1},
+                        headers={"Authorization": f"Token {os.environ['METACULUS_TOKEN']}"}, timeout=30)
+    date = resp.headers.get("Date")
+    if not date:
+        logger.warning("No Date header from Metaculus; clock check skipped")
+        return
+    drift = guards.clock_drift_days(clock.now(), date)
+    if drift > 1:
+        raise guards.GuardError(f"system clock is {drift:.1f} days off Metaculus's server time; refusing to run")
 
 
 def fetch_questions(client: MetaculusClient, mode: str, clock: Clock, main_site_max: int = 0) -> list[MetaculusQuestion]:
@@ -294,7 +320,16 @@ def main() -> int:
         publish=args.publish,
         max_run_cost_usd=args.max_cost,
     )
+    check_clock(clock)
     questions = fetch_questions(bot.metaculus_client, args.mode, clock, args.main_site_max)
+    open_qs = []
+    for q in questions:
+        ok, why = question_forecastable(q, clock)
+        if ok:
+            open_qs.append(q)
+        else:
+            logger.info(f"Skipping {q.page_url}: {why}")
+    questions = open_qs
     if args.mode in ("tournament", "wide") or args.publish:
         questions = [q for q in questions if not q.already_forecasted]
     supported = [q for q in questions if isinstance(q, (BinaryQuestion, MultipleChoiceQuestion, NumericQuestion))]

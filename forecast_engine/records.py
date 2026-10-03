@@ -48,6 +48,7 @@ class RecordWriter:
             "cost_usd": round(record.cost_usd, 6),
             "cost_complete": record.cost_complete,
             "errors": record.errors + record.research.errors,
+            "flags": record.flags,
         }
         with self.log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(summary, ensure_ascii=False) + "\n")

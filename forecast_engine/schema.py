@@ -124,6 +124,7 @@ class ForecastRecord:
     aggregation: str
     research: ResearchBundle
     errors: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)  # B-09 warnings for human review; never block publishing
 
     @property
     def n_ok(self) -> int:
@@ -157,6 +158,7 @@ class ForecastRecord:
                 ],
                 "research": self.research.to_dict(),
                 "errors": self.errors,
+                "flags": self.flags,
             }
         )
 

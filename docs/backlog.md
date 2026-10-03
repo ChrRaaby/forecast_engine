@@ -25,7 +25,7 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
 |---|---|---|---|---|---|---|---|
 | 1 | B-08 | Manual review of the first ~20 forecasts (units, dates, open-vs-resolved confusion); then a weekly 30-min review | R-14, R-17, R-18 | Christian | S | Todo | Opus 5.5 · PC |
-| 2 | B-09 | Guard against treating open questions as resolved, and against the wrong "today" date | R-18 | Claude Code | S | Todo | Opus 5.5 · PC |
+| 2 | B-09b | Experiment EXP-002: question close/resolution dates in the prompt (card written; runs on the M2 harness) | R-18; B-09 | Claude Code | S | Todo | Opus 5.5 · PC |
 | 3 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo | Haiku 4.5 · PC |
 | 4 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
 | 5 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Opus 5.5 · PC |
@@ -82,5 +82,6 @@ _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gat
 | B-07 | Public GitHub repo + secrets | 2026-10-01 | https://github.com/ChrRaaby/forecast_engine; history scanned for the .env values before push; METACULUS_TOKEN, OPENROUTER_API_KEY, GEMINI_API_KEY set from .env; Tests CI green; Test Bot run published 5 bot-testing-area forecasts ($0.033), records uploaded as artifact |
 | B-37 | Bot monitor: forecasts, per-model answers and reasoning, research, cost, OpenRouter key usage | 2026-10-01 | `tools/build_monitor.py` + `tools/monitor_template.html`; published at https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS; refreshed on request |
 | B-40 | Widen live coverage to unlock outcomes | 2026-10-03 | ADR-0007: `--mode wide` 5×/day in the tournament workflow: all new Metaculus Cup questions + 2 main-site questions per run (~10/day, resolving within 90 days). Dry run: 17 Cup + 2 main-site eligible, $0.039 for 4 |
+| B-09 | Reliability guards | 2026-10-03 | `forecast_engine/guards.py`: skip non-open/closed/resolved questions and re-check before publishing; abort if the clock is >1 day off Metaculus server time; numeric flags (median far outside range, >10x member disagreement) recorded and shown on the monitor; MC option names must match. 26 offline tests. Config `m1-baseline-2026-10-03b` |
 | B-35 | Spec §7 Architecture + ADRs 0001–0005 (template, hosting, OpenRouter, $0.50/q ceiling, core/adapter split) | 2026-09-29 | All accepted (ADR-0005 by Christian 2026-09-29). M0 done; M1 unblocked |
 | B-03 | Regenerate the Metaculus token | 2026-09-29 | Dropped by Christian: keeping the current token |

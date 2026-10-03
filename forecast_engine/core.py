@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-from . import parsing
+from . import guards, parsing
 from .clock import Clock, today_str
 from .config import CONFIG_VERSION, BotConfig
 from .llm import LlmClient
@@ -63,6 +63,7 @@ async def forecast(
         record.aggregate = parsing.median_multiple_choice(ok)
     else:
         record.aggregate = parsing.median_numeric(ok)
+        record.flags = guards.numeric_flags(record.aggregate, ok, q.lower_bound, q.upper_bound)
     return record
 
 
