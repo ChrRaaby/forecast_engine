@@ -43,6 +43,7 @@ from forecast_engine.clock import Clock, SystemClock  # noqa: E402
 from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
     DEFAULT_CONFIG,
+    WIDE_CONFIG,
     DEFAULT_MAX_QUESTIONS_PER_RUN,
     DEFAULT_MAIN_SITE_PER_RUN,
     DEFAULT_MAX_RUN_COST_USD,
@@ -281,12 +282,13 @@ def main() -> int:
     check_environment()
     clock = SystemClock()
     run_id = clock.now().strftime("%Y%m%dT%H%M%SZ") + f"-{args.mode}" + ("" if args.publish else "-dryrun")
-    print(f"🤖  forecast_engine {CONFIG_VERSION} (config {DEFAULT_CONFIG.config_hash()}) mode={args.mode} "
+    print(f"🤖  forecast_engine {CONFIG_VERSION} (config {(WIDE_CONFIG if args.mode == "wide" else DEFAULT_CONFIG).config_hash()}) mode={args.mode} "
           f"publish={'yes' if args.publish else 'no (dry run)'} max_questions={args.max_questions} max_cost=${args.max_cost}")
 
+    cfg = WIDE_CONFIG if args.mode == "wide" else DEFAULT_CONFIG
     bot = EngineBot(
         clock=clock,
-        cfg=DEFAULT_CONFIG,
+        cfg=cfg,
         llm=OpenRouterClient(clock),
         writer=RecordWriter(run_id),
         publish=args.publish,

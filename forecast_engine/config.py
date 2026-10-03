@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 CONFIG_VERSION = "m1-baseline-2026-10-03"
 
@@ -59,6 +59,9 @@ class BotConfig:
 
 
 DEFAULT_CONFIG = BotConfig()
+# Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
+# questions and backtest archive searches (Christian, 2026-10-03).
+WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
 
 # Run-level safety rails (live adapter only).
 DEFAULT_MAX_QUESTIONS_PER_RUN = 20

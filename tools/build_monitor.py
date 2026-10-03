@@ -161,6 +161,7 @@ def load_rows() -> tuple[list[dict], list[dict]]:
                 "providers": r["research"]["providers"],
                 "research_errors": r["research"].get("errors", []),
                 "research_cost": sum(c.get("cost_usd") or 0 for c in research_calls),
+                "asknews_calls": sum((c.get("extra") or {}).get("asknews_calls", 0) for c in research_calls),
                 "cost": r["cost_usd"], "cost_complete": r.get("cost_complete", True),
                 "config": r["config_version"], "errors": r.get("errors", []),
             })

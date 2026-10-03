@@ -173,10 +173,13 @@ function renderTiles(rows) {
   const or = DATA.openrouter;
   const orUsed = or && or.usage != null ? or.usage : null, orLimit = or && or.limit ? or.limit : null;
   const share = orUsed != null && orLimit ? Math.min(1, orUsed / orLimit) : null;
+  const month = DATA.built_at.slice(0, 7);
+  const monthCalls = rows.filter((r) => (r.at || "").startsWith(month)).reduce((s, r) => s + (r.asknews_calls || 0), 0);
   const tiles = [
     ["Tournament forecasts", String(live.length), `${pub} published · ${failed} failed`],
     ["Spend per question", live.length ? usd(liveSpend / live.length, 4) : "n/a", `${usd(liveSpend, 2)} on tournaments · ${usd(spend, 2)} all runs`],
     ["OpenRouter key", orUsed != null ? usd(orUsed, 2) : "n/a", orLimit ? `of ${usd(orLimit, 0)} limit` : "limit unknown", share],
+    ["AskNews searches", String(monthCalls), `this calendar month (Pro plan ≈ 600 credits/month; archive search = 5)`],
     ["Unreadable answers", members.length ? pct(unread / members.length) : "n/a", `${unread} of ${members.length} model answers`],
   ];
   $("tiles").innerHTML = tiles.map(([k, v, s, m]) => `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${m != null ? `<div class="meter"><span class="${m > 0.8 ? "hot" : ""}" style="width:${(m * 100).toFixed(1)}%"></span></div>` : ""}</div>`).join("");

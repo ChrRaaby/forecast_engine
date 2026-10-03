@@ -18,7 +18,9 @@ live unlocks its outcome later and comes with research stored as of that day, wh
 ## Decision
 Options 2 + 3, as a separate `--mode wide` run inside the tournament workflow, five times a day (00/05/10/15/20 UTC): all new
 Metaculus Cup questions plus **2 main-site questions per run (~10/day)**, open, binary/MC/numeric/discrete, scheduled to resolve
-within 90 days, soonest-resolving first, not in FutureEval/MiniBench. Same config and safety rails as the tournament run. Also
+within 90 days, soonest-resolving first, not in FutureEval/MiniBench. Same models and safety rails as the tournament run, but
+**research is Gemini search only** (`WIDE_CONFIG`): AskNews credits (Pro plan, ~600/month) are kept for tournament questions and
+backtest archive searches (Christian, 2026-10-03). Also
 apply for the Bot Benchmarking Access Tier (B-39).
 
 ## Consequences
