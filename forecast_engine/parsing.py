@@ -130,6 +130,22 @@ def _parse_number(raw: str, unit: str) -> float:
         raise ParseError(f"not a number: {raw.strip()!r}") from e
 
 
+def fit_to_bounds(
+    points: list[tuple[float, float]], lower: float, upper: float, open_lower: bool, open_upper: bool
+) -> tuple[list[tuple[float, float]], bool]:
+    """Keep declared percentiles where Metaculus accepts them. Returns (points, clipped?).
+
+    Closed bounds: values are clamped to the bound. Open bounds: Metaculus (via forecasting-tools) rejects values more than 2x the
+    question range beyond a bound, so they are clamped to 1.9x. First seen 2026-10-03 on a USD/Toman question where all three
+    models put P90 at 500k against a 150k-250k range.
+    """
+    span = upper - lower
+    lo = lower - 1.9 * span if open_lower else lower
+    hi = upper + 1.9 * span if open_upper else upper
+    out = [(p, min(hi, max(lo, v))) for p, v in points]
+    return out, out != points
+
+
 def make_strictly_increasing(points: list[tuple[float, float]], scale: float) -> list[tuple[float, float]]:
     """Break ties by the smallest meaningful step (1e-6 of the question range) so the CDF can be built."""
     eps = max(abs(scale), 1.0) * 1e-6

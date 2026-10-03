@@ -89,3 +89,13 @@ def test_medians():
     num = parsing.median_numeric([[(0.1, 1), (0.9, 5)], [(0.1, 2), (0.9, 3)], [(0.1, 0), (0.9, 10)]])
     assert num == [(0.1, 1), (0.9, 5)]
     assert all(b[1] > a[1] for a, b in zip(num, num[1:]))
+
+
+def test_fit_to_bounds_clamps_open_and_closed():
+    pts = [(0.1, 230000.0), (0.5, 300000.0), (0.9, 500000.0)]
+    out, clipped = parsing.fit_to_bounds(pts, 150000, 250000, open_lower=True, open_upper=True)
+    assert clipped and out[2][1] == 250000 + 1.9 * 100000 and out[0] == pts[0]
+    out, clipped = parsing.fit_to_bounds(pts, 150000, 250000, open_lower=False, open_upper=False)
+    assert [v for _, v in out] == [230000.0, 250000, 250000]
+    out, clipped = parsing.fit_to_bounds([(0.1, 1.0), (0.9, 2.0)], 0, 10, False, False)
+    assert not clipped

@@ -104,7 +104,8 @@ def to_prediction(q: MetaculusQuestion, aggregate):
         return PredictedOptionList(
             predicted_options=[PredictedOption(option_name=k, probability=v) for k, v in aggregate.items()]
         )
-    points = parsing.make_strictly_increasing(aggregate, scale=q.upper_bound - q.lower_bound)
+    points, _ = parsing.fit_to_bounds(aggregate, q.lower_bound, q.upper_bound, q.open_lower_bound, q.open_upper_bound)
+    points = parsing.make_strictly_increasing(points, scale=q.upper_bound - q.lower_bound)
     percentiles = [Percentile(percentile=p, value=v) for p, v in points]
     return NumericDistribution.from_question(percentiles, q)
 
@@ -185,8 +186,18 @@ class EngineBot(ForecastBot):
                 self.writer.write(record, published=False, status="refused_no_research")
                 raise RuntimeError(f"refusing to publish without research: {research.errors}")
 
+            if isinstance(question, NumericQuestion):
+                _, clipped = parsing.fit_to_bounds(record.aggregate, question.lower_bound, question.upper_bound,
+                                                   question.open_lower_bound, question.open_upper_bound)
+                if clipped:
+                    record.errors.append("numeric percentiles clipped to the range Metaculus accepts")
             report_type = DataOrganizer.get_report_type_for_question_type(type(question))
-            prediction = to_prediction(question, record.aggregate)
+            try:
+                prediction = to_prediction(question, record.aggregate)
+            except Exception as e:
+                record.errors.append(f"could not convert forecast for Metaculus: {type(e).__name__}: {e}")
+                self.writer.write(record, published=False, status="failed")
+                raise
             report = report_type(
                 question=question,
                 prediction=prediction,
@@ -197,7 +208,12 @@ class EngineBot(ForecastBot):
             )
             published = False
             if self.publish_reports_to_metaculus:
-                await report.publish_report_to_metaculus(metaculus_client=self.metaculus_client)
+                try:
+                    await report.publish_report_to_metaculus(metaculus_client=self.metaculus_client)
+                except Exception as e:
+                    record.errors.append(f"publishing failed: {type(e).__name__}: {e}")
+                    self.writer.write(record, published=False, status="failed")
+                    raise
                 published = True
             self.writer.write(record, published=published, status="ok")
             return report

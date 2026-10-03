@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 
-CONFIG_VERSION = "m1-baseline-2026-10-01"
+CONFIG_VERSION = "m1-baseline-2026-10-03"
 
 
 @dataclass(frozen=True)
