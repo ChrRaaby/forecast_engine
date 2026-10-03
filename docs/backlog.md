@@ -24,19 +24,18 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 2 | B-09 | Guard against treating open questions as resolved, and against the wrong "today" date | R-18 | Claude Code | S | Todo |
 | 3 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo |
 | 4 | B-39 | Apply for the Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP) via the Data Needs Form | I-14; research/05 | Christian | S | Todo |
-| 5 | B-40 | Widen live coverage to unlock outcomes: Metaculus Cup and/or selected main-site questions, unpublished comments private | I-14; research/05 | Claude Code | S | Todo |
-| 6 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo |
-| 7 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo |
-| 8 | B-28 | Confirm with AskNews that the bot grant covers archive (historical) search for backtests, before building on it. As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo |
-| 9 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo |
-| 10 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo |
-| 11 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo |
-| 12 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo |
-| 13 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo |
-| 14 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo |
-| 15 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo |
-| 16 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo |
-| 17 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo |
+| 5 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo |
+| 6 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo |
+| 7 | B-28 | Confirm with AskNews that the bot grant covers archive (historical) search for backtests, before building on it. As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo |
+| 8 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo |
+| 9 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo |
+| 10 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo |
+| 11 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo |
+| 12 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo |
+| 13 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo |
+| 14 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo |
+| 15 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo |
+| 16 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status |
@@ -68,5 +67,6 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | B-36 | Working research source for live | 2026-09-29 | Christian enabled billing on the Google project; Gemini grounded search works. Grounding fee not yet known: check the billing console |
 | B-07 | Public GitHub repo + secrets | 2026-10-01 | https://github.com/ChrRaaby/forecast_engine; history scanned for the .env values before push; METACULUS_TOKEN, OPENROUTER_API_KEY, GEMINI_API_KEY set from .env; Tests CI green; Test Bot run published 5 bot-testing-area forecasts ($0.033), records uploaded as artifact |
 | B-37 | Bot monitor: forecasts, per-model answers and reasoning, research, cost, OpenRouter key usage | 2026-10-01 | `tools/build_monitor.py` + `tools/monitor_template.html`; published at https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS; refreshed on request |
+| B-40 | Widen live coverage to unlock outcomes | 2026-10-03 | ADR-0007: `--mode wide` 5×/day in the tournament workflow: all new Metaculus Cup questions + 2 main-site questions per run (~10/day, resolving within 90 days). Dry run: 17 Cup + 2 main-site eligible, $0.039 for 4 |
 | B-35 | Spec §7 Architecture + ADRs 0001–0005 (template, hosting, OpenRouter, $0.50/q ceiling, core/adapter split) | 2026-09-29 | All accepted (ADR-0005 by Christian 2026-09-29). M0 done; M1 unblocked |
 | B-03 | Regenerate the Metaculus token | 2026-09-29 | Dropped by Christian: keeping the current token |

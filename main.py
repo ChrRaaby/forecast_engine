@@ -14,6 +14,7 @@ import asyncio
 import logging
 import sys
 import time
+from datetime import timedelta
 
 import dotenv
 
@@ -22,6 +23,7 @@ from bot_helpers import check_environment, print_run_summary_banner, silence_noi
 silence_noisy_dependencies()
 
 from forecasting_tools import (  # noqa: E402
+    ApiFilter,
     BinaryQuestion,
     ForecastBot,
     MetaculusClient,
@@ -42,7 +44,9 @@ from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
     DEFAULT_CONFIG,
     DEFAULT_MAX_QUESTIONS_PER_RUN,
+    DEFAULT_MAIN_SITE_PER_RUN,
     DEFAULT_MAX_RUN_COST_USD,
+    MAIN_SITE_HORIZON_DAYS,
     BotConfig,
 )
 from forecast_engine.core import ForecastFailed, forecast  # noqa: E402
@@ -56,6 +60,7 @@ logger = logging.getLogger(__name__)
 
 TOURNAMENT_URLS = {
     "tournament": "https://www.metaculus.com/futureeval/",
+    "wide": "https://www.metaculus.com/tournament/metaculus-cup-fall-2026/",
     "test_questions": "https://www.metaculus.com/tournament/bot-testing-area/",
 }
 
@@ -211,9 +216,11 @@ class EngineBot(ForecastBot):
         raise NotImplementedError
 
 
-def fetch_questions(client: MetaculusClient, mode: str) -> list[MetaculusQuestion]:
+def fetch_questions(client: MetaculusClient, mode: str, clock: Clock, main_site_max: int = 0) -> list[MetaculusQuestion]:
     if mode == "tournament":
         ids = [client.CURRENT_AI_COMPETITION_ID, client.CURRENT_MINIBENCH_ID]
+    elif mode == "wide":
+        return fetch_wide(client, clock, main_site_max)
     else:
         ids = ["bot-testing-area"]
     questions: list[MetaculusQuestion] = []
@@ -222,10 +229,34 @@ def fetch_questions(client: MetaculusClient, mode: str) -> list[MetaculusQuestio
     return questions
 
 
+def fetch_wide(client: MetaculusClient, clock: Clock, main_site_max: int) -> list[MetaculusQuestion]:
+    """Questions outside FutureEval, forecast to unlock their outcomes for evaluation (B-40, research/05).
+
+    All new Metaculus Cup questions, plus up to `main_site_max` main-site questions per run, soonest-resolving first.
+    Metaculus allows bots on both (bot comments stay private); bots are not eligible for Cup prizes.
+    """
+    cup = [q for q in client.get_all_open_questions_from_tournament(client.CURRENT_METACULUS_CUP_ID) if not q.already_forecasted]
+    if main_site_max <= 0:
+        return cup
+    flt = ApiFilter(
+        allowed_types=["binary", "multiple_choice", "numeric", "discrete"],
+        allowed_statuses=["open"],
+        scheduled_resolve_time_lt=clock.now() + timedelta(days=MAIN_SITE_HORIZON_DAYS),
+        is_previously_forecasted_by_user=False,
+        is_in_main_feed=True,
+        order_by="scheduled_resolve_time",
+    )
+    candidates = asyncio.run(client.get_questions_matching_filter(flt, num_questions=50, error_if_question_target_missed=False))
+    skip = {"fall-futureeval-2026", "minibench", "bot-testing-area", "metaculus-cup-fall-2026"}
+    main = [q for q in candidates if not q.already_forecasted and not (set(q.tournament_slugs or []) & skip)]
+    return cup + main[:main_site_max]
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser(description="forecast_engine live bot")
-    parser.add_argument("--mode", choices=["tournament", "test_questions"], default="tournament")
+    parser.add_argument("--mode", choices=["tournament", "wide", "test_questions"], default="tournament")
+    parser.add_argument("--main-site-max", type=int, default=DEFAULT_MAIN_SITE_PER_RUN, help="wide mode: main-site questions per run")
     parser.add_argument("--publish", action="store_true", help="post forecasts + comments to Metaculus (default: dry run)")
     parser.add_argument("--max-questions", type=int, default=DEFAULT_MAX_QUESTIONS_PER_RUN)
     parser.add_argument("--max-cost", type=float, default=DEFAULT_MAX_RUN_COST_USD, help="stop starting new questions above this $")
@@ -245,8 +276,8 @@ def main() -> int:
         publish=args.publish,
         max_run_cost_usd=args.max_cost,
     )
-    questions = fetch_questions(bot.metaculus_client, args.mode)
-    if args.mode == "tournament" or args.publish:
+    questions = fetch_questions(bot.metaculus_client, args.mode, clock, args.main_site_max)
+    if args.mode in ("tournament", "wide") or args.publish:
         questions = [q for q in questions if not q.already_forecasted]
     supported = [q for q in questions if isinstance(q, (BinaryQuestion, MultipleChoiceQuestion, NumericQuestion))]
     if len(supported) < len(questions):

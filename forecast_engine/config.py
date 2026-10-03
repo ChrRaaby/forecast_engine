@@ -63,3 +63,6 @@ DEFAULT_CONFIG = BotConfig()
 # Run-level safety rails (live adapter only).
 DEFAULT_MAX_QUESTIONS_PER_RUN = 20
 DEFAULT_MAX_RUN_COST_USD = 2.00
+# Wide mode (B-40): Metaculus Cup + a few main-site questions per run, to unlock outcomes for evaluation.
+DEFAULT_MAIN_SITE_PER_RUN = 2
+MAIN_SITE_HORIZON_DAYS = 90  # only questions scheduled to resolve within this many days (fast feedback)

@@ -138,7 +138,8 @@ def load_rows() -> tuple[list[dict], list[dict]]:
         for qfile in sorted(run_dir.rglob("q*.json")):
             r = json.loads(qfile.read_text(encoding="utf-8"))
             q = r["question"]
-            mode = "test" if "test_questions" in qfile.parent.name else "tournament"
+            name = qfile.parent.name
+            mode = "test" if "test_questions" in name else "wide" if "-wide" in name else "tournament"
             members = []
             for f in r["forecasters"]:
                 c = f["call"]

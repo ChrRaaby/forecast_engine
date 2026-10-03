@@ -61,7 +61,8 @@
   - test (offline, network blocked): `poetry run pytest`
   - check model IDs against the live lists: `poetry run python tools/check_models.py`
   - dry run: `poetry run python main.py --mode test_questions --max-questions 3`
-  - live (what GitHub Actions runs): `poetry run python main.py --mode tournament --publish`
+  - live (what GitHub Actions runs): `poetry run python main.py --mode tournament --publish`, plus 5×/day
+    `--mode wide --publish --main-site-max 2` (Metaculus Cup + main-site questions, ADR-0007)
 
 ## Don'ts
 - Don't commit secrets, credentials, or real/sensitive data. Use synthetic or public sample data.

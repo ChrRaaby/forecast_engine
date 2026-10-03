@@ -110,7 +110,7 @@ Our own forecasting core sits behind a thin template adapter, so the M2 harness 
 
 **Decisions:** [0001 template](decisions/0001-start-from-metaculus-template.md) ·
 [0002 hosting](decisions/0002-hosting-github-actions-public-repo.md) · [0003 OpenRouter](decisions/0003-llm-access-via-openrouter.md) ·
-[0004 cost ceiling](decisions/0004-cost-ceiling-per-question.md) · [0005 core/adapter split](decisions/0005-evaluation-ready-architecture.md) · [0006 M1 configuration](decisions/0006-m1-baseline-configuration.md)
+[0004 cost ceiling](decisions/0004-cost-ceiling-per-question.md) · [0005 core/adapter split](decisions/0005-evaluation-ready-architecture.md) · [0006 M1 configuration](decisions/0006-m1-baseline-configuration.md) · [0007 forecast outside FutureEval](decisions/0007-forecast-outside-futureeval.md)
 
 ## 8. Milestones
 | # | Milestone | Outcome / definition of done | Status |
