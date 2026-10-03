@@ -40,7 +40,14 @@ earlier rounds' ids still need finding.
 - AskNews archive at 5 calls per query caps as-of research at ~175 questions/month (research/03 addendum b): ~4 months for 680 questions
   at one query each. Free dated sources (I-14 idea 4) or one month of AskNews Pro would shorten that.
 
+**Update, same day:** a token from Christian's personal (non-bot) account also gets `resolution: null`, on the list and detail
+endpoints, for bot-tournament and main-site questions alike (checked 2026-10-03 on posts 43155, 45793 and others). Aggregation
+`score_data` is empty too, and the public question page returns only a stub to scripts. So the hiding is not specific to bot accounts
+(my earlier guess was wrong). Outcomes are currently not available through the API to us.
+
+Decisions: Christian accepted the **evaluation-model cutoff of about 2025-12-01** (2026-10-03).
+
 ## Next
-1. Get outcomes: a Metaculus API token from Christian's personal (non-bot) account, used only locally for evaluation.
+1. Get outcomes: ask Metaculus how bot builders are meant to get resolutions for backtests; fallbacks in the session log.
 2. Verify evaluation-model release dates; pick the roster (ADR).
 3. Find past MiniBench round ids; then build frozen DEV/HOLDOUT manifests.
