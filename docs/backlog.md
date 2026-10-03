@@ -23,17 +23,18 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 1 | B-08 | Manual review of the first ~20 forecasts (units, dates, open-vs-resolved confusion); then a weekly 30-min review | R-14, R-17, R-18 | Christian | S | Todo |
 | 2 | B-09 | Guard against treating open questions as resolved, and against the wrong "today" date | R-18 | Claude Code | S | Todo |
 | 3 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo |
-| 4 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter | Protocol §3, T1, T6; R-25 | Claude Code | M | Todo |
-| 5 | B-28 | Confirm with AskNews that the bot grant covers archive (historical) search for backtests, before building on it. As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo |
-| 6 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo |
-| 7 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo |
-| 8 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo |
-| 9 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo |
-| 10 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo |
-| 11 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo |
-| 12 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo |
-| 13 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo |
-| 14 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo |
+| 4 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo |
+| 5 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo |
+| 6 | B-28 | Confirm with AskNews that the bot grant covers archive (historical) search for backtests, before building on it. As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo |
+| 7 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo |
+| 8 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo |
+| 9 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo |
+| 10 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo |
+| 11 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo |
+| 12 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo |
+| 13 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo |
+| 14 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo |
+| 15 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status |
