@@ -56,7 +56,8 @@ def model_chip(value):
     v = value.strip()
     if not v:
         return ""
-    tier = "frontier" if v.lower().startswith("opus") else "dev" if v.lower().startswith("sonnet") else "light"
+    low = v.lower()
+    tier = "frontier" if low.startswith("fable") else "light" if low.startswith("haiku") else "dev"
     return f'<span class="chip md-{tier}" title="Claude model and where it runs">{html.escape(v)}</span>'
 
 

@@ -9,7 +9,7 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 - Status: `Todo` · `Doing` · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
 - Size: S (≤2 h) · M (≤1 session ~4 h) · L (several sessions).
 - Model (Christian, 2026-10-03): the Claude model that should do the work, and where it runs. **Haiku 4.5 · PC** for mechanical work
-  (refreshes, small edits, data pulls); **Opus 5.5 · PC** for normal development on Christian's PC; **Fable 5.1 · cloud** (frontier)
+  (refreshes, small edits, data pulls); **Opus 5.5 · PC** for development (included in Christian's subscription; drop to Sonnet if usage limits bite); **Fable 5.1 · cloud** (frontier)
   only where getting the design right is worth the most. Frontier items run as cloud threads on the free credits (until they run out or
   expire 2026-11-05); then revisit. Label every new item.
 
