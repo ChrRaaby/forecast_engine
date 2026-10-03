@@ -63,3 +63,16 @@ Option 2, all in `evals/`, reusing the core's `ResearchBundle`, `ResearchItem`, 
 - `evals.asknews_check` passes: the server honours `end_timestamp`, every article is dated, and the kept articles span more than a
   day (that is, no hidden 24 h `hours_back` default on the server).
 - The screen model id resolves on OpenRouter.
+
+## Verified on the PC (2026-10-03, Claude on Christian's PC)
+- `evals.asknews_check` (as of 2025-11-01, Fed question): **all six checks pass.** 10 articles returned and kept, none after as_of,
+  all dated with time zones, kept articles span ~15 days (the 30-day window is used, not a 24 h default), cache round trip identical.
+  Ledger: 5 credits.
+- **Screen false positive found and fixed.** Prompt v1 flagged a 30 Oct 2025 article about the 29–30 Oct Fed cut as describing an event
+  "after" the 2025-11-01 reference date (2 of 2 runs), which would have excluded a clean question. Prompt **v2** (`leak-screen-v2`) says
+  publication dates are already machine-checked and asks the model to date the described event before flagging. Calibration on the
+  same real bundle plus two planted hindsight items ("went on to cut… December 10, 2025"; "in the end… held rates steady in December"),
+  2 runs each: v1 caught both plants but flagged the clean bundle; v2 kept the clean bundle clean and caught both plants every time.
+  Small sample: measure the flag rate on the first real batch (still the plan above). Cost: 10 credits + ~$0.02.
+- `tools/check_models.py` now also checks the screen model: `google/gemini-2.5-flash` resolves on OpenRouter, listed 2025-06-17,
+  matching the assumed release date.

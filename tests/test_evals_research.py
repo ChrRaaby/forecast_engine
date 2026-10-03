@@ -385,3 +385,20 @@ def test_leak_rate_warning_above_ten_percent():
     s = summarize(["clean"] * 8 + ["leak", "screen_failed"])
     assert s["excluded_rate"] == pytest.approx(0.2) and s["warning"]
     assert summarize([])["n"] == 0
+
+
+def test_screen_prompt_v2_says_publication_dates_are_prechecked():
+    """Regression for the 2026-10-03 false positive: the screen must judge the described event's date, not the article's."""
+    from datetime import datetime, timezone
+
+    from evals.leakage_screen import ScreenConfig, screen_prompt
+    from forecast_engine.schema import QuestionSnapshot, ResearchBundle, ResearchItem
+
+    as_of = datetime(2025, 11, 1, tzinfo=timezone.utc)
+    q = QuestionSnapshot(question_id=1, post_id=None, question_type="binary", question_text="Will X?")
+    b = ResearchBundle(as_of=as_of, providers=["asknews_archive"], calls=[],
+                       items=[ResearchItem(source="t", text="Something happened.", published_at=as_of)])
+    p = screen_prompt(q, b)
+    assert "a publication date is never a reason to flag" in p
+    assert "first find the date of the event" in p
+    assert ScreenConfig().prompt_version == "leak-screen-v2"

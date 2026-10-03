@@ -35,7 +35,11 @@ class ScreenConfig:
     model_release_date: date = date(2025, 6, 17)
     max_tokens: int = 8000  # room for the model's thinking tokens plus a short JSON answer
     reasoning_effort: str | None = None
-    prompt_version: str = "leak-screen-v1"
+    # v2 (2026-10-03): v1 flagged an Oct 29-30 2025 Fed article as "after" a 2025-11-01 reference date (2 of 2 runs); v2 states
+    # that publication dates are pre-checked and asks for the described event's date. On the PC calibration (one real bundle +
+    # two planted hindsight items, 2 runs each) v2 had 0 false positives and caught both plants every time; v1 caught the plants
+    # but flagged the clean bundle. See ADR-0008.
+    prompt_version: str = "leak-screen-v2"
 
     def __post_init__(self) -> None:
         if self.model_release_date > EVAL_MODEL_CUTOFF:
@@ -87,14 +91,16 @@ Question:
 Research items:
 {research}
 
-Judge only from the text above. Flag an item if it:
-- describes events, data or announcements dated after the reference date;
-- reports or implies how the question resolved, or uses hindsight ("went on to", "ultimately", "in the end", "it later emerged");
-- quotes a probability or price from a forecasting platform or prediction market (Metaculus, Polymarket, Manifold, Kalshi, ...).
-Background published before the reference date, and predictions or plans made before it, are fine.
+Judge only from the text above. Every item was published on or before {ref}; that has already been checked
+by machine, so a publication date is never a reason to flag. A leak is text that reveals something that happened AFTER {ref}.
+For each candidate, first find the date of the event the text describes and compare it with {ref}: flag it only if that event
+date is later than {ref}, or if the text uses hindsight about later events ("went on to", "ultimately", "in the end", "it later
+emerged"), or quotes a probability or price from a forecasting platform or prediction market (Metaculus, Polymarket, Manifold,
+Kalshi, ...). Events on or before {ref}, background, and predictions or plans made before it are fine, even if they bear
+directly on the question.
 
 Answer with one JSON object and nothing else:
-{{"leak": true or false, "items": [indices of flagged items], "reason": "one sentence quoting the decisive text"}}
+{{"leak": true or false, "items": [indices of flagged items], "reason": "one sentence quoting the decisive text and its event date"}}
 """
 
 
