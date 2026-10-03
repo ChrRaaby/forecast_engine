@@ -102,7 +102,7 @@ Our own forecasting core sits behind a thin template adapter, so the M2 harness 
 |---|---|---|---|
 | Template adapter | Fetch questions, call the core, publish forecast + comment | M1 | Only place that talks to Metaculus for writes |
 | `Clock` | Single source of "today" | M1 | No other code reads the system clock (protocol T5) |
-| Research layer | Provider calls behind one interface, returns dated items | M1 (live), M2 (as-of guard, cache, leakage screen) | AskNews call budget guard (grant: 1,000 calls/month) |
+| Research layer | Provider calls behind one interface, returns dated items | M1 (live), M2 (as-of guard, cache, leakage screen) | AskNews credit guard (Pro: 500 credits/period, archive = 5), ADR-0008 |
 | Forecasting core | Prompting, parsing, aggregation (median), post-processing | M1 | Pure function of its inputs + config |
 | Config | Model roster, prompts, params, `CONFIG_VERSION` | M1 | One file for model IDs, verified against live OpenRouter list |
 | Records | Append-only forecast log + research bundles | M1 | Cost and provenance per forecast (B-05) |
@@ -127,7 +127,7 @@ Our own forecasting core sits behind a thin template adapter, so the M2 harness 
 - [ ] Margin vs. community forecast for the PoC gate (set after M2 baseline) (I-08)
 - [ ] Apply for Metaculus-arranged LLM credits + AskNews bot access
 - [ ] Training cutoffs of candidate models vs. backtest question dates
-- [ ] Does AskNews support date-restricted historical search?
+- [ ] Does AskNews support date-restricted historical search? The SDK does (`historical=True`, start/end timestamps; ADR-0008); open until `evals.asknews_check` confirms the server honours the bound
 - [ ] What's known about how laertes works specifically? (general top-bot methods: see research/02)
 - [ ] Backtesting: how to get leakage-free historical questions and date-restricted news?
 - [ ] uv vs. Poetry (Python 3.11+/Poetry for now, ADR-0001; template-vs-scratch answered in ADR-0001)
