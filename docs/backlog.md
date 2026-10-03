@@ -1,6 +1,6 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-01_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-03_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
@@ -12,7 +12,7 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 ## Now: M1 baseline bot live
 | Rank | ID | Item | Why | Owner | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | B-01 | Fill in the Metaculus participation form (includes the LLM credits application) ✓ done 2026-09-29. AskNews bot access confirmed and in use (latest news, 1 call/question) since 2026-10-01. Archive use for backtests still unconfirmed. Don't buy a plan meanwhile (research/03 addendum) | R-01, R-10: credits decide what we can afford | Christian | S | Blocked |
+| 1 | B-01 | Waiting for the Metaculus LLM credits / grant ($100–500 expected; application sent 2026-09-29). When it arrives: raise the OpenRouter limit and revisit the roster (B-16). AskNews access done 2026-10-01 | R-01, R-10: credits decide what we can afford | Christian | S | Blocked |
 | 2 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Live since 2026-10-01 20:43 UTC (`LIVE_ENABLED=true`). First run found no open questions (FutureEval questions open for ~3 h windows). Close once it has forecast real tournament questions | M1; R-04, R-15 | Claude Code | M | Doing |
 
 ## Next: reliability → evaluation harness (M2) → experiments
@@ -24,7 +24,7 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 2 | B-09 | Guard against treating open questions as resolved, and against the wrong "today" date | R-18 | Claude Code | S | Todo |
 | 3 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo |
 | 4 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter | Protocol §3, T1, T6; R-25 | Claude Code | M | Todo |
-| 5 | B-28 | As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo |
+| 5 | B-28 | Confirm with AskNews that the bot grant covers archive (historical) search for backtests, before building on it. As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo |
 | 6 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo |
 | 7 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo |
 | 8 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo |
