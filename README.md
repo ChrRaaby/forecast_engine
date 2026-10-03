@@ -3,7 +3,7 @@
 > An LLM-based judgmental forecasting bot: it researches questions about real-world events and outputs calibrated probabilities with explanations. It targets Metaculus tournaments and is inspired by the laertes bot that won the Summer 2026 Metaculus Cup.
 
 ## Status
-Phase: **M1 in progress**: bot built and dry-run, not live yet. Latest session log: `docs/log/2026-10-02.md`
+Phase: **M1 in progress**: bot built and dry-run, not live yet. Latest session log: `docs/log/2026-10-03.md`
 
 ## Where things live
 | Path | Purpose |
