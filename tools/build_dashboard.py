@@ -51,6 +51,15 @@ def chip(kind, value):
     return f'<span class="chip {kind}-{slug(v.split("(")[0]) or "none"}">{html.escape(v)}</span>' if v else ""
 
 
+def model_chip(value):
+    """Which Claude model should do the item, and where it runs (backlog rule, 2026-10-03)."""
+    v = value.strip()
+    if not v:
+        return ""
+    tier = "frontier" if v.lower().startswith("opus") else "dev" if v.lower().startswith("sonnet") else "light"
+    return f'<span class="chip md-{tier}" title="Claude model and where it runs">{html.escape(v)}</span>'
+
+
 def backlog_html(sections):
     out = []
     for heading, rows in sections:
@@ -71,7 +80,7 @@ def backlog_html(sections):
           <div class="line"><span class="id">{html.escape(r.get("ID", ""))}</span><span class="what">{inline(r.get("Item", ""))}</span></div>
           <div class="sub">{inline(why)}{(' · ' + inline(extra)) if extra else ''}{(' · ' + html.escape(meta)) if meta else ''}</div>
         </div>
-        <div class="side">{chip("st", status)}<button type="button" class="cbtn" hidden aria-label="Comment on {html.escape(r.get("ID", ""))}">Comment</button></div>
+        <div class="side">{chip("st", status)}{model_chip(r.get("Model", ""))}<button type="button" class="cbtn" hidden aria-label="Comment on {html.escape(r.get("ID", ""))}">Comment</button></div>
       </li>""")
         out.append(f"""
     <section class="lane" id="lane-{slug(name)}">
@@ -201,6 +210,7 @@ section.block > h2 {{ font:700 24px var(--display); margin:0; }}
 .what {{ font-weight:500; }}
 .sub {{ font-size:12.5px; color:var(--muted); }}
 .chip {{ font:500 11.5px var(--body); padding:2px 9px; border-radius:999px; white-space:nowrap; background:var(--idle-soft); color:var(--muted); }}
+.md-frontier {{ background:var(--warn-soft); color:var(--warn); font-weight:600; }} .md-dev {{ background:var(--accent-soft); color:var(--accent); }} .md-light {{ background:var(--idle-soft); color:var(--muted); }}
 .st-done {{ background:var(--ok-soft); color:var(--ok); }} .st-partial, .st-doing {{ background:var(--warn-soft); color:var(--warn); }}
 .st-planned, .st-todo {{ background:var(--accent-soft); color:var(--accent); }} .st-blocked {{ background:var(--bad-soft); color:var(--bad); }}
 .seg.st-done, .dot.st-done {{ background:var(--ok); }} .seg.st-partial, .dot.st-partial {{ background:var(--warn); }}

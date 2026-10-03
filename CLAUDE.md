@@ -44,6 +44,10 @@
   it appends to `data/runs/_sync.log`. `data/` is its own git repo, pushed after each sync to the
   **private** repo ChrRaaby/forecast_engine_data (never make it public: it holds licensed news text).
 
+- Model per task (Christian, 2026-10-03): every backlog item carries a `Model` label: Haiku 4.5 · PC (mechanical), Sonnet 5.5 · PC
+  (normal development), Opus 5.5 · cloud (frontier, only where the design matters most; runs in cloud threads on the free credits until
+  they run out or expire 2026-11-05). Label new items when adding them; revisit the split when the credits end.
+
 ## How to work
 - For any non-trivial task: propose a plan first, wait for approval, then implement.
 - Work one milestone at a time; keep changes small and reviewable.
