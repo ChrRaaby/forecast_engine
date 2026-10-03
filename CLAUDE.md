@@ -45,8 +45,9 @@
   **private** repo ChrRaaby/forecast_engine_data (never make it public: it holds licensed news text).
 
 - Model per task (Christian, 2026-10-03): every backlog item carries a `Model` label: Haiku 4.5 · PC (mechanical), Opus 5.5 · PC
-  (development; in Christian's subscription), Fable 5.1 · cloud (frontier, only where the design matters most; runs as a standalone cloud session started by Christian on the free credits until
-  they run out or expire 2026-11-05). Label new items when adding them; revisit the split when the credits end.
+  (development; in Christian's subscription), Opus 5.5 · cloud (frontier items: a standalone cloud session started by Christian, paid
+  by the free $100 cloud credit until 2026-11-05; the credit covers neither project threads nor Fable). Label new items when adding
+  them; revisit the split when the credit ends.
 
 ## How to work
 - For any non-trivial task: propose a plan first, wait for approval, then implement.

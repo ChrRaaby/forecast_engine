@@ -9,9 +9,10 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 - Status: `Todo` · `Doing` · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
 - Size: S (≤2 h) · M (≤1 session ~4 h) · L (several sessions).
 - Model (Christian, 2026-10-03): the Claude model that should do the work, and where it runs. **Haiku 4.5 · PC** for mechanical work
-  (refreshes, small edits, data pulls); **Opus 5.5 · PC** for development (included in Christian's subscription; drop to Sonnet if usage limits bite); **Fable 5.1 · cloud** (frontier)
-  only where getting the design right is worth the most. Frontier items run as standalone cloud sessions started by Christian on the free credits (the credit is not eligible for project threads) (until they run out or
-  expire 2026-11-05); then revisit. Label every new item.
+  (refreshes, small edits, data pulls); **Opus 5.5 · PC** for development (included in Christian's subscription; drop to Sonnet if usage
+  limits bite); **Opus 5.5 · cloud** for the frontier items where getting the design right is worth the most: a standalone cloud session
+  started by Christian, paid by the free $100 cloud credit until 2026-11-05 (that credit covers neither project threads nor Fable). Label
+  every new item.
 
 ## Now: M1 baseline bot live
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
@@ -30,12 +31,12 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 4 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
 | 5 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 6 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo | Opus 5.5 · PC |
-| 7 | B-28 | AskNews archive search is covered by the Pro plan (granted 2026-10-03; ~600 credits/month, archive = 5, overage capped by a $5 wallet). As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo | Fable 5.1 · cloud |
+| 7 | B-28 | AskNews archive search is covered by the Pro plan (granted 2026-10-03; ~600 credits/month, archive = 5, overage capped by a $5 wallet). As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo | Opus 5.5 · cloud |
 | 8 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 9 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 10 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Fable 5.1 · cloud |
-| 11 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Fable 5.1 · cloud |
-| 12 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Fable 5.1 · cloud |
+| 10 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 11 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 12 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
 | 13 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Opus 5.5 · PC |
 | 14 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 15 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Opus 5.5 · PC |
@@ -45,7 +46,7 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
 |---|---|---|---|---|---|---|---|
 | 1 | B-16 | Upgrade forecasters to frontier reasoning models (when credits allow / gate passed) | R-01, R-10, R-11 | Claude Code | S | Todo | Opus 5.5 · PC |
-| 2 | B-17 | Agentic, iterative research loop | R-03, R-02 | Claude Code | L | Todo | Fable 5.1 · cloud |
+| 2 | B-17 | Agentic, iterative research loop | R-03, R-02 | Claude Code | L | Todo | Opus 5.5 · cloud |
 | 3 | B-18 | Add a decorrelating ensemble member (e.g. Grok) and test 3 vs. 4–5 members | R-04, R-13 | Claude Code | S | Todo | Opus 5.5 · PC |
 | 4 | B-19 | Platt-scaling experiment on backtest + live data (contested) | R-05 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 5 | B-20 | Structured forecast-record schema (claims → evidence → source + date, base rate, cruxes), graph-loadable | I-12 | Claude Code | M | Todo | Opus 5.5 · PC |
