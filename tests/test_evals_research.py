@@ -352,7 +352,9 @@ def test_screen_verdicts():
                                     '{"leak": false, "items": [0]}', '{"leak": true, "items": [0]'])
 def test_screen_fails_closed_on_bad_output(output):
     v = run(screen_bundle(Q, _bundle(item(1)), FakeLlm(output), ScreenConfig()))
-    assert v.status == "screen_failed" and v.excluded
+    assert v.excluded  # bad output never lets a question in
+    # A cut-off "leak": true verdict is recovered as a leak (still excluded); every other bad output is a screen failure.
+    assert v.status == ("leak" if output == '{"leak": true, "items": [0]' else "screen_failed")
 
 
 def test_screen_fails_closed_on_api_error():
@@ -403,8 +405,8 @@ def test_screen_prompt_v2_says_publication_dates_are_prechecked():
                        items=[ResearchItem(source="t", text="Something happened.", published_at=as_of)])
     p = screen_prompt(q, b)
     assert "a publication date is never a reason to flag" in p
-    assert "first find the date of the event" in p
-    assert ScreenConfig().prompt_version == "leak-screen-v2"
+    assert "Do NOT flag text written before" in p
+    assert ScreenConfig().prompt_version == "leak-screen-v3"
 
 
 def test_screen_verdict_is_never_stored_for_an_uncached_bundle(tmp_path):
@@ -468,3 +470,50 @@ def test_reserve_takes_a_process_lock_and_breaks_stale_ones(tmp_path):
     _os.utime(lock, (old, old))  # a lock left by a crashed process
     b.reserve(5)
     assert not lock.exists() and b.status().archive_used == 5
+
+
+def test_parse_verdict_takes_the_first_json_object():
+    """B-45: Haiku appended a second JSON object; the old greedy regex failed every such verdict."""
+    out = '{"leak": false, "items": [], "reason": "ok"}\n{"note": "extra"}'
+    assert parse_verdict(out, 3) == ("clean", [], "ok")
+
+
+class ByModelLlm:
+    """Fake LLM answering per model, to test the two-screen rule."""
+
+    def __init__(self, outputs: dict[str, str], errors: dict[str, str] | None = None):
+        self.outputs, self.errors = outputs, errors or {}
+
+    async def complete(self, *, model, prompt, purpose, max_tokens, reasoning_effort=None):
+        return LlmCall(purpose=purpose, provider="openrouter", model=model, params={}, prompt=prompt, requested_at=AS_OF,
+                       output=self.outputs.get(model, ""), cost_usd=0.0001, error=self.errors.get(model))
+
+
+LEAK = '{"leak": true, "items": [0], "reason": "went on to"}'
+CLEAN = '{"leak": false, "items": [], "reason": "ok"}'
+
+
+def test_dual_screen_excludes_only_when_both_flag_and_fails_closed():
+    from evals.leakage_screen import DualScreenConfig, screen_bundle_dual
+
+    cfg, b = DualScreenConfig(), _bundle(item(1))
+    p, s2 = cfg.primary.model, cfg.secondary.model
+    both = run(screen_bundle_dual(Q, b, ByModelLlm({p: LEAK, s2: LEAK}), cfg))
+    assert both.status == "leak" and both.flagged_items == [0]
+    one = run(screen_bundle_dual(Q, b, ByModelLlm({p: LEAK, s2: CLEAN}), cfg))
+    assert one.status == "clean" and "disagree" in one.reason
+    failed = run(screen_bundle_dual(Q, b, ByModelLlm({p: CLEAN, s2: CLEAN}, errors={s2: "HTTP 500"}), cfg))
+    assert failed.status == "screen_failed"
+    assert cfg.config_hash() != DualScreenConfig(rule="any").config_hash()
+
+
+def test_parse_verdict_recovers_decision_fields_from_a_broken_reason():
+    broken = '{"leak": true, "items": [1, 2], "reason": "the text says "went on to" win'
+    assert parse_verdict(broken, 3) == ("leak", [1, 2], "(reason text unparseable)")
+    with pytest.raises(Exception):
+        parse_verdict('{"leak": true, "reason": "no items field', 3)  # missing a decision field: still fails closed
+
+
+def test_a_broken_clean_verdict_still_fails_closed():
+    v = run(screen_bundle(Q, _bundle(item(1)), FakeLlm('{"leak": false, "items": [], "reason": "fine "quoted" text'), ScreenConfig()))
+    assert v.status == "screen_failed" and v.excluded

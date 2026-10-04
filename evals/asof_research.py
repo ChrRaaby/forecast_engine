@@ -1,7 +1,7 @@
 """The backtest research path: cache → AskNews archive (budget + date guard) → cache, then the leakage screen (ADR-0008).
 
     bundle = await gather_research_as_of(q, FixedClock(as_of), cfg, client=..., budget=..., cache=...)
-    verdict = await screen_cached(q, bundle, cfg.config_hash(), llm=..., screen_cfg=..., cache=...)
+    verdict = await screen_cached(q, bundle, cfg.config_hash(), llm=..., screen_cfg=DualScreenConfig(), cache=...)
     if verdict.excluded: count it and skip the question
 
 A cache hit costs nothing and never touches the budget. Bundles from failed searches are returned (so the run can record the
@@ -15,7 +15,7 @@ from forecast_engine.schema import QuestionSnapshot, ResearchBundle
 
 from .asknews_archive import ArchiveClient, ArchiveConfig, archive_search
 from .asknews_budget import AskNewsBudget
-from .leakage_screen import ScreenConfig, ScreenVerdict, screen_bundle
+from .leakage_screen import DualScreenConfig, ScreenConfig, ScreenVerdict, run_screen
 from .research_cache import ResearchCache, cache_key, content_hash
 
 
@@ -37,7 +37,7 @@ async def gather_research_as_of(
 
 
 async def screen_cached(
-    q: QuestionSnapshot, bundle: ResearchBundle, retrieval_config_hash: str, *, llm: LlmClient, screen_cfg: ScreenConfig,
+    q: QuestionSnapshot, bundle: ResearchBundle, retrieval_config_hash: str, *, llm: LlmClient, screen_cfg: ScreenConfig | DualScreenConfig,
     cache: ResearchCache,
 ) -> ScreenVerdict:
     """Screen a bundle once per screen config; reuse the stored verdict afterwards.
@@ -54,7 +54,7 @@ async def screen_cached(
         stored = cache.get_screen(key, shash, digest)
         if stored is not None:
             return ScreenVerdict(status=stored["status"], flagged_items=stored["flagged_items"], reason=stored["reason"])
-    verdict = await screen_bundle(q, bundle, llm, screen_cfg)
+    verdict = await run_screen(q, bundle, llm, screen_cfg)
     if cacheable and verdict.status != "screen_failed":
         cache.put_screen(key, shash, digest, verdict.to_dict())
     return verdict

@@ -27,7 +27,7 @@ from forecast_engine.schema import QuestionSnapshot
 from .asknews_archive import ArchiveConfig, SdkArchiveClient, archive_search
 from .asknews_budget import CREDITS_PER_ARCHIVE_SEARCH, AskNewsBudget, BudgetConfig, BudgetExceeded
 from .asof import LeakageError, assert_bundle_as_of
-from .leakage_screen import ScreenConfig, screen_bundle
+from .leakage_screen import DualScreenConfig, run_screen, ScreenConfig, screen_bundle
 from .research_cache import ResearchCache
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,10 +108,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         from forecast_engine.llm import OpenRouterClient
 
-        scfg = ScreenConfig()
-        verdict = asyncio.run(screen_bundle(q, bundle, OpenRouterClient(FixedClock(as_of)), scfg))
+        scfg = DualScreenConfig()
+        verdict = asyncio.run(run_screen(q, bundle, OpenRouterClient(FixedClock(as_of)), scfg))
         cost = verdict.call.cost_usd if verdict.call else None
-        print(f"\nLeakage screen ({scfg.model}): {verdict.status}, items {verdict.flagged_items}, cost {cost}")
+        print(f"\nLeakage screen ({scfg.primary.model} + {scfg.secondary.model}, both must flag): {verdict.status}, items {verdict.flagged_items}, cost {cost}")
         print(f"  reason: {verdict.reason[:300]}")
         results.append(("screen returned a verdict", verdict.status != "screen_failed", verdict.status))
 

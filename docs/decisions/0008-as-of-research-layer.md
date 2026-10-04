@@ -1,6 +1,6 @@
 # 0008: As-of research layer for backtests (AskNews archive, cache, leakage screen, credit guard)
 
-- **Status:** Proposed (B-28; awaiting Christian's review of the PR and the live check)
+- **Status:** Proposed (B-28; awaiting Christian's review after the B-45 QA)
 - **Date:** 2026-10-03
 
 ## Context
@@ -94,3 +94,13 @@ A full review of the PR found ten issues; all are fixed on the branch with regre
 9. A module-level asyncio lock broke on a second `asyncio.run()`. Locks are per event loop now.
 10. The live check silently skipped the 30-day-window test with fewer than 3 articles; it now fails. Live-credit counting reads the
     compact `forecasts.jsonl` logs instead of every full record.
+
+## B-45 screen validation and the decision change (2026-10-04)
+On 50 real bundles (30 development, 20 confirmation) with 100 planted leaks (research/07), a single screen excluded far too many clean
+questions (prompt v2: 37–67%; prompt v3: 10–30%). **Changed decision (proposed):** the screen is now `DualScreenConfig`: prompt v3,
+GPT-5 mini (low reasoning, 16k tokens) and Gemini 2.5 Flash, and a question is excluded as a leak only if **both** flag it, and as
+screen_failed if either fails (fail closed). Result: 7% and 0% of clean bundles excluded on the final runs (0–13% across reruns), no
+planted leak missed (0/100), and the date bound held on all 50 dates. Also: verdict parsing takes the first JSON object, an API error
+is retried once, and a verdict whose free-text reason is broken is recovered only if it says "leak" (a broken "clean" still fails
+closed). The agreement rule was chosen after seeing the confirmation set, so it gets a fresh confirmation sample of about 20 questions
+after the AskNews period resets on 30 October.

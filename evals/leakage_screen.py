@@ -13,6 +13,7 @@ Fail closed: an API error or an unparseable answer counts as excluded ("screen_f
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -43,11 +44,14 @@ class ScreenConfig:
     model: str = "google/gemini-2.5-flash"
     max_tokens: int = 8000  # room for the model's thinking tokens plus a short JSON answer
     reasoning_effort: str | None = None
+    # v3 (2026-10-04, B-45): on 30 real bundles v2 flagged 37-67% of clean bundles, nearly all for schedules, previews, forecasts
+    # or betting odds written before the reference date. v3 says these are allowed (protocol T7 allows as-of market prices) and
+    # flags only reports of things that already happened after the reference date, hindsight, or platform aggregate forecasts.
     # v2 (2026-10-03): v1 flagged an Oct 29-30 2025 Fed article as "after" a 2025-11-01 reference date (2 of 2 runs); v2 states
     # that publication dates are pre-checked and asks for the described event's date. On the PC calibration (one real bundle +
     # two planted hindsight items, 2 runs each) v2 had 0 false positives and caught both plants every time; v1 caught the plants
     # but flagged the clean bundle. See ADR-0008.
-    prompt_version: str = "leak-screen-v2"
+    prompt_version: str = "leak-screen-v3"
 
     @property
     def model_release_date(self) -> date:
@@ -106,27 +110,48 @@ Research items:
 {research}
 
 Judge only from the text above. Every item was published on or before {ref}; that has already been checked
-by machine, so a publication date is never a reason to flag. A leak is text that reveals something that happened AFTER {ref}.
-For each candidate, first find the date of the event the text describes and compare it with {ref}: flag it only if that event
-date is later than {ref}, or if the text uses hindsight about later events ("went on to", "ultimately", "in the end", "it later
-emerged"), or quotes a probability or price from a forecasting platform or prediction market (Metaculus, Polymarket, Manifold,
-Kalshi, ...). Events on or before {ref}, background, and predictions or plans made before it are fine, even if they bear
-directly on the question.
+by machine, so a publication date is never a reason to flag. A leak is text that reveals what actually happened AFTER {ref}.
+
+Flag an item only if it:
+- states as fact that something has already happened, been decided, measured or announced on a date after {ref};
+- uses hindsight about later events ("went on to", "ultimately", "in the end", "it later emerged");
+- quotes an aggregate forecast for this question from Metaculus or another forecasting platform.
+
+Do NOT flag text written before {ref} about the future: schedules, plans, deadlines, previews, expectations, forecasts, projections,
+betting odds or market prices. These were available on {ref} and are allowed, even when they mention later dates or bear directly
+on the question. Before flagging, find the date of the event the text reports as having happened and check it is after {ref}.
 
 Answer with one JSON object and nothing else:
 {{"leak": true or false, "items": [indices of flagged items], "reason": "one sentence quoting the decisive text and its event date"}}
 """
 
 
-_JSON = re.compile(r"\{.*\}", re.DOTALL)
+_DECODER = json.JSONDecoder(strict=False)  # tolerate raw newlines/control characters inside the reason string
+_LEAK_FIELD = re.compile(r'"leak"\s*:\s*(true|false)')
+_ITEMS_FIELD = re.compile(r'"items"\s*:\s*\[([0-9,\s]*)\]')
 
 
 def parse_verdict(output: str, n_items: int) -> tuple[Status, list[int], str]:
     """Strict: anything but a well-formed verdict is a failure (fail closed)."""
-    m = _JSON.search(output or "")
-    if not m:
+    text = output or ""
+    start = text.find("{")
+    if start < 0:
         raise ValueError("no JSON object in the screen output")
-    data = json.loads(m.group(0))
+    # The first complete JSON object; anything after it is ignored (B-45: a greedy match failed every Haiku verdict).
+    try:
+        data, _ = _DECODER.raw_decode(text, start)
+    except json.JSONDecodeError:
+        # B-45: models sometimes break the free-text "reason" (unescaped quotes, cut-off string). The decision fields are what
+        # matter, so recover them if both are present and well-formed; otherwise fail closed as before.
+        # Only a recovered "leak": true is accepted (excluding is the safe side); a broken "clean" verdict still fails closed, so
+        # recovery can never let a question in.
+        leak_m, items_m = _LEAK_FIELD.search(text, start), _ITEMS_FIELD.search(text, start)
+        if not (leak_m and items_m) or leak_m.group(1) != "true":
+            raise
+        items = [int(x) for x in items_m.group(1).replace(" ", "").split(",") if x]
+        data = {"leak": leak_m.group(1) == "true", "items": items, "reason": "(reason text unparseable)"}
+    if not isinstance(data, dict):
+        raise ValueError("the screen output's JSON is not an object")
     leak = data.get("leak")
     items = data.get("items", [])
     if not isinstance(leak, bool):
@@ -144,8 +169,12 @@ async def screen_bundle(q: QuestionSnapshot, bundle: ResearchBundle, llm: LlmCli
                          f"{bundle.as_of.date()}")
     if bundle.is_empty:
         return ScreenVerdict(status="clean", reason="no research items")
-    call = await llm.complete(model=cfg.model, prompt=screen_prompt(q, bundle), purpose="leakage_screen",
-                              max_tokens=cfg.max_tokens, reasoning_effort=cfg.reasoning_effort)
+    prompt = screen_prompt(q, bundle)
+    for _attempt in range(2):  # one retry on an API error (B-45: transient empty completions); then fail closed
+        call = await llm.complete(model=cfg.model, prompt=prompt, purpose="leakage_screen",
+                                  max_tokens=cfg.max_tokens, reasoning_effort=cfg.reasoning_effort)
+        if not call.error:
+            break
     if call.error:
         return ScreenVerdict(status="screen_failed", reason=call.error, call=call)
     try:
@@ -153,6 +182,51 @@ async def screen_bundle(q: QuestionSnapshot, bundle: ResearchBundle, llm: LlmCli
     except (ValueError, json.JSONDecodeError) as e:
         return ScreenVerdict(status="screen_failed", reason=f"unparseable verdict: {e}", call=call)
     return ScreenVerdict(status=status, flagged_items=items, reason=reason, call=call)
+
+
+@dataclass(frozen=True)
+class DualScreenConfig:
+    """Two pre-cutoff screens; a question is excluded as a leak only if BOTH flag it, and as screen_failed if EITHER fails.
+
+    Chosen in B-45 (2026-10-04). On 50 real bundles with 100 planted leaks, single screens wrongly flagged 10-30% of clean bundles
+    (mostly source text with wrong or missing years), while requiring agreement flagged 2 of 50 (4%) and still caught all 100 plants.
+    The agreement rule was picked after seeing both samples, so it gets a fresh confirmation sample in the next AskNews period.
+    """
+
+    primary: ScreenConfig = ScreenConfig(model="openai/gpt-5-mini", reasoning_effort="low", max_tokens=16000)
+    secondary: ScreenConfig = ScreenConfig()  # google/gemini-2.5-flash
+    rule: str = "both-must-flag"
+
+    @property
+    def prompt_version(self) -> str:
+        return self.primary.prompt_version
+
+    def config_hash(self) -> str:
+        blob = json.dumps({"primary": self.primary.config_hash(), "secondary": self.secondary.config_hash(), "rule": self.rule},
+                          sort_keys=True).encode()
+        return hashlib.sha256(blob).hexdigest()[:16]
+
+
+async def screen_bundle_dual(q: QuestionSnapshot, bundle: ResearchBundle, llm: LlmClient, cfg: DualScreenConfig) -> ScreenVerdict:
+    a, b = await asyncio.gather(screen_bundle(q, bundle, llm, cfg.primary), screen_bundle(q, bundle, llm, cfg.secondary))
+    if a.status == "screen_failed" or b.status == "screen_failed":  # fail closed
+        failed = a if a.status == "screen_failed" else b
+        return ScreenVerdict(status="screen_failed", reason=f"{failed.call.model if failed.call else '?'}: {failed.reason}",
+                             call=failed.call)
+    if a.status == "leak" and b.status == "leak":
+        items = sorted(set(a.flagged_items) & set(b.flagged_items)) or sorted(set(a.flagged_items) | set(b.flagged_items))
+        return ScreenVerdict(status="leak", flagged_items=items, reason=f"both screens: {a.reason} | {b.reason}", call=a.call)
+    reason = "neither screen flagged" if a.status == b.status == "clean" else (
+        f"screens disagree (only {'primary' if a.status == 'leak' else 'secondary'} flagged): "
+        f"{a.reason if a.status == 'leak' else b.reason}")
+    return ScreenVerdict(status="clean", reason=reason, call=a.call)
+
+
+async def run_screen(q: QuestionSnapshot, bundle: ResearchBundle, llm: LlmClient,
+                     cfg: ScreenConfig | DualScreenConfig) -> ScreenVerdict:
+    if isinstance(cfg, DualScreenConfig):
+        return await screen_bundle_dual(q, bundle, llm, cfg)
+    return await screen_bundle(q, bundle, llm, cfg)
 
 
 def summarize(statuses: list[str]) -> dict[str, Any]:
