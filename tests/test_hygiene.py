@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parents[1] / "forecast_engine"
+EVALS = PKG.parent / "evals"
 
 
 def test_only_clock_reads_system_time():
@@ -14,6 +15,22 @@ def test_only_clock_reads_system_time():
         if re.search(r"datetime\.now\(|datetime\.utcnow\(|date\.today\(|time\.time\(", src):
             offenders.append(path.name)
     assert offenders == [], f"read the Clock instead of the system clock in: {offenders}"
+
+
+def test_evals_read_time_only_through_a_clock():
+    """Backtests must never see the real date by accident (protocol T5, §7); evals code uses FixedClock or SystemClock."""
+    offenders = [
+        p.name for p in EVALS.glob("*.py")
+        if re.search(r"datetime\.now\(|datetime\.utcnow\(|date\.today\(|time\.time\(", p.read_text(encoding="utf-8"))
+    ]
+    assert offenders == [], f"read time through a Clock in: {offenders}"
+
+
+def test_evals_never_import_the_live_adapter():
+    """ADR-0005: the harness imports the core, never main.py or the template adapter."""
+    for p in EVALS.glob("*.py"):
+        src = p.read_text(encoding="utf-8")
+        assert not re.search(r"^\s*(from|import)\s+(main|bot_helpers|forecasting_tools)\b", src, re.M), p.name
 
 
 def test_model_ids_live_only_in_config():

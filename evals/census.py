@@ -17,11 +17,12 @@ import json
 import os
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+
+from forecast_engine.clock import SystemClock
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "data" / "census" / "questions.jsonl"
@@ -173,7 +174,7 @@ def main() -> int:
         with CACHE.open("w", encoding="utf-8") as f:
             for r in rows:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        print(f"cached {len(rows)} rows at {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC -> {CACHE}")
+        print(f"cached {len(rows)} rows at {SystemClock().now():%Y-%m-%d %H:%M} UTC -> {CACHE}")
     rows = [json.loads(l) for l in CACHE.read_text(encoding="utf-8").splitlines()]
     print(report(rows))
     return 0
