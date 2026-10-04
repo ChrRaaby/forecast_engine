@@ -41,7 +41,7 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-19 | The template's default numeric pipeline | Negative | Avoid | B-15 | Planned | Accept it for M1; replace before M3. |
 | R-20 | Multi-persona aggregation | Negative | Avoid | none | N/A | Don't build. |
 | R-21 | Prompts built around "Bayesian updating" (underperformed twice) | Negative | Avoid | B-12 | N/A | ⚠️ Relevant to I-01: keep Silver's *principles* (base rates, updating) in the design, but don't put "Bayesian" framing in prompts. |
-| R-22 | Porous-cutoff backtesting (models can't "pretend not to know") | Negative | Avoid | B-27, B-28, B-32 | Planned | Strict: as-of must be after model *release* dates; as-of retrieval only; leakage screen + injection test. See `docs/evaluation-protocol.md`. |
+| R-22 | Porous-cutoff backtesting (models can't "pretend not to know") | Negative | Avoid | B-27, B-28, B-32 | Partial | As-of research layer built and validated (B-28, B-45; ADR-0008, research/07): archive date bound held on 50/50 dates; dual leakage screen caught 100/100 planted leaks. Eligibility filter and harness validation (B-27, B-32) still to do. |
 | R-23 | Optimising prompts toward the community prediction | Negative (weak) | Avoid | B-31 | N/A | The gate *compares* to the community forecast; never tune toward it. |
 
 ## How to evaluate and build
@@ -55,4 +55,5 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 |---|---|---|---|---|---|---|
 | 2026-09-30 | m1-baseline-2026-09-30b | bot-testing-area (dry run, no research) | 8 | $/question | mean $0.0069, max $0.0098 | 23/24 forecaster outputs parsed after the parser fixes; not a skill measure |
 | 2026-09-30 | m1-baseline-2026-09-30c | bot-testing-area (dry run, Gemini research) | 8 | $/question | mean $0.0080, max $0.0155 | 24/24 parsed. Excludes Google's grounding fee (unknown) |
+| 2026-10-04 | ADR-0008 dual screen (leak-screen-v3) | 50 real archive bundles (30 dev + 20 confirm) + 100 planted leaks | 50 | screen misses / clean excluded | 0/100 missed; 7% / 0% clean excluded | Single screens excluded 10–67% of clean bundles; date bound held on 50/50. Rule chosen after seeing the confirmation set (fresh check F-09) |
 | 2026-10-01 | m1-baseline-2026-09-30c | bot-testing-area (GitHub Actions, published) | 5 | $/question | $0.0066 | First published forecasts; end-to-end path works in CI |

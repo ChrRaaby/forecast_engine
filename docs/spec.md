@@ -127,7 +127,7 @@ Our own forecasting core sits behind a thin template adapter, so the M2 harness 
 - [ ] Margin vs. community forecast for the PoC gate (set after M2 baseline) (I-08)
 - [ ] Apply for Metaculus-arranged LLM credits + AskNews bot access
 - [ ] Training cutoffs of candidate models vs. backtest question dates
-- [ ] Does AskNews support date-restricted historical search? The SDK does (`historical=True`, start/end timestamps; ADR-0008); open until `evals.asknews_check` confirms the server honours the bound
+- [x] ~~Does AskNews support date-restricted historical search?~~ Yes: the server honours `end_timestamp` (50/50 dates in B-45; research/07, ADR-0008)
 - [ ] What's known about how laertes works specifically? (general top-bot methods: see research/02)
 - [ ] Backtesting: how to get leakage-free historical questions and date-restricted news?
 - [ ] uv vs. Poetry (Python 3.11+/Poetry for now, ADR-0001; template-vs-scratch answered in ADR-0001)
