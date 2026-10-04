@@ -1,6 +1,6 @@
 # 0008: As-of research layer for backtests (AskNews archive, cache, leakage screen, credit guard)
 
-- **Status:** Proposed (B-28; awaiting Christian's review after the B-45 QA)
+- **Status:** Accepted (Christian, 2026-10-04, including the dual screen; first large archive batch waits for the F-09 confirmation)
 - **Date:** 2026-10-03
 
 ## Context
