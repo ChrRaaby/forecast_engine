@@ -49,6 +49,8 @@
   by the free $100 cloud credit until 2026-11-05; the credit covers neither project threads nor Fable). Label new items when adding
   them; revisit the split when the credit ends.
 
+- Follow-ups: dated or waiting actions (renewals, checks, decisions) go in the "Follow-ups & reminders" section of `docs/backlog.md`, not only in session logs. Check it at the start of every session.
+
 ## How to work
 - For any non-trivial task: propose a plan first, wait for approval, then implement.
 - Work one milestone at a time; keep changes small and reviewable.
