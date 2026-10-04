@@ -26,3 +26,13 @@ def test_model_ids_live_only_in_config():
         src = path.read_text(encoding="utf-8")
         for model_id in ids:
             assert model_id not in src, f"{model_id} hard-coded in {path.name}; keep model ids in config.py"
+
+
+def test_entry_points_compile_on_the_ci_python():
+    """2026-10-03: an f-string valid on Python 3.12 (PC) but not 3.11 (GitHub Actions) broke every live run for ~10 hours.
+    CI runs the tests on 3.11, so compiling the entry points here catches that class of error before it reaches the bot."""
+    import py_compile
+
+    root = PKG.parent
+    for path in [root / "main.py", root / "bot_helpers.py", *root.glob("tools/*.py")]:
+        py_compile.compile(str(path), doraise=True)

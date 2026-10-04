@@ -308,13 +308,13 @@ def main() -> int:
     check_environment()
     clock = SystemClock()
     run_id = clock.now().strftime("%Y%m%dT%H%M%SZ") + f"-{args.mode}" + ("" if args.publish else "-dryrun")
-    print(f"🤖  forecast_engine {CONFIG_VERSION} (config {(WIDE_CONFIG if args.mode == "wide" else DEFAULT_CONFIG).config_hash()}) mode={args.mode} "
+    run_cfg = WIDE_CONFIG if args.mode == "wide" else DEFAULT_CONFIG
+    print(f"🤖  forecast_engine {CONFIG_VERSION} (config {run_cfg.config_hash()}) mode={args.mode} "
           f"publish={'yes' if args.publish else 'no (dry run)'} max_questions={args.max_questions} max_cost=${args.max_cost}")
 
-    cfg = WIDE_CONFIG if args.mode == "wide" else DEFAULT_CONFIG
     bot = EngineBot(
         clock=clock,
-        cfg=cfg,
+        cfg=run_cfg,
         llm=OpenRouterClient(clock),
         writer=RecordWriter(run_id),
         publish=args.publish,
