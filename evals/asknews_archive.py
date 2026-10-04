@@ -76,8 +76,13 @@ class SdkArchiveClient:
             return await ask.news.search_news(**params)
 
 
-_LOCK = asyncio.Lock()
+_LOCKS: dict[int, asyncio.Lock] = {}  # one per event loop: a module-level Lock breaks on a second asyncio.run() (B-45 review)
 _last_call = [float("-inf")]
+
+
+def _lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    return _LOCKS.setdefault(id(loop), asyncio.Lock())
 
 
 def search_params(q: QuestionSnapshot, as_of_ts: int, cfg: ArchiveConfig) -> dict[str, Any]:
@@ -114,7 +119,7 @@ async def archive_search(
         prompt=q.question_text,
         requested_at=as_of,
     )
-    async with _LOCK:
+    async with _lock():
         wait = cfg.min_interval_s - (time.monotonic() - _last_call[0])
         if wait > 0:
             await asyncio.sleep(wait)
@@ -146,12 +151,14 @@ async def archive_search(
             for a in articles
         ]
         kept, rejected = filter_items(raw, as_of)
-        dates = sorted(i.published_at.isoformat() for i in raw if i.published_at is not None)
+        # Only dates at or before as_of are kept in the record: a later date, title or URL is itself a hint about what happened.
+        dates = sorted(i.published_at.isoformat() for i in kept)
         call.extra.update(
             n_articles_returned=len(raw),
             n_kept=len(kept),
             rejected=Counter(r.reason for r in rejected),
-            rejected_items=[asdict(r) for r in rejected],  # titles/urls/dates only, no text
+            # Rejections keep reason and date only; titles and URLs of post-as_of articles are dropped (B-45 review).
+            rejected_items=[{"reason": r.reason, "published_at": r.published_at if r.reason != "after_as_of" else None} for r in rejected],
             returned_pub_min=dates[0] if dates else None,
             returned_pub_max=dates[-1] if dates else None,
         )

@@ -88,11 +88,14 @@ def main(argv: list[str] | None = None) -> int:
         spread = max(dates) - min(dates)
         results.append(("lookback window used (not just the SDK's 24 h default)", spread > timedelta(days=1),
                         f"kept articles span {spread}"))
+    else:  # too few articles to measure the span: that's a failure of the check, not a pass (B-45 review)
+        results.append(("lookback window used (not just the SDK's 24 h default)", False,
+                        f"only {len(dates)} articles kept; can't verify the window (try another --query or --as-of)"))
     try:
         with tempfile.TemporaryDirectory() as tmp:
             cache = ResearchCache(tmp)
-            cache.put(q.question_id, as_of, cfg.config_hash(), bundle)
-            back = cache.get(q.question_id, as_of, cfg.config_hash())
+            cache.put(q.question_id, as_of, cfg.config_hash(), q.question_text, bundle)
+            back = cache.get(q.question_id, as_of, cfg.config_hash(), q.question_text)
             assert back is not None
             assert_bundle_as_of(back, as_of)
             same = back.to_dict() == bundle.to_dict()

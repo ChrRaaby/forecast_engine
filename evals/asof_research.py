@@ -16,7 +16,7 @@ from forecast_engine.schema import QuestionSnapshot, ResearchBundle
 from .asknews_archive import ArchiveClient, ArchiveConfig, archive_search
 from .asknews_budget import AskNewsBudget
 from .leakage_screen import ScreenConfig, ScreenVerdict, screen_bundle
-from .research_cache import ResearchCache, cache_key
+from .research_cache import ResearchCache, cache_key, content_hash
 
 
 async def gather_research_as_of(
@@ -27,12 +27,12 @@ async def gather_research_as_of(
         raise TypeError("backtest research needs a FixedClock(as_of)")
     as_of = clock.now()
     rhash = cfg.config_hash()
-    cached = cache.get(q.question_id, as_of, rhash)
+    cached = cache.get(q.question_id, as_of, rhash, q.question_text)
     if cached is not None:
         return cached
     bundle = await archive_search(q, clock, cfg, client, budget)
     if not any(c.error for c in bundle.calls):
-        cache.put(q.question_id, as_of, rhash, bundle)
+        cache.put(q.question_id, as_of, rhash, q.question_text, bundle)
     return bundle
 
 
@@ -40,13 +40,21 @@ async def screen_cached(
     q: QuestionSnapshot, bundle: ResearchBundle, retrieval_config_hash: str, *, llm: LlmClient, screen_cfg: ScreenConfig,
     cache: ResearchCache,
 ) -> ScreenVerdict:
-    """Screen a bundle once per screen config; reuse the stored verdict afterwards. Failed screens are not stored."""
-    key = cache_key(q.question_id, bundle.as_of, retrieval_config_hash)
+    """Screen a bundle once per screen config; reuse the stored verdict afterwards.
+
+    A verdict is stored, and reused, only for the exact bundle in the cache (matched by content hash). Bundles from failed or
+    uncached searches are screened every time and their verdicts are never stored, so a "clean" verdict for an empty, failed
+    search can't later be applied to the real articles (B-45 review). Failed screens are never stored either.
+    """
+    key = cache_key(q.question_id, bundle.as_of, retrieval_config_hash, q.question_text)
     shash = screen_cfg.config_hash()
-    stored = cache.get_screen(key, shash)
-    if stored is not None:
-        return ScreenVerdict(status=stored["status"], flagged_items=stored["flagged_items"], reason=stored["reason"])
+    digest = content_hash(bundle.to_dict())
+    cacheable = cache.bundle_sha256(key) == digest
+    if cacheable:
+        stored = cache.get_screen(key, shash, digest)
+        if stored is not None:
+            return ScreenVerdict(status=stored["status"], flagged_items=stored["flagged_items"], reason=stored["reason"])
     verdict = await screen_bundle(q, bundle, llm, screen_cfg)
-    if verdict.status != "screen_failed":
-        cache.put_screen(key, shash, verdict.to_dict())
+    if cacheable and verdict.status != "screen_failed":
+        cache.put_screen(key, shash, digest, verdict.to_dict())
     return verdict

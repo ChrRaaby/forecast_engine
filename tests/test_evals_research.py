@@ -211,11 +211,10 @@ def test_live_usage_from_run_records_shrinks_archive_budget(tmp_path):
     runs = tmp_path / "runs"
 
     def record(run, qid, at, n):
-        path = runs / run / "forecasts" / f"q{qid}.json"
+        path = runs / run / "data" / "forecasts" / f"{run}-tournament" / "forecasts.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        calls = [{"provider": "asknews", "requested_at": at, "extra": {"asknews_calls": n}},
-                 {"provider": "gemini", "requested_at": at, "extra": {}}]
-        path.write_text(json.dumps({"research": {"calls": calls}}))
+        with path.open("a") as f:
+            f.write(json.dumps({"question_id": qid, "as_of": at, "asknews_calls": n}) + "\n")
 
     record("r1", 1, "2026-09-10T10:00:00+00:00", 1)  # previous period
     for i in range(250):
@@ -255,49 +254,49 @@ def _bundle(*items: ResearchItem) -> ResearchBundle:
 
 
 def test_cache_key_is_stable_and_sensitive():
-    k = cache_key(1, AS_OF, "abc")
-    assert k == cache_key(1, AS_OF.astimezone(timezone(timedelta(hours=2))), "abc")  # same instant, other zone
-    assert len({k, cache_key(2, AS_OF, "abc"), cache_key(1, AS_OF + timedelta(seconds=1), "abc"),
-                cache_key(1, AS_OF, "abd")}) == 4
+    k = cache_key(1, AS_OF, "abc", "Q?")
+    assert k == cache_key(1, AS_OF.astimezone(timezone(timedelta(hours=2))), "abc", "Q?")  # same instant, other zone
+    assert len({k, cache_key(2, AS_OF, "abc", "Q?"), cache_key(1, AS_OF + timedelta(seconds=1), "abc", "Q?"),
+                cache_key(1, AS_OF, "abd", "Q?"), cache_key(1, AS_OF, "abc", "Q? (edited later)")}) == 5
 
 
 def test_cache_round_trip_and_write_once(tmp_path):
     cache = ResearchCache(tmp_path)
     b = _bundle()
-    assert cache.get(1, AS_OF, "h") is None
-    key = cache.put(1, AS_OF, "h", b)
-    assert cache.get(1, AS_OF, "h").to_dict() == b.to_dict()
-    assert cache.put(1, AS_OF, "h", b) == key  # same content: no-op
+    assert cache.get(1, AS_OF, "h", "Q?") is None
+    key = cache.put(1, AS_OF, "h", "Q?", b)
+    assert cache.get(1, AS_OF, "h", "Q?").to_dict() == b.to_dict()
+    assert cache.put(1, AS_OF, "h", "Q?", b) == key  # same content: no-op
     with pytest.raises(CacheError):
-        cache.put(1, AS_OF, "h", _bundle(item(3, title="different")))
+        cache.put(1, AS_OF, "h", "Q?", _bundle(item(3, title="different")))
 
 
 def test_cache_detects_tampering_and_rechecks_dates(tmp_path):
     cache = ResearchCache(tmp_path)
-    key = cache.put(1, AS_OF, "h", _bundle())
+    key = cache.put(1, AS_OF, "h", "Q?", _bundle())
     path = cache.path(key)
     entry = json.loads(path.read_text())
     entry["bundle"]["items"][0]["text"] = "edited"
     path.write_text(json.dumps(entry))
     with pytest.raises(CacheError, match="content hash"):
-        cache.get(1, AS_OF, "h")
+        cache.get(1, AS_OF, "h", "Q?")
     # A future item with a matching hash (e.g. written by buggy code) is still caught on read.
     from evals.research_cache import content_hash
     entry["bundle"]["items"][0]["published_at"] = (AS_OF + timedelta(days=1)).isoformat()
     entry["content_sha256"] = content_hash(entry["bundle"])
     path.write_text(json.dumps(entry))
     with pytest.raises(LeakageError):
-        cache.get(1, AS_OF, "h")
+        cache.get(1, AS_OF, "h", "Q?")
 
 
 def test_cache_refuses_leaky_or_failed_bundles(tmp_path):
     cache = ResearchCache(tmp_path)
     with pytest.raises(LeakageError):
-        cache.put(1, AS_OF, "h", _bundle(item(-1)))
+        cache.put(1, AS_OF, "h", "Q?", _bundle(item(-1)))
     failed = _bundle()
     failed.calls[0].error = "boom"
     with pytest.raises(CacheError):
-        cache.put(1, AS_OF, "h", failed)
+        cache.put(1, AS_OF, "h", "Q?", failed)
 
 
 def test_gather_pays_once_then_hits_cache(tmp_path):
@@ -312,15 +311,17 @@ def test_gather_pays_once_then_hits_cache(tmp_path):
 def test_gather_does_not_cache_failures(tmp_path):
     b, cache = budget(tmp_path), ResearchCache(tmp_path / "cache")
     run(gather_research_as_of(Q, FixedClock(AS_OF), CFG, client=FakeArchive(error=RuntimeError("x")), budget=b, cache=cache))
-    assert cache.get(Q.question_id, AS_OF, CFG.config_hash()) is None
+    assert cache.get(Q.question_id, AS_OF, CFG.config_hash(), Q.question_text) is None
 
 
 # --- leakage screen (T3) ----------------------------------------------------------------------------------------------
 
 def test_screen_model_must_predate_the_cutoff():
     ScreenConfig()  # default is allowed
+    with pytest.raises(ValueError, match="unknown"):  # release dates come from a table, never from the caller (B-45 review)
+        ScreenConfig(model="vendor/new-model")
     with pytest.raises(ValueError, match="cutoff"):
-        ScreenConfig(model="vendor/new-model", model_release_date=date(2026, 3, 1))
+        ScreenConfig(model="google/gemini-3.5-flash-lite")
 
 
 def test_screen_model_must_predate_the_bundle(tmp_path):
@@ -365,6 +366,7 @@ def test_parse_verdict_accepts_wellformed():
 
 def test_screen_verdict_is_cached_per_screen_config(tmp_path):
     cache, b = ResearchCache(tmp_path), _bundle()
+    cache.put(Q.question_id, AS_OF, "h", Q.question_text, b)
     llm = FakeLlm()
     v1 = run(screen_cached(Q, b, "h", llm=llm, screen_cfg=ScreenConfig(), cache=cache))
     v2 = run(screen_cached(Q, b, "h", llm=llm, screen_cfg=ScreenConfig(), cache=cache))
@@ -375,6 +377,7 @@ def test_screen_verdict_is_cached_per_screen_config(tmp_path):
 
 def test_failed_screens_are_not_cached(tmp_path):
     cache, b = ResearchCache(tmp_path), _bundle()
+    cache.put(Q.question_id, AS_OF, "h", Q.question_text, b)
     run(screen_cached(Q, b, "h", llm=FakeLlm(error="x", output=""), screen_cfg=ScreenConfig(), cache=cache))
     llm = FakeLlm()
     assert run(screen_cached(Q, b, "h", llm=llm, screen_cfg=ScreenConfig(), cache=cache)).status == "clean"
@@ -402,3 +405,66 @@ def test_screen_prompt_v2_says_publication_dates_are_prechecked():
     assert "a publication date is never a reason to flag" in p
     assert "first find the date of the event" in p
     assert ScreenConfig().prompt_version == "leak-screen-v2"
+
+
+def test_screen_verdict_is_never_stored_for_an_uncached_bundle(tmp_path):
+    """B-45 review: a 'clean' verdict for an empty, failed search must not be reused later for the real articles."""
+    cache = ResearchCache(tmp_path)
+    empty = ResearchBundle(as_of=AS_OF, providers=[], items=[], calls=[])
+    assert run(screen_cached(Q, empty, "h", llm=FakeLlm(), screen_cfg=ScreenConfig(), cache=cache)).status == "clean"
+    real = _bundle(item(1))
+    cache.put(Q.question_id, AS_OF, "h", Q.question_text, real)
+    llm = FakeLlm('{"leak": true, "items": [0], "reason": "went on to"}')
+    assert run(screen_cached(Q, real, "h", llm=llm, screen_cfg=ScreenConfig(), cache=cache)).status == "leak"
+    assert len(llm.prompts) == 1  # the real bundle was actually screened
+
+
+def test_stored_verdict_must_match_the_bundle(tmp_path):
+    cache, b = ResearchCache(tmp_path), _bundle()
+    key = cache.put(Q.question_id, AS_OF, "h", Q.question_text, b)
+    with pytest.raises(CacheError):
+        cache.put_screen(key, "s", "not-the-bundle-hash", {"status": "clean", "flagged_items": [], "reason": ""})
+    from evals.research_cache import content_hash
+    digest = content_hash(b.to_dict())
+    cache.put_screen(key, "s", digest, {"status": "clean", "flagged_items": [], "reason": ""})
+    with pytest.raises(CacheError):
+        cache.get_screen(key, "s", "other-hash")
+    path = cache.screen_path(key, "s")
+    entry = json.loads(path.read_text())
+    entry["verdict"]["status"] = "maybe"
+    path.write_text(json.dumps(entry))
+    with pytest.raises(CacheError, match="invalid stored status"):
+        cache.get_screen(key, "s", digest)
+
+
+def test_post_as_of_rejections_keep_no_title_or_url(tmp_path):
+    """B-45 review: headlines of articles dated after as_of must not be stored inside an 'as of' bundle."""
+    late = article(AS_OF + timedelta(days=3), title="Fed cuts rates again on Dec 10")
+    fake = FakeArchive([article(AS_OF - timedelta(days=1)), late])
+    bundle = run(archive_search(Q, FixedClock(AS_OF), CFG, fake, budget(tmp_path)))
+    blob = json.dumps(bundle.to_dict())
+    assert "Dec 10" not in blob and "Fed cuts rates again" not in blob
+    assert bundle.calls[0].extra["rejected"]["after_as_of"] == 1
+
+
+def test_first_day_of_a_new_period_also_respects_the_old_period(tmp_path):
+    """B-45 review: if AskNews resets later than UTC midnight, spend on the 30th may still be billed to the old period."""
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(json.dumps({"at": "2026-10-20T10:00:00+00:00", "credits": 300}) + "\n")
+    early = budget(tmp_path, now=datetime(2026, 10, 30, 2, 0, tzinfo=timezone.utc)).status()
+    assert early.remaining == 0 and early.period_start == date(2026, 9, 30)
+    later = budget(tmp_path, now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc)).status()
+    assert later.period_start == date(2026, 10, 30) and later.remaining == 300
+
+
+def test_reserve_takes_a_process_lock_and_breaks_stale_ones(tmp_path):
+    import os as _os
+    import time as _t
+
+    b = budget(tmp_path)
+    lock = tmp_path / "ledger.jsonl.lock"
+    lock.write_text("")
+    old = _t.time() - 600
+    _os.utime(lock, (old, old))  # a lock left by a crashed process
+    b.reserve(5)
+    assert not lock.exists() and b.status().archive_used == 5

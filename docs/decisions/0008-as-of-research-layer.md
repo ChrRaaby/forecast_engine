@@ -76,3 +76,21 @@ Option 2, all in `evals/`, reusing the core's `ResearchBundle`, `ResearchItem`, 
   Small sample: measure the flag rate on the first real batch (still the plan above). Cost: 10 credits + ~$0.02.
 - `tools/check_models.py` now also checks the screen model: `google/gemini-2.5-flash` resolves on OpenRouter, listed 2025-06-17,
   matching the assumed release date.
+
+## B-45 code review (2026-10-04, Claude on Christian's PC)
+A full review of the PR found ten issues; all are fixed on the branch with regression tests (75 tests pass):
+1. A "clean" screen verdict stored for an empty, failed search could later be reused for the real articles, which then were never
+   screened. Verdicts are now bound to the cached bundle's content hash and only stored for cached bundles.
+2. Stored verdicts had no integrity checks. They now carry key, screen-config hash and bundle hash, and their status is validated.
+3. The screen model's release date was a separate field, so a newer model passed the cutoff check with the default's date. Dates now
+   come from a table; unknown models are refused.
+4. The cache key ignored the question text the archive query is built from. It is now part of the key and checked on read (T4).
+5. Titles and URLs of articles dated after as_of were stored in the bundle's call record. Only the reason (and dates for other
+   rejections) are kept now.
+6. On the first UTC day of a new billing period the guard forgot the old period, although AskNews may not have reset yet. It now
+   applies the stricter of the two that day.
+7. Two processes could both pass the budget check. `reserve()` now runs under a cross-process lock file (stale locks broken).
+8. Two processes could overwrite the same cache entry. Writes are now create-only (hard-link), with unique temp names.
+9. A module-level asyncio lock broke on a second `asyncio.run()`. Locks are per event loop now.
+10. The live check silently skipped the 30-day-window test with fewer than 3 articles; it now fails. Live-credit counting reads the
+    compact `forecasts.jsonl` logs instead of every full record.

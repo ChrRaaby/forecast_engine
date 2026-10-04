@@ -22,7 +22,10 @@ from __future__ import annotations
 
 import calendar
 import json
+import os
+import time as _time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -35,6 +38,7 @@ DEFAULT_RUNS_DIR = ROOT / "data" / "runs"
 
 CREDITS_PER_ARCHIVE_SEARCH = 5
 CREDITS_PER_LATEST_SEARCH = 1
+STALE_LOCK_S = 120
 
 
 class BudgetExceeded(RuntimeError):
@@ -96,24 +100,27 @@ def _parse(ts: str | None) -> datetime | None:
 
 
 def live_credits_since(runs_dir: Path, since: datetime) -> int:
-    """AskNews credits spent by the live bot since `since`, from archived run records (data/runs/<run>/**/q*.json).
+    """AskNews credits spent by the live bot since `since`, from the compact per-run logs (data/runs/**/forecasts.jsonl).
 
-    Counts every recorded attempt (`extra.asknews_calls`), including rate-limited retries, which errs on the safe side."""
+    Reads one small JSONL line per forecast (`as_of`, `asknews_calls`) instead of parsing every full record, which holds research
+    text and grows by thousands of files a month (B-45 review). Counts every recorded attempt, including rate-limited retries,
+    which errs on the safe side. A line without a parseable time counts too (safe side)."""
     if not runs_dir.exists():
         return 0
     total = 0
-    for path in runs_dir.rglob("q*.json"):
+    for path in runs_dir.rglob("forecasts.jsonl"):
         try:
-            record = json.loads(path.read_text(encoding="utf-8"))
-            calls = record["research"]["calls"]
-        except (OSError, ValueError, KeyError, TypeError):
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
             continue
-        for c in calls:
-            if c.get("provider") != "asknews":
+        for line in lines:
+            try:
+                row = json.loads(line)
+            except ValueError:
                 continue
-            at = _parse(c.get("requested_at"))
-            if at is not None and at >= since:
-                total += int((c.get("extra") or {}).get("asknews_calls", 0)) * CREDITS_PER_LATEST_SEARCH
+            at = _parse(row.get("as_of"))
+            if at is None or at >= since:
+                total += int(row.get("asknews_calls") or 0) * CREDITS_PER_LATEST_SEARCH
     return total
 
 
@@ -145,14 +152,55 @@ class AskNewsBudget:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
             f.flush()
 
+    @contextmanager
+    def _process_lock(self, timeout_s: float = 30.0):
+        """Exclusive lock across processes around check + reserve (B-45 review: two batch processes could both pass check()).
+
+        A lock file created with O_EXCL; a lock older than STALE_LOCK_S (a crashed process) is broken."""
+        lock = self.ledger_path.with_name(self.ledger_path.name + ".lock")
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        deadline = _time.monotonic() + timeout_s
+        while True:
+            try:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                break
+            except FileExistsError:
+                try:
+                    if _time.time_ns() / 1e9 - lock.stat().st_mtime > STALE_LOCK_S:
+                        lock.unlink(missing_ok=True)
+                        continue
+                except FileNotFoundError:
+                    continue
+                if _time.monotonic() > deadline:
+                    raise BudgetExceeded(f"couldn't get the budget lock {lock} within {timeout_s:.0f} s")
+                _time.sleep(0.05)
+        try:
+            yield
+        finally:
+            lock.unlink(missing_ok=True)
+
     def status(self) -> BudgetStatus:
+        """Budget for the current period. On the first UTC day of a new period, AskNews may not have reset yet (its reset time
+        zone is unknown), so spend may still be billed to the previous period: the stricter of the two is returned (B-45 review)."""
         now = self.clock.now()
-        start, end = billing_period(now.astimezone(timezone.utc).date(), self.cfg.anchor_day)
+        start, _ = billing_period(now.astimezone(timezone.utc).date(), self.cfg.anchor_day)
+        current = self._status_for(start)
+        if now < datetime.combine(start + timedelta(days=1), time(), tzinfo=timezone.utc):
+            prev_start, _ = billing_period(start - timedelta(days=1), self.cfg.anchor_day)
+            previous = self._status_for(prev_start)
+            if previous.remaining < current.remaining:
+                return previous
+        return current
+
+    def _status_for(self, start: date) -> BudgetStatus:
+        _, end = billing_period(start, self.cfg.anchor_day)
         window = datetime.combine(start - timedelta(days=1), time(), tzinfo=timezone.utc)
+        window_end = datetime.combine(end, time(), tzinfo=timezone.utc) + timedelta(days=1)
         archive = 0
         for e in self._entries():
             at = _parse(e.get("at"))
-            if at is None or at >= window:  # an undated entry counts: safe side
+            if at is None or window <= at < window_end:  # an undated entry counts: safe side
                 archive += int(e.get("credits", 0))
         if self._live is None or self._live[0] != window:
             self._live = (window, live_credits_since(self.runs_dir, window) if self.runs_dir is not None else 0)
@@ -173,10 +221,11 @@ class AskNewsBudget:
         return st
 
     def reserve(self, credits: int, **meta) -> str:
-        """Check, then record the spend before the call is made. Returns the entry id for `record_outcome`."""
-        self.check(credits)
-        entry_id = uuid.uuid4().hex
-        self._append({"id": entry_id, "at": self.clock.now().isoformat(), "credits": credits, "event": "reserve", **meta})
+        """Check, then record the spend before the call is made, under a cross-process lock. Returns the entry id."""
+        with self._process_lock():
+            self.check(credits)
+            entry_id = uuid.uuid4().hex
+            self._append({"id": entry_id, "at": self.clock.now().isoformat(), "credits": credits, "event": "reserve", **meta})
         return entry_id
 
     def record_outcome(self, entry_id: str, *, ok: bool, error: str | None = None) -> None:

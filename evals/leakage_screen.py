@@ -26,13 +26,21 @@ from forecast_engine.schema import LlmCall, QuestionSnapshot, ResearchBundle
 EVAL_MODEL_CUTOFF = date(2025, 12, 1)  # evaluation models released on or before this date (Christian, 2026-10-03; research/05)
 LEAK_RATE_WARN = 0.10  # protocol T3
 
+# Release dates of models that may be used as the screen (vendor announcement dates; OpenRouter listing date as a cross-check via
+# tools/check_models.py). A model not in this table can't be used. Later models are listed only so the cutoff check can reject them.
+SCREEN_MODEL_RELEASE_DATES: dict[str, date] = {
+    "google/gemini-2.5-flash": date(2025, 6, 17),  # Google GA announcement; OpenRouter listing 2025-06-17
+    "openai/gpt-5-mini": date(2025, 8, 7),  # OpenRouter listing; verify against OpenAI before use
+    "anthropic/claude-haiku-4.5": date(2025, 10, 15),  # OpenRouter listing; verify against Anthropic before use
+    "google/gemini-3.5-flash-lite": date(2026, 7, 21),  # live forecaster; after the cutoff, so always rejected
+}
+
 
 @dataclass(frozen=True)
 class ScreenConfig:
-    # OpenRouter id. Verify with tools/check_models.py on the PC before the first paid run.
+    # OpenRouter id; its release date comes from SCREEN_MODEL_RELEASE_DATES, never from the caller (B-45 review: a separate
+    # date field let a newer model pass the cutoff check with the default's date). Verify with tools/check_models.py.
     model: str = "google/gemini-2.5-flash"
-    # Google's GA announcement for Gemini 2.5 Flash, 2025-06-17 (research/05 lists the same OpenRouter date). Verify.
-    model_release_date: date = date(2025, 6, 17)
     max_tokens: int = 8000  # room for the model's thinking tokens plus a short JSON answer
     reasoning_effort: str | None = None
     # v2 (2026-10-03): v1 flagged an Oct 29-30 2025 Fed article as "after" a 2025-11-01 reference date (2 of 2 runs); v2 states
@@ -41,7 +49,13 @@ class ScreenConfig:
     # but flagged the clean bundle. See ADR-0008.
     prompt_version: str = "leak-screen-v2"
 
+    @property
+    def model_release_date(self) -> date:
+        return SCREEN_MODEL_RELEASE_DATES[self.model]
+
     def __post_init__(self) -> None:
+        if self.model not in SCREEN_MODEL_RELEASE_DATES:
+            raise ValueError(f"unknown screen model {self.model}: add its vendor release date to SCREEN_MODEL_RELEASE_DATES first")
         if self.model_release_date > EVAL_MODEL_CUTOFF:
             raise ValueError(
                 f"screen model {self.model} was released {self.model_release_date}, after the evaluation-model cutoff "
