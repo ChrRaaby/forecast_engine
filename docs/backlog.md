@@ -34,15 +34,16 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 5 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 6 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo | Opus 5.5 · PC |
 | 7 | B-28 | AskNews archive search is covered by the Pro plan (granted 2026-10-03; ~600 credits/month, archive = 5, overage capped by a $5 wallet). As-of retrieval layer (AskNews historical, date guard), content-addressed research cache, LLM leakage screen, AskNews monthly call-budget guard (grant: 1k calls/month, archive = 5) | Protocol T2–T5, T7; R-22 | Claude Code | L | Todo | Opus 5.5 · cloud |
-| 8 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 9 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 10 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
-| 11 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
-| 12 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
-| 13 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Opus 5.5 · PC |
-| 14 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 15 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 16 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 8 | B-45 | B-28 QA gate, before the first real archive batch: (1) line-by-line code review of PR #2 (1,393 lines, built in a cloud session; so far only tests and a live smoke check); (2) leakage-screen validation set: ~30 real archive bundles across as-of dates Dec 2025–Aug 2026, each also with planted hindsight leaks of varying subtlety; measure false-positive and miss rates for screen v2 (proposed bar: misses ≤ 1 in 30 plants, false positives ≤ 10%); (3) confirm the server honours `end_timestamp` on every one of those dates, not just 2025-11-01 | B-28; Protocol T2, T3, T13 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 9 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 10 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 11 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 12 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 13 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
+| 14 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Opus 5.5 · PC |
+| 15 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 16 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 17 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Opus 5.5 · PC |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
@@ -61,7 +62,7 @@ _Dated or waiting items that aren't development work. Checked at the start of ev
 
 | ID | Item | Why | Date | Owner | Status | Model |
 |---|---|---|---|---|---|---|
-| F-01 | Accept or amend ADR-0008 (B-28), then merge PR #2 | B-28 | now | Christian | Waiting | Haiku 4.5 · PC |
+| F-01 | Accept or amend ADR-0008 (B-28). Merge PR #2 only after the B-45 code review; no archive batch before B-45 passes | B-28, B-45 | now | Christian | Waiting | Haiku 4.5 · PC |
 | F-02 | Check the Google billing console for the per-search grounding fee (not in our cost records) | B-10; ADR-0006 | after a few days live | Christian | Todo | Haiku 4.5 · PC |
 | F-03 | Check the workflows still run after GitHub moves `ubuntu-latest` to Ubuntu 26 (and Node 20 actions are forced to Node 24) | Ops | 2026-10-19 | Claude | Todo | Haiku 4.5 · PC |
 | F-04 | Use the free $100 cloud credit for the Opus 5.5 · cloud items before it expires | Model rule | by 2026-11-05 | Christian | Todo | Haiku 4.5 · PC |
