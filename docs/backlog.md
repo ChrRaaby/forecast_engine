@@ -7,6 +7,8 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 - `Why` links each item to a playbook recommendation (R-xx, `docs/playbook-tracker.md`), an idea (I-xx, `docs/ideas.md`)
   or a milestone (spec §8). An item with no *why* doesn't belong here.
 - Status: `Todo` · `Doing` · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
+- Follow-ups & reminders: dated or waiting actions that aren't development (renewals, checks, decisions) live in their own section
+  below, so they don't hide in session logs.
 - Size: S (≤2 h) · M (≤1 session ~4 h) · L (several sessions).
 - Model (Christian, 2026-10-03): the Claude model that should do the work, and where it runs. **Haiku 4.5 · PC** for mechanical work
   (refreshes, small edits, data pulls); **Opus 5.5 · PC** for development (included in Christian's subscription; drop to Sonnet if usage
@@ -53,6 +55,20 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 6 | B-21 | Local 4090 open-weight model as a free backtest baseline / ensemble member | I-04, R-12 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 7 | B-22 | Jev as a cheap news-relevance filter (A/B in the backtest) | I-03 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 8 | B-34 | Backtest ↔ live agreement check per config era (≥ 50 resolved live Qs) | Protocol §9 | Claude Code | S | Todo | Opus 5.5 · PC |
+
+## Follow-ups & reminders
+_Dated or waiting items that aren't development work. Checked at the start of every session; done ones move to Done._
+
+| ID | Item | Why | Date | Owner | Status | Model |
+|---|---|---|---|---|---|---|
+| F-01 | Accept or amend ADR-0008 (B-28), then merge PR #2 | B-28 | now | Christian | Waiting | Haiku 4.5 · PC |
+| F-02 | Check the Google billing console for the per-search grounding fee (not in our cost records) | B-10; ADR-0006 | after a few days live | Christian | Todo | Haiku 4.5 · PC |
+| F-03 | Check the workflows still run after GitHub moves `ubuntu-latest` to Ubuntu 26 (and Node 20 actions are forced to Node 24) | Ops | 2026-10-19 | Claude | Todo | Haiku 4.5 · PC |
+| F-04 | Use the free $100 cloud credit for the Opus 5.5 · cloud items before it expires | Model rule | by 2026-11-05 | Christian | Todo | Haiku 4.5 · PC |
+| F-05 | AskNews Pro promo (100% off for 4 months) ends: decide whether to pay $7.99/month or fall back | research/03 | ~2027-01 (check the billing page) | Christian | Todo | Haiku 4.5 · PC |
+| F-06 | Renew the cron-job.org GitHub token and paste it into the job | B-06 | before 2027-10-01 | Christian | Todo | Haiku 4.5 · PC |
+| F-07 | Update the cron-job.org `X-GitHub-Api-Version` header (2022-11-28 is deprecated) | B-06 | before 2028-03-10 | Christian | Todo | Haiku 4.5 · PC |
+| F-08 | Keep `ARCHIVE_KEY` safe outside `.env` too (e.g. a password manager): unsynced artifacts are unreadable without it | ADR-0002 | now | Christian | Todo | Haiku 4.5 · PC |
 
 ## Side branch: trading (paper only, no real money)
 _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gate, the B-44 check and Christian's explicit go-ahead. See `docs/research/06-trading-branch.md`._
