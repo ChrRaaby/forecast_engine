@@ -57,7 +57,8 @@ def model_chip(value):
     if not v:
         return ""
     low = v.lower()
-    tier = "frontier" if "cloud" in low else "light" if low.startswith("haiku") else "dev"
+    tier = ("frontier" if "cloud" in low else "light" if low.startswith("haiku") else "heavy" if low.startswith("opus")
+            else "dev")
     return f'<span class="chip md-{tier}" title="Claude model and where it runs">{html.escape(v)}</span>'
 
 
@@ -211,7 +212,7 @@ section.block > h2 {{ font:700 24px var(--display); margin:0; }}
 .what {{ font-weight:500; }}
 .sub {{ font-size:12.5px; color:var(--muted); }}
 .chip {{ font:500 11.5px var(--body); padding:2px 9px; border-radius:999px; white-space:nowrap; background:var(--idle-soft); color:var(--muted); }}
-.md-frontier {{ background:var(--warn-soft); color:var(--warn); font-weight:600; }} .md-dev {{ background:var(--accent-soft); color:var(--accent); }} .md-light {{ background:var(--idle-soft); color:var(--muted); }}
+.md-frontier {{ background:var(--warn-soft); color:var(--warn); font-weight:600; }} .md-heavy {{ background:var(--accent-soft); color:var(--accent); font-weight:600; }} .md-dev {{ background:var(--ok-soft); color:var(--ok); }} .md-light {{ background:var(--idle-soft); color:var(--muted); }}
 .st-done {{ background:var(--ok-soft); color:var(--ok); }} .st-partial, .st-doing {{ background:var(--warn-soft); color:var(--warn); }}
 .st-planned, .st-todo {{ background:var(--accent-soft); color:var(--accent); }} .st-blocked {{ background:var(--bad-soft); color:var(--bad); }}
 .seg.st-done, .dot.st-done {{ background:var(--ok); }} .seg.st-partial, .dot.st-partial {{ background:var(--warn); }}

@@ -44,10 +44,10 @@
   it appends to `data/runs/_sync.log`. `data/` is its own git repo, pushed after each sync to the
   **private** repo ChrRaaby/forecast_engine_data (never make it public: it holds licensed news text).
 
-- Model per task (Christian, 2026-10-03): every backlog item carries a `Model` label: Haiku 4.5 · PC (mechanical), Opus 5.5 · PC
-  (development; in Christian's subscription), Opus 5.5 · cloud (frontier items: a standalone cloud session started by Christian, paid
-  by the free $100 cloud credit until 2026-11-05; the credit covers neither project threads nor Fable). Label new items when adding
-  them; revisit the split when the credit ends.
+- Model per task (Christian, 2026-10-03; revised 2026-10-05): every backlog item carries a `Model` label; pick the smallest model that
+  can do the task well. Haiku 4.5 · PC (mechanical), Sonnet 5.5 · PC (routine development, clear specs), Opus 5.5 · PC (design-heavy
+  development), Opus 5.5 · cloud (frontier items: a standalone cloud session started by Christian on the free $100 credit until
+  2026-11-05; the credit covers neither project threads nor Fable). Label new items when adding them.
 
 - Follow-ups: dated or waiting actions (renewals, checks, decisions) go in the "Follow-ups & reminders" section of `docs/backlog.md`, not only in session logs. Check it at the start of every session.
 
