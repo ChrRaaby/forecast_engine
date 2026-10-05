@@ -56,6 +56,7 @@ distribution with an explanation.
 - **PoC budget:** $100 of API spend (LLMs + search) plus free credits. Pro subscriptions (ChatGPT, Gemini,
   Claude) are used for *development and research only*, because they don't provide API access for the bot. (I-07)
 - **Spend discipline:** no scaling of spend until the PoC gate is passed. (I-06, I-08)
+- **Tournament budget (2026-10-05, ADR-0009):** no Metaculus LLM credits this season. Christian funds a frontier ensemble for tournament questions, capped at **$300 for Fall 2026**, on top of the $100 PoC budget; experiments and wide mode stay cheap.
 - **Local compute:** RTX 4090 (24 GB) available for development, backtesting and local open-weight models. (I-04)
 - **Hosting:** GitHub Actions for the PoC (as in the Metaculus template). GCP dropped for now. (I-05)
 - **Time:** ~10 h/week. (I-09)
@@ -110,7 +111,7 @@ Our own forecasting core sits behind a thin template adapter, so the M2 harness 
 
 **Decisions:** [0001 template](decisions/0001-start-from-metaculus-template.md) ·
 [0002 hosting](decisions/0002-hosting-github-actions-public-repo.md) · [0003 OpenRouter](decisions/0003-llm-access-via-openrouter.md) ·
-[0004 cost ceiling](decisions/0004-cost-ceiling-per-question.md) · [0005 core/adapter split](decisions/0005-evaluation-ready-architecture.md) · [0006 M1 configuration](decisions/0006-m1-baseline-configuration.md) · [0007 forecast outside FutureEval](decisions/0007-forecast-outside-futureeval.md)
+[0004 cost ceiling](decisions/0004-cost-ceiling-per-question.md) · [0005 core/adapter split](decisions/0005-evaluation-ready-architecture.md) · [0006 M1 configuration](decisions/0006-m1-baseline-configuration.md) · [0007 forecast outside FutureEval](decisions/0007-forecast-outside-futureeval.md) · [0009 frontier ensemble for tournament](decisions/0009-frontier-ensemble-for-tournament.md)
 
 ## 8. Milestones
 | # | Milestone | Outcome / definition of done | Status |

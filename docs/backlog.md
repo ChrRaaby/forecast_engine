@@ -50,7 +50,7 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
 |---|---|---|---|---|---|---|---|
-| 1 | B-16 | Upgrade forecasters to frontier reasoning models (when credits allow / gate passed) | R-01, R-10, R-11 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 1 | B-16 | Frontier ensemble for tournament questions (ADR-0009): pick the roster (diverse vendors incl. Grok and a Chinese model; candidates in the ADR), season spend cap $300 in code with fallback to the cheap config, cheap config as unpublished shadow on every tournament question, shadow vs live on the monitor. Switch after B-08 + ~1 week of clean MiniBench runs | R-01, R-10, R-11; ADR-0009 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 2 | B-17 | Agentic, iterative research loop | R-03, R-02 | Claude Code | L | Todo | Opus 5.5 · cloud |
 | 3 | B-18 | Add a decorrelating ensemble member (e.g. Grok) and test 3 vs. 4–5 members | R-04, R-13 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 4 | B-19 | Platt-scaling experiment on backtest + live data (contested) | R-05 | Claude Code | M | Todo | Sonnet 5.5 · PC |
