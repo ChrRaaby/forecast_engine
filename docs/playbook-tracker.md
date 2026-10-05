@@ -55,5 +55,6 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 |---|---|---|---|---|---|---|
 | 2026-09-30 | m1-baseline-2026-09-30b | bot-testing-area (dry run, no research) | 8 | $/question | mean $0.0069, max $0.0098 | 23/24 forecaster outputs parsed after the parser fixes; not a skill measure |
 | 2026-09-30 | m1-baseline-2026-09-30c | bot-testing-area (dry run, Gemini research) | 8 | $/question | mean $0.0080, max $0.0155 | 24/24 parsed. Excludes Google's grounding fee (unknown) |
+| 2026-10-05 | m1-baseline-2026-10-03b | live binary member answers (MiniBench, Cup, main site) | 111 | answers whose probability refers to NO | 2/111 (both Gemini Flash-Lite; median absorbed both) | Polarity guard added (config m1-baseline-2026-10-05); explicit YES wording queued in EXP-002 |
 | 2026-10-04 | ADR-0008 dual screen (leak-screen-v3) | 50 real archive bundles (30 dev + 20 confirm) + 100 planted leaks | 50 | screen misses / clean excluded | 0/100 missed; 7% / 0% clean excluded | Single screens excluded 10–67% of clean bundles; date bound held on 50/50. Rule chosen after seeing the confirmation set (fresh check F-09) |
 | 2026-10-01 | m1-baseline-2026-09-30c | bot-testing-area (GitHub Actions, published) | 5 | $/question | $0.0066 | First published forecasts; end-to-end path works in CI |
