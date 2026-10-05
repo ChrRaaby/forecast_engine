@@ -126,7 +126,12 @@ def build_comment(q: MetaculusQuestion, record: ForecastRecord, readable: str) -
         "## Forecasters",
     ]
     for f in record.forecasters:
-        status = _readable_member(q, f.prediction) if f.ok else f"failed ({f.call.error or f.parse_error})"
+        if f.ok:
+            status = _readable_member(q, f.prediction)
+        elif f.excluded:
+            status = f"excluded ({f.excluded})"
+        else:
+            status = f"failed ({f.call.error or f.parse_error})"
         lines.append(f"* `{f.model}`: {status}")
     lines += ["", "# RESEARCH", record.research.as_prompt_text().replace("\n#", "\n\\#"), "", "# FORECASTS"]
     for i, f in enumerate(record.forecasters, 1):

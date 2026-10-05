@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
 
-CONFIG_VERSION = "m1-baseline-2026-10-03b"
+CONFIG_VERSION = "m1-baseline-2026-10-05"
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,9 @@ class BotConfig:
     # Template default: keep binary forecasts in [0.01, 0.99]. Tighter capping is experiment B-11, not a default.
     binary_clip: tuple[float, float] = (0.01, 0.99)
     min_successful_forecasters: int = 2
+    # Binary polarity check (2026-10-05): an auditor reads each binary member's text; members answering for NO are excluded.
+    # Not a forecaster, so it doesn't share the live models' rate limits. None turns the check off.
+    polarity_check_model: str | None = "openai/gpt-5-mini"
     research: ResearchConfig = field(default_factory=ResearchConfig)
     prompt_version: str = "template-2026-09-26"  # prompts ported from metac-bot-template c16d91f
 

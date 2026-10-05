@@ -144,7 +144,8 @@ def load_rows() -> tuple[list[dict], list[dict]]:
             for f in r["forecasters"]:
                 c = f["call"]
                 members.append({
-                    "model": f["model"], "pred": f["prediction"], "error": c.get("error") or f.get("parse_error"),
+                    "model": f["model"], "pred": None if f.get("excluded") else f["prediction"],
+                    "error": f.get("excluded") or c.get("error") or f.get("parse_error"),
                     "cost": c.get("cost_usd"), "tin": c.get("tokens_in"), "tout": c.get("tokens_out"),
                     "output": _clip(c.get("output")),
                 })

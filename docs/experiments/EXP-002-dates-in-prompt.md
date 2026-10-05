@@ -1,4 +1,4 @@
-# EXP-002: Question dates in the forecasting prompt
+# EXP-002: Question dates and explicit YES wording in the forecasting prompt
 
 _Card written BEFORE running. Results section filled by the report generator. Not run yet: needs the M2 harness (B-27…B-32)._
 
@@ -7,7 +7,10 @@ _Card written BEFORE running. Results section filled by the report generator. No
   X and resolves on Y") reduces open-vs-resolved confusion and time-horizon errors (R-18), improving log score mainly on binary
   questions whose research describes events that might already have happened.
 - **Change vs. baseline:** prompts gain one line with close and scheduled-resolution dates, rendered from the question snapshot (no new
-  date sources; the Clock still supplies "today"). `prompt_version` bump; everything else equal.
+  date sources; the Clock still supplies "today"). **Added 2026-10-05:** the binary answer line says what the number is: "Probability: ZZ%
+  (the probability that this question resolves YES)". A polarity audit found 2 of 111 live binary answers giving P(NO) (posts 45898,
+  45925); a polarity guard now excludes such members live, and this wording is the real fix. Secondary metric: guard exclusion rate
+  (expected to drop to ~0). `prompt_version` bump; everything else equal.
 - **Question set:** DEV manifest (TBD in B-27) plus live-replay records (B-38). Binary primary; MC/numeric secondary.
 - **Evaluation model(s) + release dates:** the evaluation roster from B-27 (models released by ~2025-12-01).
 - **Primary metric:** binary log score (Metaculus baseline score).

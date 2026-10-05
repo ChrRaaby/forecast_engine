@@ -107,10 +107,12 @@ class ForecasterOutput:
     call: LlmCall
     prediction: Any = None  # float | dict[str, float] | list[tuple[float, float]]
     parse_error: str | None = None
+    check: LlmCall | None = None  # binary polarity check (forecast_engine/polarity.py)
+    excluded: str | None = None  # why a parsed prediction was left out of the aggregate
 
     @property
     def ok(self) -> bool:
-        return self.prediction is not None
+        return self.prediction is not None and self.excluded is None
 
 
 @dataclass
@@ -132,7 +134,9 @@ class ForecastRecord:
 
     @property
     def cost_usd(self) -> float:
-        return self.research.cost_usd + sum(f.call.cost_usd or 0.0 for f in self.forecasters)
+        return self.research.cost_usd + sum(
+            (f.call.cost_usd or 0.0) + ((f.check.cost_usd or 0.0) if f.check else 0.0) for f in self.forecasters
+        )
 
     @property
     def cost_complete(self) -> bool:
@@ -153,7 +157,8 @@ class ForecastRecord:
                 "cost_usd": self.cost_usd,
                 "cost_complete": self.cost_complete,
                 "forecasters": [
-                    {"model": f.model, "prediction": f.prediction, "parse_error": f.parse_error, "call": f.call.to_dict()}
+                    {"model": f.model, "prediction": f.prediction, "parse_error": f.parse_error, "excluded": f.excluded,
+                     "call": f.call.to_dict(), "check": f.check.to_dict() if f.check else None}
                     for f in self.forecasters
                 ],
                 "research": self.research.to_dict(),
