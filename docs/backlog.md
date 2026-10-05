@@ -1,6 +1,6 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-03_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-05_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
@@ -26,12 +26,12 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
 |---|---|---|---|---|---|---|---|
-| 1 | B-08 | Manual review of the first ~20 forecasts (units, dates, open-vs-resolved confusion); then a weekly 30-min review | R-14, R-17, R-18 | Christian | S | Todo | Sonnet 5.5 · PC |
-| 2 | B-09b | Experiment EXP-002: question close/resolution dates in the prompt (card written; runs on the M2 harness) | R-18; B-09 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 3 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo | Haiku 4.5 · PC |
-| 4 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
-| 5 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 6 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo | Opus 5.5 · PC |
+| 1 | B-08b | Weekly 30-min review of new forecasts (same checks as `docs/research/09-first-forecast-review.md`; add the polarity-guard and research-date flags once B-51 lands) | R-14, R-17, R-18 | Christian | S | Todo | Sonnet 5.5 · PC |
+| 2 | B-51 | Research date sanity check: flag or drop research items with a weekday/date mismatch, a date after `as_of`, or a stale marketing/fiscal year (found in 7/82 bundles, all AskNews); store Gemini grounding URLs so single-figure claims are auditable. Proposed in research/09, needs Christian's OK | R-14, R-17; research/09 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 3 | B-09b | Experiment EXP-002: question close/resolution dates in the prompt (card written; runs on the M2 harness) | R-18; B-09 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 4 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo | Haiku 4.5 · PC |
+| 5 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
+| 6 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 7 | B-46 | Reasoning graph for inspection: after each forecast a cheap model (~$0.001/q) extracts each member's graph (base rate → drivers/cruxes → evidence with source/date/direction/strength → scenarios → probability), stored with the record (extends B-20), shown side by side in the monitor. Doesn't change forecasts; design confirmed with Christian before coding | I-16, I-12, R-14; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 8 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 9 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Sonnet 5.5 · PC |
@@ -72,6 +72,7 @@ _Dated or waiting items that aren't development work. Checked at the start of ev
 | F-07 | Update the cron-job.org `X-GitHub-Api-Version` header (2022-11-28 is deprecated) | B-06 | before 2028-03-10 | Christian | Todo | Haiku 4.5 · PC |
 | F-09 | Fresh confirmation sample (~20 new questions, 100 credits) for the dual leakage screen, required before the first large archive batch, since its settings were chosen after seeing the B-45 confirmation set | B-45; research/07 | after 2026-10-30 (AskNews reset) | Claude | Todo | Sonnet 5.5 · PC |
 | F-10 | Raise the OpenRouter key limit before it runs out (no Metaculus credits). $4.29 of $20 used on 2026-10-05; ~$0.30/day with MiniBench live (incl. ~$3 of one-off B-45 QA), so roughly early-to-mid November. Stay within the $100 PoC budget | B-01; spec §6 | before ~2026-11-10 | Christian | Todo | Haiku 4.5 · PC |
+| F-11 | Confirm the polarity guard on live records: after ~10 binary records under `m1-baseline-2026-10-05`, check the `polarity` verdicts and the exclusion rate (review found Gemini slipping on ~5% of binary answers) | B-08; research/09 | after ~2026-10-08 | Claude | Todo | Haiku 4.5 · PC |
 | F-08 | Keep `ARCHIVE_KEY` safe outside `.env` too (e.g. a password manager): unsynced artifacts are unreadable without it | ADR-0002 | now | Christian | Todo | Haiku 4.5 · PC |
 
 ## Side branch: trading (paper only, no real money)
@@ -95,6 +96,7 @@ _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gat
 ## Done
 | ID | Item | Date | Result |
 |---|---|---|---|
+| B-08 | First review of the real forecasts | 2026-10-05 | 82 records reviewed (`docs/research/09-first-forecast-review.md`). Units, dates and open-vs-resolved: **clean**. Found: Gemini polarity slips (2 of 37 Gemini binary answers, guard live but unseen on a record), a Gemini misreading (46082), wrong weekdays or stale content in 7/82 AskNews bundles, one unsourced figure steering 45524, one parse failure. Gate for B-16 passes with two conditions (see the note); follow-ups B-51, F-11 |
 | B-00 | Project setup, research 00/02/03/04, cost model, M1 prompt | 2026-09-28 | See `docs/log/2026-09-28.md` |
 | B-02 | OpenRouter account + API key (in `.env`) | 2026-09-29 | Key "FutureEvalKey" in `.env`, $20 total spend limit confirmed. Temporary: raise it when the Metaculus grant ($100–500 expected) arrives |
 | B-05 | Cost + provenance logging per forecast, `CONFIG_VERSION`, persist research bundle + rationales | 2026-09-30 | `forecast_engine/records.py`: per-run JSONL + one JSON per question, uploaded as a workflow artifact |
@@ -108,5 +110,6 @@ _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gat
 | B-45 | QA gate for B-28 | 2026-10-04 | Code review: 10 issues fixed with tests (79 pass). Validation on 50 real bundles + 100 planted leaks: date bound 50/50; dual screen missed 0/100 plants, excluded 7% / 0% of clean bundles (dev / confirmation). Fresh confirmation pending (F-09) |
 | F-01 | Accept ADR-0008 and merge PR #2 | 2026-10-04 | Accepted by Christian with the dual screen; merged |
 | B-01 | Metaculus LLM credits | 2026-10-05 | **Declined** for this season (automated email 2026-10-04); prize money still open to us. The bot runs on our own budget: $100 PoC (spec §6) |
+| B-38 | Live records as leakage-free backtest data | 2026-10-05 | `evals/outcomes.py` collects resolutions of every forecast question (bot token; daily via the archive task) into data/outcomes/; `evals/replay.py` reruns forecast() on a record's frozen research as of its own time with any config. All 74 live records reproduce their prompts exactly; first outcome collected (Lula margin, -1.87) |
 | B-35 | Spec §7 Architecture + ADRs 0001–0005 (template, hosting, OpenRouter, $0.50/q ceiling, core/adapter split) | 2026-09-29 | All accepted (ADR-0005 by Christian 2026-09-29). M0 done; M1 unblocked |
 | B-03 | Regenerate the Metaculus token | 2026-09-29 | Dropped by Christian: keeping the current token |

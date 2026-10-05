@@ -26,6 +26,7 @@ import requests
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))  # so the daily task can import evals/ and forecast_engine/
 CACHE = ROOT / "data" / "runs"
 TEMPLATE = Path(__file__).with_name("monitor_template.html")
 OUT = ROOT / "dashboard" / "monitor.html"
@@ -194,6 +195,19 @@ def main() -> int:
     args = ap.parse_args()
     load_dotenv(ROOT / ".env")
     warnings = [] if args.no_sync else sync(args.repo)
+    if not args.no_sync:
+        try:  # B-38: refresh outcomes of forecast questions, so the archive push below includes them
+            import requests as _rq
+
+            from evals.outcomes import update as update_outcomes
+            from forecast_engine.clock import SystemClock
+
+            s = _rq.Session()
+            s.headers["Authorization"] = f"Token {os.environ['METACULUS_TOKEN']}"
+            c = update_outcomes(s, SystemClock())
+            print(f"outcomes: checked {c['checked']}, newly resolved {c['newly_resolved']}, errors {c['errors']}")
+        except Exception as e:  # never block the archive on the outcome refresh
+            warnings.append(f"outcome refresh failed: {type(e).__name__}: {e}")
     if not args.no_sync:
         try:
             print(push_archive())

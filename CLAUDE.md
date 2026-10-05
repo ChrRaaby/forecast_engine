@@ -68,6 +68,8 @@
   - test (offline, network blocked): `poetry run pytest`
   - check model IDs against the live lists: `poetry run python tools/check_models.py`
   - dry run: `poetry run python main.py --mode test_questions --max-questions 3`
+  - outcomes of forecast questions: `poetry run python -m evals.outcomes` (also runs in the daily archive task)
+  - replay check (every live record reproduces its prompts): `poetry run python -m evals.replay --check`
   - live (what GitHub Actions runs): `poetry run python main.py --mode tournament --publish`, plus 5×/day
     `--mode wide --publish --main-site-max 2` (Metaculus Cup + main-site questions, ADR-0007)
 
