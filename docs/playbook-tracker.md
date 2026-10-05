@@ -22,7 +22,7 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-04 | Ensemble 3–7 diverse models (86% of winners aggregate) | Strong | Adopt | B-04, B-18 | Partial | Built 2026-09-30: median of GPT-6 Luna, Gemini 3.5 Flash-Lite, DeepSeek V4.1 Flash (ADR-0006). Not live yet. nostreambot found median > mean/stacking and 3 ≈ 6 members. |
 | R-05 | Post-hoc Platt scaling (−0.016 Brier binary) | Strong (contested) | Test | B-19 | Not started | ⚠️ nostreambot rejected all post-hoc calibration: the slope flipped between eras. Needs our own data, likely N > 300. |
 | R-06 | 2+ distinct research sources (r = 0.42) | Moderate | Adopt | B-13 | Planned | Prediction-market prices are the cheapest second source. |
-| R-07 | Cap extreme predictions (r = +0.48 within winners) | Moderate | Adopt | B-11 | Planned | Cheap. Tune bounds after M2. |
+| R-07 | Cap extreme predictions (r = +0.48 within winners) | Moderate | Adopt | B-11 | Planned | Cheap. Tune bounds after M2. Extremizing (the opposite direction) and cap levels are tested together in EXP-003 (B-48). |
 | R-08 | Explicitly compute base rates (40% of top-15 vs 7%) | Moderate | Adopt | B-12 | Planned | Consistent with Silver/Tetlock. |
 | R-09 | Reference similar resolved questions (34% of winners vs 0%) | Moderate | Adopt | B-12 | Planned | Metaculus API gives us resolved questions for free. |
 | R-10 | Spend a meaningful inference budget (winners ~28 calls/q; top-15 ~$1.40/q vs $0.50) | Moderate | Info | B-16 | N/A | ⚠️ In tension with our $0.50/q cap. The evidence is correlational (well-funded bots differ in other ways), but it's a warning the cap may limit our ceiling. Revisit at the gate. |
@@ -39,7 +39,7 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-17 | Adding scaffolding before reliability (one units bug cost 80 pts) | Negative | Avoid | B-08, B-09 | Partial | Reliability items rank above new features. The M1 parser rejects ambiguous magnitudes ("2 million", "2k") instead of guessing. |
 | R-18 | Naive open-vs-resolved handling | Negative | Avoid | B-09 | Planned | Explicit guard. |
 | R-19 | The template's default numeric pipeline | Negative | Avoid | B-15 | Planned | Accept it for M1; replace before M3. |
-| R-20 | Multi-persona aggregation | Negative | Avoid | none | N/A | Don't build. |
+| R-20 | Multi-persona aggregation | Negative | Avoid | none | N/A | Don't build. Diversity of information and method, not personas, is tested in EXP-004 (arm C is the closest to personas). |
 | R-21 | Prompts built around "Bayesian updating" (underperformed twice) | Negative | Avoid | B-12 | N/A | ⚠️ Relevant to I-01: keep Silver's *principles* (base rates, updating) in the design, but don't put "Bayesian" framing in prompts. |
 | R-22 | Porous-cutoff backtesting (models can't "pretend not to know") | Negative | Avoid | B-27, B-28, B-32 | Partial | As-of research layer built and validated (B-28, B-45; ADR-0008, research/07): archive date bound held on 50/50 dates; dual leakage screen caught 100/100 planted leaks. Eligibility filter and harness validation (B-27, B-32) still to do. |
 | R-23 | Optimising prompts toward the community prediction | Negative (weak) | Avoid | B-31 | N/A | The gate *compares* to the community forecast; never tune toward it. |

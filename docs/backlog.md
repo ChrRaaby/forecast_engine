@@ -33,15 +33,20 @@ _Evaluation-first: nothing below rank 10 changes the live bot until the harness 
 | 4 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
 | 5 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 6 | B-38 | Live records as leakage-free backtest data: collect resolutions for archived live questions, and a runner path that replays reasoning variants on frozen research bundles | I-14 (2); Protocol §7 research cache | Claude Code | M | Todo | Opus 5.5 · PC |
-| 7 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 8 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 9 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
-| 10 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
-| 11 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
-| 12 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Opus 5.5 · PC |
-| 13 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 14 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 15 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 7 | B-46 | Reasoning graph for inspection: after each forecast a cheap model (~$0.001/q) extracts each member's graph (base rate → drivers/cruxes → evidence with source/date/direction/strength → scenarios → probability), stored with the record (extends B-20), shown side by side in the monitor. Doesn't change forecasts; design confirmed with Christian before coding | I-16, I-12, R-14; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 8 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 9 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 10 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 11 | B-47 | Diversity metrics in every experiment report: member error correlation, member spread, diversity bonus (ensemble vs mean member); on top of B-31 | I-16; research/08 | Claude Code | S | Todo | Opus 5.5 · PC |
+| 12 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 13 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
+| 14 | B-48 | EXP-003: extremize / cap / Platt sweep on resolved binary records (post-processing, $0; covers the B-11 and B-19 evaluations). Needs N ≥ ~150 resolved binary, B-38, B-31 | I-16, R-05, R-07; research/08 | Claude Code | S | Todo | Opus 5.5 · PC |
+| 15 | B-49 | EXP-004: diversity of perspective, 4 arms (baseline / structured method / lens per member / research per member) on frozen research. Needs B-38, B-31, B-47 | I-16, R-04, R-20; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 16 | B-50 | EXP-005: graph-first reasoning vs free text (after EXP-004) | I-16, I-12, R-21; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 17 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Opus 5.5 · PC |
+| 18 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 19 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 20 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Opus 5.5 · PC |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
