@@ -119,3 +119,9 @@ total should stay around $0.01–0.02/question (estimate). Re-measure with resea
 over the same 8 questions (max $0.016). Gemini research adds ~$0.0015/question as a token estimate at list price. Google's per-search
 grounding fee is **not** included and is unknown to us; check the Google billing console after the first real runs before trusting
 this number.
+
+## Addendum 2026-10-05: no Metaculus LLM credits
+Metaculus declined LLM credits for this season (automated email, 2026-10-04); prize eligibility is unaffected. All model spend is ours:
+the $100 PoC budget plus the AskNews Pro promo. OpenRouter usage on 2026-10-05: $4.29 of the $20 key limit (about $3 of that was the
+one-off B-45 leakage-screen validation); about $0.30/day with MiniBench live. Frontier-model upgrades (B-16) are now a budget decision
+at the PoC gate, not something credits will pay for.

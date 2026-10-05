@@ -19,8 +19,7 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 ## Now: M1 baseline bot live
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
 |---|---|---|---|---|---|---|---|
-| 1 | B-01 | Waiting for the Metaculus LLM credits / grant ($100–500 expected; application sent 2026-09-29). When it arrives: raise the OpenRouter limit and revisit the roster (B-16). AskNews access done 2026-10-01 | R-01, R-10: credits decide what we can afford | Christian | S | Blocked | Haiku 4.5 · PC |
-| 2 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Live since 2026-10-01 (cron-job.org trigger since 2026-10-02). No FutureEval/MiniBench questions released yet (next MiniBench round 2026-10-05); wide mode published 18 Cup/main-site forecasts 2026-10-03. Close once it has forecast real tournament questions | M1; R-04, R-15 | Claude Code | M | Doing | Haiku 4.5 · PC |
+| 1 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Live since 2026-10-01 (cron-job.org trigger since 2026-10-02). No FutureEval/MiniBench questions released yet (next MiniBench round 2026-10-05); wide mode published 18 Cup/main-site forecasts 2026-10-03. Close once it has forecast real tournament questions | M1; R-04, R-15 | Claude Code | M | Doing | Haiku 4.5 · PC |
 
 ## Next: reliability → evaluation harness (M2) → experiments
 _Evaluation-first: nothing below rank 10 changes the live bot until the harness (ranks 4–10) passes its validation. See `docs/evaluation-protocol.md`._
@@ -72,6 +71,7 @@ _Dated or waiting items that aren't development work. Checked at the start of ev
 | F-06 | Renew the cron-job.org GitHub token and paste it into the job | B-06 | before 2027-10-01 | Christian | Todo | Haiku 4.5 · PC |
 | F-07 | Update the cron-job.org `X-GitHub-Api-Version` header (2022-11-28 is deprecated) | B-06 | before 2028-03-10 | Christian | Todo | Haiku 4.5 · PC |
 | F-09 | Fresh confirmation sample (~20 new questions, 100 credits) for the dual leakage screen, required before the first large archive batch, since its settings were chosen after seeing the B-45 confirmation set | B-45; research/07 | after 2026-10-30 (AskNews reset) | Claude | Todo | Sonnet 5.5 · PC |
+| F-10 | Raise the OpenRouter key limit before it runs out (no Metaculus credits). $4.29 of $20 used on 2026-10-05; ~$0.30/day with MiniBench live (incl. ~$3 of one-off B-45 QA), so roughly early-to-mid November. Stay within the $100 PoC budget | B-01; spec §6 | before ~2026-11-10 | Christian | Todo | Haiku 4.5 · PC |
 | F-08 | Keep `ARCHIVE_KEY` safe outside `.env` too (e.g. a password manager): unsynced artifacts are unreadable without it | ADR-0002 | now | Christian | Todo | Haiku 4.5 · PC |
 
 ## Side branch: trading (paper only, no real money)
@@ -107,5 +107,6 @@ _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gat
 | B-28 | As-of research layer for backtests (AskNews archive, date guard, write-once cache, leakage screen, credit guard) | 2026-10-04 | PR #2 merged; ADR-0008 accepted. Live check passes (server honours end_timestamp, 30-day window, all dated). Screen changed to two models that must agree (research/07) |
 | B-45 | QA gate for B-28 | 2026-10-04 | Code review: 10 issues fixed with tests (79 pass). Validation on 50 real bundles + 100 planted leaks: date bound 50/50; dual screen missed 0/100 plants, excluded 7% / 0% of clean bundles (dev / confirmation). Fresh confirmation pending (F-09) |
 | F-01 | Accept ADR-0008 and merge PR #2 | 2026-10-04 | Accepted by Christian with the dual screen; merged |
+| B-01 | Metaculus LLM credits | 2026-10-05 | **Declined** for this season (automated email 2026-10-04); prize money still open to us. The bot runs on our own budget: $100 PoC (spec §6) |
 | B-35 | Spec §7 Architecture + ADRs 0001–0005 (template, hosting, OpenRouter, $0.50/q ceiling, core/adapter split) | 2026-09-29 | All accepted (ADR-0005 by Christian 2026-09-29). M0 done; M1 unblocked |
 | B-03 | Regenerate the Metaculus token | 2026-09-29 | Dropped by Christian: keeping the current token |
