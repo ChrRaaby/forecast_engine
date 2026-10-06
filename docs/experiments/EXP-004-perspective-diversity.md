@@ -3,6 +3,8 @@
 _Card written BEFORE running. Results section filled by the report generator. Not run yet: needs B-38 (frozen research + outcomes),
 B-31 (reports) and B-47 (diversity metrics)._
 
+_2026-10-06: now runs after EXP-006 (research/10); arm B's base-rate step uses EXP-006's winning variant._
+
 - **Date / author:** 2026-10-05, Claude (I-16; research/08 §1)
 - **Hypothesis:** our 3 members make correlated errors because they read the same research with the same prompt. Diversity of
   information and method (Tetlock), not costume personas (R-20), lowers that correlation and improves the ensemble. nostreambot's worst
