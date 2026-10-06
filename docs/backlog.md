@@ -1,6 +1,6 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-05_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-06_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
@@ -22,30 +22,34 @@ _Prioritised, top = next. Maintained by Claude (Code or chat) at the end of ever
 | 1 | B-04 | Template bot live on Fall 2026 AIB + MiniBench: 3 cheap models from different vendors, median (scenario B). Live since 2026-10-01 (cron-job.org trigger since 2026-10-02). No FutureEval/MiniBench questions released yet (next MiniBench round 2026-10-05); wide mode published 18 Cup/main-site forecasts 2026-10-03. Close once it has forecast real tournament questions | M1; R-04, R-15 | Claude Code | M | Doing | Haiku 4.5 · PC |
 
 ## Next: reliability → evaluation harness (M2) → experiments
-_Evaluation-first: nothing below rank 10 changes the live bot until the harness (ranks 4–10) passes its validation. See `docs/evaluation-protocol.md`._
+_Evaluation-first: no experiment changes the live bot until the harness (B-27, B-29…B-32) passes its validation. See `docs/evaluation-protocol.md`._
 
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
 |---|---|---|---|---|---|---|---|
 | 1 | B-08b | Weekly 30-min review of new forecasts (same checks as `docs/research/09-first-forecast-review.md`; add the polarity-guard and research-date flags once B-51 lands) | R-14, R-17, R-18 | Christian | S | Todo | Sonnet 5.5 · PC |
 | 2 | B-51 | Research date sanity check: flag or drop research items with a weekday/date mismatch, a date after `as_of`, or a stale marketing/fiscal year (found in 7/82 bundles, all AskNews); store Gemini grounding URLs so single-figure claims are auditable. Proposed in research/09, needs Christian's OK | R-14, R-17; research/09 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 3 | B-09b | Experiment EXP-002: question close/resolution dates in the prompt (card written; runs on the M2 harness) | R-18; B-09 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 4 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo | Haiku 4.5 · PC |
-| 5 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
-| 6 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 7 | B-46 | Reasoning graph for inspection: after each forecast a cheap model (~$0.001/q) extracts each member's graph (base rate → drivers/cruxes → evidence with source/date/direction/strength → scenarios → probability), stored with the record (extends B-20), shown side by side in the monitor. Doesn't change forecasts; design confirmed with Christian before coding | I-16, I-12, R-14; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 8 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 9 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 10 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
-| 11 | B-47 | Diversity metrics in every experiment report: member error correlation, member spread, diversity bonus (ensemble vs mean member); on top of B-31 | I-16; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 12 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
-| 13 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
-| 14 | B-48 | EXP-003: extremize / cap / Platt sweep on resolved binary records (post-processing, $0; covers the B-11 and B-19 evaluations). Needs N ≥ ~150 resolved binary, B-38, B-31 | I-16, R-05, R-07; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 15 | B-49 | EXP-004: diversity of perspective, 4 arms (baseline / structured method / lens per member / research per member) on frozen research. Needs B-38, B-31, B-47 | I-16, R-04, R-20; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 16 | B-50 | EXP-005: graph-first reasoning vs free text (after EXP-004) | I-16, I-12, R-21; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
-| 17 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 18 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 19 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 20 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 3 | B-52 | Choices ledger: one row per setting that shapes a forecast (models, aggregation, clip, prompt, research sources, reasoning effort, guards, caps) with today's value, where it is decided (ADR / log) and evidence strength (Tested / Literature / Inherited / Engineering) plus the experiment that would test it. Generated from `config.py` + a small evidence file (e.g. `docs/choices.yaml`); a hygiene test fails when a forecast-affecting config field has no row. Shown as a section in the dashboard | I-17 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 4 | B-53 | Weekly brief: one page each Monday, written for Christian: every CONFIG_VERSION change in plain words with before/after, new ADRs, experiment results, incidents, spend, the X-ray of the week (B-46) and the scorecard (B-55) once filled. Built from git log, config diffs and monitor data; republished to one link by a weekly routine. Convention that feeds it: every CONFIG_VERSION bump adds a one-line "what you'd notice" entry (e.g. `docs/config-changes.md`) | I-17 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 5 | B-09b | Experiment EXP-002: question close/resolution dates in the prompt (card written; runs on the M2 harness) | R-18; B-09 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 6 | B-10 | Re-run the cost model with measured tokens; confirm the $/question for scenario B | research/03 | Claude | S | Todo | Haiku 4.5 · PC |
+| 7 | B-39 | Metaculus Bot Benchmarking Access Tier (~250 resolved + ~250 open questions with outcomes and CP): Data Needs Form submitted 2026-10-03; waiting for Metaculus | I-14; research/05 | Christian | S | Blocked | Haiku 4.5 · PC |
+| 8 | B-27 | Evaluation models + release dates; question-supply census; frozen DEV/HOLDOUT manifests with eligibility filter. Pick older eval models to widen the eligible pool (I-14) | Protocol §3, T1, T6; R-25; I-14 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 9 | B-46 | Reasoning graph for inspection: after each forecast a cheap model (~$0.001/q) extracts each member's graph (base rate → drivers/cruxes → evidence with source/date/direction/strength → scenarios → probability), stored with the record (extends B-20), shown side by side in the monitor. Includes the **Question X-ray** view (I-17): each week the 1–2 questions with the widest model spread laid out end to end (research, each model's number and key quote, guard verdicts, final), and on request for any question ("show me question 45925"). Doesn't change forecasts; design confirmed with Christian before coding | I-16, I-12, R-14; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 10 | B-54 | Living pipeline map: architecture diagram generated from `config.py` and `core.py`'s step order, current values printed in each box and evidence colour from the ledger (B-52); a changed box is highlighted in the weekly brief. Section in the dashboard or monitor | I-17 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 11 | B-29 | Scorer package: log/Brier/Metaculus baseline, MC, numeric (log + CRPS), calibration; golden + property tests | Protocol §4, T10 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 12 | B-55 | Scorecard + ensemble health tab in the bot monitor, on B-38's outcomes: resolved N, Brier/log score vs community with CIs, calibration curve once N ≥ 30, each model alone, frontier vs cheap shadow (ADR-0009); plus the per-question model spread chart (who sits far from the median, mean level per model). Uses B-29's scorer; shares metrics with B-47 | I-17; B-38 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 13 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 14 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 15 | B-47 | Diversity metrics in every experiment report: member error correlation, member spread, diversity bonus (ensemble vs mean member); on top of B-31 | I-16; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 16 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 17 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
+| 18 | B-48 | EXP-003: extremize / cap / Platt sweep on resolved binary records (post-processing, $0; covers the B-11 and B-19 evaluations). Needs N ≥ ~150 resolved binary, B-38, B-31 | I-16, R-05, R-07; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 19 | B-49 | EXP-004: diversity of perspective, 4 arms (baseline / structured method / lens per member / research per member) on frozen research. Needs B-38, B-31, B-47 | I-16, R-04, R-20; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 20 | B-50 | EXP-005: graph-first reasoning vs free text (after EXP-004) | I-16, I-12, R-21; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 21 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 22 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 23 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 24 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
