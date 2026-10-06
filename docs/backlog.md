@@ -47,9 +47,13 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 19 | B-49 | EXP-004: diversity of perspective, 4 arms (baseline / structured method / lens per member / research per member) on frozen research. Needs B-38, B-31, B-47 | I-16, R-04, R-20; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 20 | B-50 | EXP-005: graph-first reasoning vs free text (after EXP-004) | I-16, I-12, R-21; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 21 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 22 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording) | R-08, R-09, R-21 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 22 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording). Superseded: the experiment is now EXP-006 (B-58), library in B-56 | R-08, R-09, R-21 | Claude Code | M | Dropped | Sonnet 5.5 · PC |
 | 23 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 24 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 25 | B-56 | Reference-class library: Yes-rates of resolved binary questions per tournament/category and a similar-question lookup (up to 5 with outcomes) over our resolved live records + B-39 data; hard "resolved before as-of" filter with a unit test (protocol T1/T6). Needs B-38. Feeds EXP-006 arm D | I-18, R-08, R-09; research/10 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 26 | B-58 | EXP-006: outside view first, 4 arms (baseline / prompted anchor / blind outside-view call / retrieved anchor) on frozen research. Runs **before** EXP-004 (B-49), whose arm B then uses the winner. Needs B-38, B-31, B-56 (arm D) | I-18, R-08, R-09; research/10 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 27 | B-59 | EXP-007: Fermi decomposition with code doing the arithmetic (rate shape: 1 − exp(−rate × t); numeric: Monte Carlo percentiles), only on matching-shape questions, reported per shape. After EXP-006; relates to B-15 | I-18, R-19; research/10 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 28 | B-57 | Anchor → adjustments → final on B-46's reasoning graph; the monitor shows how far each forecast moved from its base rate. Alongside B-46 | I-18; research/10 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
