@@ -82,6 +82,17 @@ def test_numeric_rejects_decreasing_and_missing():
         parsing.parse_numeric(NUMERIC.replace("Percentile 90: 3000 (highest number value)", ""))
 
 
+def test_numeric_point_forecast_only_on_discrete():
+    text = "\n".join(f"Percentile {p}: 3" for p in (10, 20, 40, 60, 80, 90))
+    with pytest.raises(ParseError):
+        parsing.parse_numeric(text)
+    pts = parsing.parse_numeric(text, allow_point=True)
+    assert [v for _, v in pts] == [3] * 6
+    strict = parsing.make_strictly_increasing(pts, scale=4)
+    assert all(b[1] > a[1] for a, b in zip(strict, strict[1:]))
+    assert strict[-1][1] < 3.5  # stays inside the bucket of 3 on a 0..3 count question (bounds -0.5..3.5)
+
+
 def test_medians():
     assert parsing.median_binary([0.2, 0.9, 0.4]) == 0.4
     mc = parsing.median_multiple_choice([{"a": 0.5, "b": 0.5}, {"a": 0.9, "b": 0.1}, {"a": 0.1, "b": 0.9}])
