@@ -96,7 +96,9 @@ def _parse(q: QuestionSnapshot, call, cfg: BotConfig) -> ForecasterOutput:
         elif q.question_type == "multiple_choice":
             out.prediction = parsing.parse_multiple_choice(call.output, q.options)
         else:
-            out.prediction = parsing.parse_numeric(call.output, q.unit_of_measure)
+            out.prediction = parsing.parse_numeric(
+                call.output, q.unit_of_measure, allow_point=q.question_type == "discrete"
+            )
     except parsing.ParseError as e:
         out.parse_error = str(e)
     return out

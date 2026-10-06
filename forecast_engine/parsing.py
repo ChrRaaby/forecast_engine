@@ -89,12 +89,17 @@ def _mc_normalize(raw: dict[str, float]) -> dict[str, float]:
     return normalize(probs)
 
 
-def parse_numeric(text: str, unit: str = "") -> list[tuple[float, float]]:
+def parse_numeric(text: str, unit: str = "", allow_point: bool = False) -> list[tuple[float, float]]:
     """Returns [(percentile as fraction, value)] for the 6 declared percentiles, non-decreasing in value.
 
     Ties are legitimate (e.g. "0, 0, 1, 1, 2, 3" on a count question); decreasing values are a misparse or a confused
     forecaster and are rejected. Metaculus needs strictly increasing values, which make_strictly_increasing() provides
     at submission time.
+
+    All six values equal is a point forecast. On a discrete question (`allow_point=True`) that is a legitimate "I'm sure
+    it's 3": the tie-break keeps the mass inside that value's bucket and the CDF standardisation spreads ~1% elsewhere.
+    First seen 2026-10-06 on MiniBench 46123 (judges 0-3), where all three models answered 3 and 19 runs failed. On a
+    continuous question a single number is more likely a misread prompt, so it stays rejected.
     """
     values: dict[int, float] = {}
     for m in re.finditer(r"Percentile\s*(10|20|40|60|80|90)\s*:\s*(.+)", text, flags=re.IGNORECASE):
@@ -105,7 +110,7 @@ def parse_numeric(text: str, unit: str = "") -> list[tuple[float, float]]:
     ordered = [values[p] for p in PERCENTILES]
     if any(b < a for a, b in zip(ordered, ordered[1:])):
         raise ParseError(f"percentile values decrease: {ordered}")
-    if ordered[0] == ordered[-1]:
+    if ordered[0] == ordered[-1] and not allow_point:
         raise ParseError(f"all percentile values equal: {ordered}")
     return [(p / 100.0, v) for p, v in zip(PERCENTILES, ordered)]
 
