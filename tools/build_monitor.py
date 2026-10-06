@@ -205,7 +205,7 @@ def main() -> int:
             s = _rq.Session()
             s.headers["Authorization"] = f"Token {os.environ['METACULUS_TOKEN']}"
             c = update_outcomes(s, SystemClock())
-            print(f"outcomes: checked {c['checked']}, newly resolved {c['newly_resolved']}, errors {c['errors']}")
+            print(f"outcomes: checked {c['checked']}, newly resolved {c['newly_resolved']}, newly scored {c['newly_scored']}, errors {c['errors']}")
         except Exception as e:  # never block the archive on the outcome refresh
             warnings.append(f"outcome refresh failed: {type(e).__name__}: {e}")
     if not args.no_sync:

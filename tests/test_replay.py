@@ -96,7 +96,8 @@ def test_update_records_changes_and_skips_settled(tmp_path, monkeypatch):
     for qid, pid in ((1, 10), (2, 20)):
         (runs / f"q{qid}.json").write_text(json.dumps({"question": {"question_id": qid, "post_id": pid, "question_type": "binary"}}))
     out = tmp_path / "outcomes.jsonl"
-    posts = {10: {"question": {"id": 1, "status": "resolved", "resolution": "yes"}},
+    posts = {10: {"question": {"id": 1, "status": "resolved", "resolution": "yes",
+                               "my_forecasts": {"score_data": {"baseline_score": 0.7, "peer_score": 0.1}}}},
              20: {"question": {"id": 2, "status": "open", "resolution": None}}}
     s = FakeSession(posts)
     clock = FixedClock(AS_OF)
@@ -106,3 +107,26 @@ def test_update_records_changes_and_skips_settled(tmp_path, monkeypatch):
     assert s.calls == [20]  # the settled question isn't fetched again
     assert oc.load_outcomes(out)[1]["resolution"] == "yes"
     assert len(out.read_text().splitlines()) == 2  # an unchanged open question isn't re-appended
+    assert oc.load_outcomes(out)[1]["scores"]["peer_score"] == 0.1
+
+
+def test_update_backfills_scores_for_rows_resolved_before_scores_were_collected(tmp_path, monkeypatch):
+    monkeypatch.setattr(oc, "REQUEST_GAP_S", 0)
+    runs = tmp_path / "runs" / "1" / "20261005T000000Z-wide"
+    runs.mkdir(parents=True)
+    for qid, pid in ((1, 10), (3, 30)):
+        (runs / f"q{qid}.json").write_text(json.dumps({"question": {"question_id": qid, "post_id": pid, "question_type": "binary"}}))
+    out = tmp_path / "outcomes.jsonl"
+    old = [{"question_id": 1, "post_id": 10, "type": "binary", "status": "resolved", "resolution": "no"},  # no "scores" key
+           {"question_id": 3, "post_id": 30, "type": "binary", "status": "resolved", "resolution": "annulled"}]
+    out.write_text("".join(json.dumps(r) + "\n" for r in old))
+    posts = {10: {"question": {"id": 1, "status": "resolved", "resolution": "no",
+                               "my_forecasts": {"score_data": {"baseline_score": 0.72, "peer_score": 0.09}}}}}
+    s = FakeSession(posts)
+    c = oc.update(s, FixedClock(AS_OF), tmp_path / "runs", out)
+    assert s.calls == [10]  # annulled is settled without scores
+    assert (c["newly_resolved"], c["newly_scored"]) == (0, 1)
+    assert oc.load_outcomes(out)[1]["scores"]["baseline_score"] == 0.72
+    s.calls.clear()
+    oc.update(s, FixedClock(AS_OF), tmp_path / "runs", out)
+    assert s.calls == []  # scored now, so settled

@@ -7,8 +7,12 @@ isn't settled yet, and keeps one line per question in data/outcomes/outcomes.jso
     poetry run python -m evals.outcomes            # update; safe to run repeatedly (settled questions aren't re-fetched)
 
 Each line: question_id, post_id, type, status, resolution (Metaculus's string: "yes"/"no", an option name, a number, a date,
-"above_upper_bound"/"below_lower_bound", or "annulled"/"ambiguous"), actual_resolve_time, checked_at. Requests are spaced, because
-the live bot shares the token.
+"above_upper_bound"/"below_lower_bound", or "annulled"/"ambiguous"), actual_resolve_time, checked_at, and `scores`: Metaculus's
+official scores for the bot's own forecast (`my_forecasts.score_data`: baseline_score, peer_score, coverage, ...; None until the
+question resolves). Peer score is our comparison with the other forecasters; the community prediction itself is hidden from our
+account. Official scores are time-weighted by coverage, so a forecast made late scores near 0 whatever its accuracy; evals/scoring.py
+gives the per-forecast score. A resolved question is re-fetched until its scores appear (rows written before scores were collected
+get them on the next run). Requests are spaced, because the live bot shares the token.
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ OUT = ROOT / "data" / "outcomes" / "outcomes.jsonl"
 API = "https://www.metaculus.com/api/posts/{post_id}/"
 REQUEST_GAP_S = 1.0
 SETTLED = ("resolved",)
+NO_SCORE_RESOLUTIONS = ("annulled", "ambiguous")  # resolved but never scored
 
 
 def forecast_questions(runs_dir: Path = RUNS) -> dict[int, dict[str, Any]]:
@@ -79,16 +84,24 @@ def outcome_row(question_id: int, meta: dict[str, Any], post: dict[str, Any], cl
         "resolution": q.get("resolution"),
         "actual_resolve_time": q.get("actual_resolve_time"),
         "scheduled_resolve_time": q.get("scheduled_resolve_time"),
+        "scores": (q.get("my_forecasts") or {}).get("score_data") or None,
         "checked_at": clock.now().isoformat(timespec="seconds"),
     }
+
+
+def is_settled(row: dict[str, Any]) -> bool:
+    """Resolved, and scored by Metaculus (or annulled/ambiguous, which are never scored): nothing left to fetch."""
+    if row["status"] not in SETTLED or row["resolution"] is None:
+        return False
+    return bool(row.get("scores")) or row["resolution"] in NO_SCORE_RESOLUTIONS
 
 
 def update(session: requests.Session, clock: Clock, runs_dir: Path = RUNS, out_path: Path = OUT) -> dict[str, int]:
     known = load_outcomes(out_path)
     todo = {qid: m for qid, m in forecast_questions(runs_dir).items()
-            if not (qid in known and known[qid]["status"] in SETTLED and known[qid]["resolution"] is not None)}
+            if not (qid in known and is_settled(known[qid]))}
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    counts = {"checked": 0, "newly_resolved": 0, "errors": 0}
+    counts = {"checked": 0, "newly_resolved": 0, "newly_scored": 0, "errors": 0}
     with out_path.open("a", encoding="utf-8") as f:
         for qid, meta in sorted(todo.items()):
             for attempt in range(4):
@@ -103,10 +116,14 @@ def update(session: requests.Session, clock: Clock, runs_dir: Path = RUNS, out_p
             row = outcome_row(qid, meta, resp.json(), clock)
             counts["checked"] += 1
             prev = known.get(qid)
-            if prev is None or (prev["status"], prev["resolution"]) != (row["status"], row["resolution"]):
+            key = ("status", "resolution", "scores")
+            if prev is None or tuple(prev.get(k) for k in key) != tuple(row[k] for k in key):
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
-                if row["status"] in SETTLED and row["resolution"] is not None:
+                was_resolved = prev is not None and prev["status"] in SETTLED and prev["resolution"] is not None
+                if row["status"] in SETTLED and row["resolution"] is not None and not was_resolved:
                     counts["newly_resolved"] += 1
+                if row["scores"] and not (prev or {}).get("scores"):
+                    counts["newly_scored"] += 1
     return counts
 
 
@@ -116,9 +133,11 @@ def main() -> int:
     s = requests.Session()
     s.headers["Authorization"] = f"Token {os.environ['METACULUS_TOKEN']}"
     counts = update(s, SystemClock())
-    resolved = sum(1 for r in load_outcomes().values() if r["status"] in SETTLED and r["resolution"] is not None)
-    print(f"checked {counts['checked']} questions, {counts['newly_resolved']} newly resolved, {counts['errors']} errors; "
-          f"{resolved} resolved in total ({OUT})")
+    rows = load_outcomes().values()
+    resolved = sum(1 for r in rows if r["status"] in SETTLED and r["resolution"] is not None)
+    scored = sum(1 for r in rows if r.get("scores"))
+    print(f"checked {counts['checked']} questions, {counts['newly_resolved']} newly resolved, {counts['newly_scored']} newly "
+          f"scored, {counts['errors']} errors; {resolved} resolved, {scored} with official scores ({OUT})")
     return 0
 
 
