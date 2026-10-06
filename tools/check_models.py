@@ -3,7 +3,7 @@
     poetry run python tools/check_models.py
 
 Prints each OpenRouter forecaster and the backtest leakage-screen model (evals/leakage_screen.py) with price and OpenRouter
-listing date, and checks the Gemini research model if GEMINI_API_KEY is set.
+listing date, and checks the Gemini research and graph-extractor (evals/graph_extract.py) models if GEMINI_API_KEY is set.
 Exits non-zero if any id is unknown. Uses only free list endpoints.
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from forecast_engine.config import DEFAULT_CONFIG  # noqa: E402
+from evals.graph_extract import ExtractorConfig  # noqa: E402
 from evals.leakage_screen import ScreenConfig  # noqa: E402
 
 
@@ -41,10 +42,10 @@ def main() -> int:
             print(f"WARNING  OpenRouter listed {model_id} on {listed}, well after the assumed release date "
                   f"{screen.model_release_date}; verify the release date against the vendor before trusting the screen")
 
-    gemini = DEFAULT_CONFIG.research.gemini_model
+    geminis = [(DEFAULT_CONFIG.research.gemini_model, "research"), (ExtractorConfig().model, "graph extractor")]
     key = os.getenv("GEMINI_API_KEY")
     if not key or key == "REPLACE_ME":
-        print(f"skipped  gemini      {gemini} (GEMINI_API_KEY not set)")
+        print(f"skipped  gemini      {[g for g, _ in geminis]} (GEMINI_API_KEY not set)")
     else:
         resp = requests.get(
             "https://generativelanguage.googleapis.com/v1beta/models",
@@ -54,12 +55,13 @@ def main() -> int:
         )
         resp.raise_for_status()
         names = {m["name"].removeprefix("models/") for m in resp.json().get("models", [])}
-        if gemini in names:
-            print(f"ok       gemini      {gemini}")
-        else:
-            flash = sorted(n for n in names if "flash" in n)
-            print(f"MISSING  gemini      {gemini}; available flash models: {flash}")
-            ok = False
+        for gemini, role in geminis:
+            if gemini in names:
+                print(f"ok       gemini      {gemini} ({role})")
+            else:
+                flash = sorted(n for n in names if "flash" in n)
+                print(f"MISSING  gemini      {gemini} ({role}); available flash models: {flash}")
+                ok = False
     return 0 if ok else 1
 
 
