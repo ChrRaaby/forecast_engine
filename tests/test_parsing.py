@@ -31,6 +31,8 @@ def test_multiple_choice_fractions_zero_floor_and_normalization():
 def test_multiple_choice_placeholder_letters_map_positionally():
     out = parsing.parse_multiple_choice("Option_A: 0.80\nOption_B: 0.18\nOption_C: 0.02", ["Dem", "Rep", "Other"])
     assert out == pytest.approx({"Dem": 0.8, "Rep": 0.18, "Other": 0.02})
+    named = "Option_A (Dem, incl. \"Köln\" etc): 80%\nOption_B (Rep): 18%\n**Option_C (Other)**: 2%"
+    assert parsing.parse_multiple_choice(named, ["Dem", "Rep", "Other"]) == pytest.approx({"Dem": 0.8, "Rep": 0.18, "Other": 0.02})
     with pytest.raises(ParseError):  # a missing letter is still a failure
         parsing.parse_multiple_choice("Option_A: 0.80\nOption_B: 0.20", ["Dem", "Rep", "Other"])
 

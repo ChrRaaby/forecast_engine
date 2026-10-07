@@ -50,6 +50,11 @@ from forecast_engine.config import (  # noqa: E402
     DEFAULT_MAIN_SITE_PER_RUN,
     DEFAULT_MAX_RUN_COST_USD,
     MAIN_SITE_HORIZON_DAYS,
+    SHADOW_CONFIGS,
+    TOURNAMENT_CONFIG,
+    TOURNAMENT_MAX_RUN_COST_USD,
+    TOURNAMENT_SEASON,
+    TOURNAMENT_SEASON_CAP_USD,
     BotConfig,
 )
 from forecast_engine.core import ForecastFailed, forecast  # noqa: E402
@@ -57,7 +62,8 @@ from forecast_engine.llm import LlmClient, OpenRouterClient  # noqa: E402
 from forecast_engine.records import RecordWriter  # noqa: E402
 from forecast_engine.retries import RetryLedger  # noqa: E402
 from forecast_engine.research import gather_research  # noqa: E402
-from forecast_engine.schema import ForecastRecord, QuestionSnapshot  # noqa: E402
+from forecast_engine.schema import ForecastRecord, QuestionSnapshot, ResearchBundle  # noqa: E402
+from forecast_engine.spend import SeasonSpend  # noqa: E402
 
 dotenv.load_dotenv()
 logger = logging.getLogger(__name__)
@@ -166,6 +172,10 @@ class EngineBot(ForecastBot):
         publish: bool,
         max_run_cost_usd: float,
         retries: RetryLedger | None = None,
+        season: SeasonSpend | None = None,
+        fallback_cfg: BotConfig | None = None,
+        shadows: dict[str, BotConfig] | None = None,
+        run_id: str = "",
         max_concurrent: int = 3,
     ) -> None:
         super().__init__(
@@ -177,6 +187,11 @@ class EngineBot(ForecastBot):
         self.clock, self.cfg, self.llm, self.writer = clock, cfg, llm, writer
         self.max_run_cost_usd = max_run_cost_usd
         self.retries = retries
+        # ADR-0009: `cfg` (frontier) is charged to the season budget; once it's used up, `fallback_cfg` (cheap) takes over.
+        self.season, self.fallback_cfg = season, fallback_cfg
+        self.shadows = shadows or {}  # B-62: unpublished configs run on the same question and research
+        self._shadow_writers: dict[str, RecordWriter] = {}
+        self.run_id = run_id
         self.spent_usd = 0.0
         self._sem = asyncio.Semaphore(max_concurrent)
 
@@ -186,15 +201,18 @@ class EngineBot(ForecastBot):
                 raise RuntimeError(f"run cost cap reached (${self.spent_usd:.2f} >= ${self.max_run_cost_usd:.2f}); skipped")
             start = time.monotonic()
             snapshot = to_snapshot(question)
-            research = await gather_research(snapshot, self.clock, self.cfg.research)
+            cfg = self._live_cfg()
+            research = await gather_research(snapshot, self.clock, cfg.research)
             try:
-                record = await forecast(snapshot, self.clock, research, self.cfg, self.llm)
+                record = await forecast(snapshot, self.clock, research, cfg, self.llm)
             except ForecastFailed as e:
-                self.spent_usd += e.record.cost_usd
+                self._charge(cfg, e.record.cost_usd)
                 self.writer.write(e.record, published=False, status="failed")
                 self._count_failure(question)
                 raise
-            self.spent_usd += record.cost_usd
+            finally:
+                await self._run_shadows(snapshot, research, cfg)
+            self._charge(cfg, record.cost_usd)
             if self.publish_reports_to_metaculus and research.is_empty:
                 self.writer.write(record, published=False, status="refused_no_research")
                 raise RuntimeError(f"refusing to publish without research: {research.errors}")
@@ -238,6 +256,34 @@ class EngineBot(ForecastBot):
             if self.retries:
                 self.retries.succeeded(question.id_of_question)
             return report
+
+    def _live_cfg(self) -> BotConfig:
+        if self.season and self.fallback_cfg and self.season.exhausted:
+            return self.fallback_cfg
+        return self.cfg
+
+    def _charge(self, cfg: BotConfig, usd: float) -> None:
+        self.spent_usd += usd
+        if self.season and cfg is self.cfg:
+            self.season.add(usd)
+
+    async def _run_shadows(self, snapshot: QuestionSnapshot, research: ResearchBundle, live_cfg: BotConfig) -> None:
+        """B-62: forecast with each shadow config on the live question's research; never publish, never raise."""
+        for name, scfg in self.shadows.items():
+            if scfg.config_hash() == live_cfg.config_hash():
+                continue  # the live forecast already is this config (e.g. after the season fallback)
+            writer = self._shadow_writers.get(name)
+            if writer is None:
+                writer = self._shadow_writers[name] = RecordWriter(f"{self.run_id}-shadow-{name}")
+            try:
+                rec = await forecast(snapshot, self.clock, research, scfg, self.llm)
+                self.spent_usd += rec.cost_usd - research.cost_usd  # the research was paid for by the live forecast
+                writer.write(rec, published=False, status="shadow")
+            except ForecastFailed as e:
+                self.spent_usd += e.record.cost_usd - research.cost_usd
+                writer.write(e.record, published=False, status="shadow_failed")
+            except Exception as e:  # a shadow must never take the live forecast down
+                logger.warning(f"shadow {name} failed on {snapshot.page_url}: {type(e).__name__}: {e}")
 
     def _count_failure(self, question: MetaculusQuestion) -> None:
         """B-61: forecasting failures repeat on every run, so they count towards the retry cap."""
@@ -331,13 +377,22 @@ def main() -> int:
     parser.add_argument("--main-site-max", type=int, default=DEFAULT_MAIN_SITE_PER_RUN, help="wide mode: main-site questions per run")
     parser.add_argument("--publish", action="store_true", help="post forecasts + comments to Metaculus (default: dry run)")
     parser.add_argument("--max-questions", type=int, default=DEFAULT_MAX_QUESTIONS_PER_RUN)
-    parser.add_argument("--max-cost", type=float, default=DEFAULT_MAX_RUN_COST_USD, help="stop starting new questions above this $")
+    parser.add_argument("--max-cost", type=float, default=None,
+                        help=f"stop starting new questions above this $ (default ${TOURNAMENT_MAX_RUN_COST_USD:g} in tournament "
+                             f"mode, ${DEFAULT_MAX_RUN_COST_USD:g} otherwise)")
     args = parser.parse_args()
+    if args.max_cost is None:
+        args.max_cost = TOURNAMENT_MAX_RUN_COST_USD if args.mode == "tournament" else DEFAULT_MAX_RUN_COST_USD
 
     check_environment()
     clock = SystemClock()
     run_id = clock.now().strftime("%Y%m%dT%H%M%SZ") + f"-{args.mode}" + ("" if args.publish else "-dryrun")
-    run_cfg = WIDE_CONFIG if args.mode == "wide" else DEFAULT_CONFIG
+    # ADR-0009: FutureEval + MiniBench get the frontier ensemble (season-capped, cheap shadow); everything else stays cheap.
+    run_cfg = {"tournament": TOURNAMENT_CONFIG, "wide": WIDE_CONFIG}.get(args.mode, DEFAULT_CONFIG)
+    tournament_live = args.mode == "tournament" and args.publish
+    season = SeasonSpend(TOURNAMENT_SEASON, TOURNAMENT_SEASON_CAP_USD) if tournament_live else None
+    if season and season.exhausted:
+        logger.warning(f"Season budget used (${season.spent_usd:.2f} of ${season.cap_usd:.0f}): cheap config takes over")
     print(f"🤖  forecast_engine {CONFIG_VERSION} (config {run_cfg.config_hash()}) mode={args.mode} "
           f"publish={'yes' if args.publish else 'no (dry run)'} max_questions={args.max_questions} max_cost=${args.max_cost}")
 
@@ -350,6 +405,10 @@ def main() -> int:
         publish=args.publish,
         max_run_cost_usd=args.max_cost,
         retries=retries,
+        season=season,
+        fallback_cfg=DEFAULT_CONFIG if season else None,
+        shadows=SHADOW_CONFIGS if args.mode == "tournament" else None,
+        run_id=run_id,
     )
     check_clock(clock)
     questions = fetch_questions(bot.metaculus_client, args.mode, clock, args.main_site_max)
@@ -377,6 +436,9 @@ def main() -> int:
     print(f"Records: {bot.writer.run_dir}  |  run cost ${bot.spent_usd:.4f}")
     if retries:
         retries.save()
+    if season:
+        season.save()
+        print(f"Season {season.season}: ${season.spent_usd:.2f} of ${season.cap_usd:.0f} spent on frontier forecasts")
     all_failed = bool(reports) and all(isinstance(r, BaseException) for r in reports)
     return 1 if all_failed else 0
 

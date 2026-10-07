@@ -70,8 +70,8 @@
   - dry run: `poetry run python main.py --mode test_questions --max-questions 3`
   - outcomes of forecast questions: `poetry run python -m evals.outcomes` (also runs in the daily archive task)
   - replay check (every live record reproduces its prompts): `poetry run python -m evals.replay --check`
-  - live (what GitHub Actions runs): `poetry run python main.py --mode tournament --publish`, plus 5×/day
-    `--mode wide --publish --main-site-max 2` (Metaculus Cup + main-site questions, ADR-0007)
+  - live (what GitHub Actions runs): `poetry run python main.py --mode tournament --publish` (FutureEval + MiniBench, frontier
+    ensemble with $300 season cap and the cheap config as unpublished shadow, ADR-0009/0010). Wide mode stopped 2026-10-08 (ADR-0010)
 
 ## Don'ts
 - Don't commit secrets, credentials, or real/sensitive data. Use synthetic or public sample data.

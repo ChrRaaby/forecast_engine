@@ -1,6 +1,6 @@
 # 0007: Forecast outside FutureEval to unlock outcomes
 
-- **Status:** Accepted (Christian, 2026-10-03)
+- **Status:** Superseded by 0010 (wide mode stopped 2026-10-08; the B-39 benchmarking data replaces it). Accepted 2026-10-03
 - **Date:** 2026-10-03
 
 ## Context
