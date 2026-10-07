@@ -1,0 +1,236 @@
+<title>Structured Reasoning Pilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: what-this-is + how-to-read legend, an overview table of every question, then one question at a time laid out as the
+   protocol runs: base rate -> scenarios -> drivers (waterfall in percentage points) -> both routes -> final.
+   Shares the bot monitor's tokens (slate neutrals, steel-blue accent, semantic colours); two extra hues tell the two routes apart. */
+:root {
+  --bg:#f5f7f9; --surface:#ffffff; --fg:#17202b; --muted:#5b6674; --line:#dde3ea; --accent:#2e5f8f; --accent-soft:#e3edf7;
+  --ok:#2f7d4f; --ok-soft:#e1f1e7; --warn:#a4620f; --warn-soft:#fbeedb; --bad:#b03a3a; --bad-soft:#f8e3e3; --idle:#8a95a3; --idle-soft:#eceff3;
+  --drv:#2e5f8f; --scen:#7a4f9e;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif; --mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#10151c; --surface:#171e27; --fg:#e4e9ef; --muted:#9aa6b4; --line:#2a3440; --accent:#7fb1e3; --accent-soft:#1d2d3f;
+  --ok:#6cc690; --ok-soft:#173226; --warn:#e8a653; --warn-soft:#3a2a14; --bad:#ec8080; --bad-soft:#3b1d1d; --idle:#7c8896; --idle-soft:#222b36;
+  --drv:#7fb1e3; --scen:#c39be6; color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#10151c; --surface:#171e27; --fg:#e4e9ef; --muted:#9aa6b4; --line:#2a3440; --accent:#7fb1e3; --accent-soft:#1d2d3f;
+  --ok:#6cc690; --ok-soft:#173226; --warn:#e8a653; --warn-soft:#3a2a14; --bad:#ec8080; --bad-soft:#3b1d1d; --idle:#7c8896; --idle-soft:#222b36;
+  --drv:#7fb1e3; --scen:#c39be6; color-scheme:dark; }
+body { background:var(--bg); color:var(--fg); font:15px/1.5 var(--body); }
+.wrap { max-width:1240px; margin:0 auto; padding-inline:clamp(16px,4vw,40px); padding-block:28px 64px; display:grid; gap:28px; }
+header { display:grid; gap:8px; }
+.eyebrow { font:500 12px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+h1 { font:700 clamp(28px,4vw,40px)/1.1 var(--display); margin:0; letter-spacing:-.01em; text-wrap:balance; }
+h2 { font:700 22px var(--display); margin:0; text-wrap:balance; }
+h3 { font:600 16px var(--display); margin:0; }
+h4 { font:600 11.5px var(--body); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0; }
+p { margin:0; max-width:75ch; }
+.lede { color:var(--muted); }
+a { color:var(--accent); }
+a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; display:grid; gap:12px; min-width:0; }
+.legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr)); gap:12px 24px; }
+.legend div { display:grid; gap:2px; min-width:0; align-content:start; }
+.legend b { font-weight:600; }
+.legend span { color:var(--muted); font-size:13.5px; }
+.scroll { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; }
+th { text-align:left; font:600 11px var(--body); letter-spacing:.05em; text-transform:uppercase; color:var(--muted); padding:7px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+td { padding:7px 8px; border-top:1px solid var(--line); vertical-align:top; }
+tbody tr:first-child td { border-top:0; }
+.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mono { font:12px var(--mono); }
+.sub { font-size:12.5px; color:var(--muted); }
+#overview tbody tr { cursor:pointer; }
+#overview tbody tr:hover td, #overview tbody tr.sel td { background:var(--accent-soft); }
+.chip { font:500 11.5px var(--body); padding:2px 8px; border-radius:999px; white-space:nowrap; background:var(--idle-soft); color:var(--muted); display:inline-block; }
+.chip.ok { background:var(--ok-soft); color:var(--ok); } .chip.bad { background:var(--bad-soft); color:var(--bad); }
+.chip.warn { background:var(--warn-soft); color:var(--warn); } .chip.acc { background:var(--accent-soft); color:var(--accent); }
+.qbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.qbar select { font:14px var(--body); color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:6px 8px; max-width:100%; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(520px,100%),1fr)); gap:16px; align-items:start; }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; display:grid; gap:14px; min-width:0; }
+.card > header { display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; justify-content:space-between; }
+.card > header h3 span { font:500 13px var(--body); color:var(--muted); }
+.step { display:grid; gap:6px; min-width:0; border-top:1px solid var(--line); padding-top:12px; }
+.big { font:700 22px var(--display); font-variant-numeric:tabular-nums; }
+.rc { display:grid; gap:2px; padding:8px 10px; background:var(--bg); border-radius:6px; min-width:0; }
+.rc .top { display:flex; gap:8px; justify-content:space-between; align-items:baseline; }
+.rc .name { font-weight:500; min-width:0; }
+details summary { cursor:pointer; color:var(--accent); font-size:12.5px; }
+details p { font-size:13px; color:var(--muted); margin-top:4px; }
+svg { display:block; width:100%; height:auto; }
+svg text { fill:var(--muted); font:11px var(--mono); }
+svg text.lbl { fill:var(--fg); font:12px var(--body); }
+.problems { font-size:12.5px; color:var(--warn); margin:0; padding-left:18px; }
+.final { display:flex; flex-wrap:wrap; gap:6px 18px; align-items:baseline; }
+footer { color:var(--muted); font-size:12px; }
+code { font:12px var(--mono); background:var(--idle-soft); padding:1px 4px; border-radius:4px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">EXP-005 · protocol pilot · not scored</span>
+    <h1>Structured reasoning pilot</h1>
+    <p class="lede" id="lede"></p>
+  </header>
+
+  <section class="panel" aria-labelledby="howto">
+    <h2 id="howto">How to read the numbers</h2>
+    <div class="legend">
+      <div><b>Base rate (p0)</b><span>The starting point: how often things like this happen, before looking at this case. The model names 2–3 groups of comparable past cases (reference classes) and weights them; the code takes the weighted average.</span></div>
+      <div><b>Proportion vs rate</b><span>A <i>proportion</i> is "share of comparable cases that ended YES". A <i>rate</i> is "n events per d days"; the code turns it into the chance of at least one event in this question's window: 1 − e<sup>−rate × window</sup>.</span></div>
+      <div><b>Source</b><span><code>R3</code> = research item 3 the bot had at the time; <code>question</code> = the question text; <code>memory</code> = the model's own knowledge.</span></div>
+      <div><b>Scenarios</b><span>3–5 ways things could go, written before the drivers. Each has a chance of happening (sums to 100%) and a chance of YES if it happens. Route 1: the code adds up chance × chance of YES.</span></div>
+      <div><b>Drivers (×2 ↓, ×1.5 ↑ …)</b><span>Facts about this case that move it away from the base rate. Each one multiplies the <i>odds</i> by a fixed step (×1.25, ×1.5, ×2, ×3, or divides). Route 2: the code applies them to p0, capped at ×10 in total. The waterfall shows each step in percentage points (pp); the same ×2 moves 20% to 33% (+13 pp) but 2% to 4% (+2 pp).</span></div>
+      <div><b>Routes and the final number</b><span>If the two routes are within 10 pp (or a 1.5× odds factor), the final is their average (on the log-odds scale). If they disagree, the model's own final number is used, with its reason. The model's own number is shown either way.</span></div>
+      <div><b>Arm B vs arm C</b><span><b>B</b>: one call does everything. <b>C</b>: the base rate comes from a separate "blind" call that saw only the question, no news or background; the second call must start from it.</span></div>
+      <div><b>Models</b><span><code>gpt-6.1-sol</code> = frontier (on the tournament roster list); <code>gpt-6-luna</code> = the cheap model the live bot uses today. Both re-forecast the same stored live record with its original research and date.</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="ovh">
+    <h2 id="ovh">All questions</h2>
+    <p class="sub">Final number per model and arm, with its base rate p0 underneath. "Live" is what the bot forecast at the time (median of three cheap models). Not scored: these questions haven't resolved. Click a row to open it.</p>
+    <div class="scroll"><table id="overview"></table></div>
+  </section>
+
+  <section style="display:grid; gap:14px" aria-labelledby="qh">
+    <div class="qbar"><h2 id="qh">Question</h2><label class="sub" for="qsel">Show</label><select id="qsel"></select></div>
+    <div id="qhead" style="display:grid; gap:6px"></div>
+    <div class="grid" id="cards"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (v, d) => v == null ? "–" : (v * 100).toFixed(d ?? (v < 0.1 || v > 0.9 ? 1 : 0)) + "%";
+const pp = (v) => (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(Math.abs(v) < 0.1 ? 1 : 0) + " pp";
+const short = (m) => m.split("/").pop();
+const MODELS = [...new Set(DATA.questions.flatMap((q) => q.answers.map((a) => a.model)))].sort((a, b) => (a.includes("sol") ? -1 : 1) - (b.includes("sol") ? -1 : 1));
+const ARMS = ["B", "C"];
+const ans = (q, m, a) => q.answers.find((x) => x.model === m && x.arm === a);
+const fmtFactor = (f) => f >= 1 ? `×${+f.toFixed(2)}` : `÷${+(1 / f).toFixed(2)}`;
+
+function freqText(c) {
+  const d = c.detail || {};
+  if (c.kind === "rate") return `${d.events} per ${d.per_days} days, over a ${(d.window_days_capped ?? d.window_days)}-day window`;
+  return `${pct(c.p, 1)} of ${d.of_what ? esc(d.of_what) : "comparable cases"}`;
+}
+
+function baseStep(a) {
+  const b = a.forecast.base;
+  if (!b) return `<div class="step"><h4>1 · Base rate</h4><p class="sub">No usable base rate.</p></div>`;
+  const rows = b.classes.map((c) => `<div class="rc"><div class="top"><span class="name">${esc(c.name)}</span><span class="num"><b>${pct(c.p, 1)}</b> <span class="sub">× ${(c.weight * 100).toFixed(0)}%</span></span></div>
+    <div class="sub">${c.kind === "rate" ? "rate: " : "proportion: "}${c.kind === "rate" ? esc(freqText(c)) : freqText(c)} · <span class="chip ${c.source === "memory" ? "warn" : "acc"}">${esc(c.source)}</span></div>
+    <details><summary>Why it fits, how it differs</summary><p><b>Fits:</b> ${esc(c.fit)}</p><p><b>Differs:</b> ${esc(c.misfit)}</p></details></div>`).join("");
+  return `<div class="step"><h4>1 · Base rate ${a.blind ? '<span class="chip acc">blind call: question only</span>' : ""}</h4>${rows}
+    <div class="final"><span>p0 = <span class="big">${pct(a.forecast.p0, 1)}</span></span><span class="sub">confidence: ${esc(b.confidence || "n/a")}</span></div>
+    <details><summary>The model's reasoning for these weights</summary><p>${esc(b.reasoning)}</p></details></div>`;
+}
+
+function scenStep(a) {
+  const f = a.forecast;
+  if (!f.scenarios.length) return `<div class="step"><h4>2 · Scenarios</h4><p class="sub">None usable.</p></div>`;
+  const rows = f.scenarios.map((s) => `<tr><td><b style="font-weight:500">${esc(s.name)}</b><div class="sub">${esc(s.description)}</div></td><td class="num">${pct(s.p)}</td><td class="num">${pct(s.p_yes)}</td><td class="num">${pct(s.p * s.p_yes, 1)}</td></tr>`).join("");
+  return `<div class="step"><h4>2 · Scenarios <span style="color:var(--scen)">(route 1)</span></h4><div class="scroll"><table><thead><tr><th>Scenario</th><th class="num">Chance</th><th class="num">P(YES) if so</th><th class="num">Adds</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td><b>Scenario route</b></td><td></td><td></td><td class="num"><b style="color:var(--scen)">${f.p_scen == null ? "not used" : pct(f.p_scen, 1)}</b></td></tr></tfoot></table></div></div>`;
+}
+
+// Waterfall: one row per driver on a 0-100% axis; the bar runs from the probability before the driver to after it.
+function driverStep(a) {
+  const f = a.forecast, wf = f.waterfall || [];
+  const W = 560, L = 0, rowH = 40, top = 22, x = (p) => 8 + p * (W - 16);
+  const n = f.drivers.length, H = top + rowH * (n + 2) + 6;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Driver waterfall from the base rate to the driver route">`;
+  [0, 0.25, 0.5, 0.75, 1].forEach((t) => { s += `<line x1="${x(t)}" x2="${x(t)}" y1="${top - 6}" y2="${H - 4}" stroke="var(--line)"/><text x="${x(t)}" y="12" text-anchor="${t === 0 ? "start" : t === 1 ? "end" : "middle"}">${t * 100}%</text>`; });
+  const row = (i, label, from, to, color, right) => {
+    const y = top + rowH * i;
+    s += `<text class="lbl" x="${x(0)}" y="${y + 12}">${esc(label.length > 78 ? label.slice(0, 76) + "…" : label)}</text>`;
+    const a1 = Math.min(x(from), x(to)), w = Math.max(Math.abs(x(to) - x(from)), 2);
+    s += `<rect x="${a1}" y="${y + 18}" width="${w}" height="12" rx="2" fill="${color}"/>`;
+    s += `<text x="${W - 8}" y="${y + 28}" text-anchor="end">${right}</text>`;
+  };
+  row(0, "Base rate p0", 0, f.p0, "var(--idle)", pct(f.p0, 1));
+  f.drivers.forEach((d, i) => {
+    const st = wf[i];
+    row(i + 1, `${d.direction === "up" ? "↑" : "↓"} ${fmtFactor(d.factor)} · ${d.text} [${d.evidence}]`, st.before, st.after,
+        d.direction === "up" ? "var(--ok)" : "var(--bad)", `${pp(st.after - st.before)} → ${pct(st.after, 1)}${st.capped ? " (cap)" : ""}`);
+  });
+  row(n + 1, "Driver route p_drv", 0, f.p_drv, "var(--drv)", `${pct(f.p_drv, 1)} (odds ${fmtFactor(f.driver_total)})`);
+  s += "</svg>";
+  const list = f.drivers.map((d) => `<li>${d.direction === "up" ? "↑" : "↓"} <b>${fmtFactor(d.factor)}</b> ${esc(d.text)} <span class="chip ${d.evidence === "memory" ? "warn" : "acc"}">${esc(d.evidence)}</span><div class="sub">Not double-counted because: ${esc(d.independence)}</div></li>`).join("");
+  return `<div class="step"><h4>3 · Drivers <span style="color:var(--drv)">(route 2)</span></h4><div class="scroll">${s}</div>
+    <details><summary>Full driver texts</summary><ul style="margin:6px 0 0; padding-left:18px; display:grid; gap:6px; font-size:13px">${list}</ul></details></div>`;
+}
+
+function routeStep(a, q) {
+  const f = a.forecast, W = 560, H = 54, x = (p) => 8 + p * (W - 16);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Both routes and the final number"><line x1="8" x2="${W - 8}" y1="22" y2="22" stroke="var(--line)" stroke-width="2"/>`;
+  [0, 0.5, 1].forEach((t) => { s += `<text x="${x(t)}" y="50" text-anchor="${t === 0 ? "start" : t === 1 ? "end" : "middle"}">${t * 100}%</text>`; });
+  if (q.live.aggregate != null) s += `<line x1="${x(q.live.aggregate)}" x2="${x(q.live.aggregate)}" y1="8" y2="36" stroke="var(--idle)" stroke-width="2" stroke-dasharray="3 2"><title>live bot ${pct(q.live.aggregate)}</title></line>`;
+  if (f.p_scen != null) s += `<circle cx="${x(f.p_scen)}" cy="22" r="6" fill="var(--scen)"><title>scenario route ${pct(f.p_scen, 1)}</title></circle>`;
+  if (f.p_drv != null) s += `<circle cx="${x(f.p_drv)}" cy="22" r="6" fill="var(--drv)"><title>driver route ${pct(f.p_drv, 1)}</title></circle>`;
+  s += `<path d="M${x(f.final)} 4 l-5 -0 l5 8 l5 -8 z" fill="var(--fg)"/><text x="${x(f.final)}" y="44" text-anchor="middle" style="fill:var(--fg)">final</text></svg>`;
+  const verdict = f.agree === true ? `<span class="chip ok">routes agree</span> final = their average: <b>${pct(f.code_final, 1)}</b>`
+    : f.agree === false ? `<span class="chip warn">routes disagree</span> the model's own number is used: <b>${pct(f.code_final, 1)}</b>`
+    : `<span class="chip warn">a route is missing</span> the model's own number is used: <b>${pct(f.code_final, 1)}</b>`;
+  const liveSame = q.live.members[a.model];
+  return `<div class="step"><h4>4 · Both routes → final</h4><div class="scroll">${s}</div>
+    <div class="sub"><span style="color:var(--scen)">●</span> scenarios ${pct(f.p_scen, 1)} · <span style="color:var(--drv)">●</span> drivers ${pct(f.p_drv, 1)} · dashed line: live bot ${pct(q.live.aggregate)}</div>
+    <div>${verdict}</div>
+    <div class="final"><span>Final <span class="big">${pct(f.final, 1)}</span></span><span class="sub">model's own number ${pct(f.model_final, 1)} · trusts: ${esc(f.trusted_route || "n/a")}</span>${liveSame != null ? `<span class="sub">same model, live prompt: ${pct(liveSame)}</span>` : ""}</div>
+    ${f.reconcile_reason ? `<details><summary>The model's reconciliation</summary><p>${esc(f.reconcile_reason)}</p></details>` : ""}</div>`;
+}
+
+function card(q, a) {
+  const head = `<header><h3>${esc(short(a.model))} <span>· arm ${a.arm}${a.blind ? " (blind base rate)" : ""}</span></h3><span class="sub">$${a.cost.toFixed(3)} · ${a.calls} call${a.calls > 1 ? "s" : ""}</span></header>`;
+  if (!a.forecast) return `<article class="card">${head}<p><span class="chip bad">no forecast</span> ${esc(a.error)}</p></article>`;
+  const probs = a.forecast.problems.length ? `<ul class="problems">${a.forecast.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
+  return `<article class="card">${head}${probs}${baseStep(a)}${scenStep(a)}${driverStep(a)}${routeStep(a, q)}</article>`;
+}
+
+function renderQuestion(qid) {
+  const q = DATA.questions.find((x) => String(x.qid) === String(qid)) || DATA.questions[0];
+  $("qsel").value = q.qid;
+  document.querySelectorAll("#overview tbody tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.q === String(q.qid)));
+  const members = Object.entries(q.live.members).map(([m, p]) => `${esc(short(m))} ${p == null ? "–" : pct(p)}`).join(" · ");
+  const items = q.research.map((it, i) => `<li><span class="mono">R${i}</span> ${esc(it.source)}${it.date ? ` · ${esc(it.date)}` : ""} · ${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.title || it.url)}</a>` : esc(it.title || "search summary (no URL kept)")}</li>`).join("");
+  $("qhead").innerHTML = `<h3 style="font-size:19px">${esc(q.title)}</h3>
+    <p class="sub">Question ${q.qid} · forecast as of ${esc(q.as_of)} · ${q.window_days != null ? `${q.window_days.toFixed(1)} days to scheduled resolution` : ""} · live bot ${pct(q.live.aggregate)} (${members})</p>
+    <details><summary>Research the models had (${q.research.length} items)</summary><ul style="margin:6px 0 0; padding-left:0; list-style:none; display:grid; gap:3px; font-size:13px">${items}</ul></details>`;
+  $("cards").innerHTML = MODELS.flatMap((m) => ARMS.map((a) => ans(q, m, a)).filter(Boolean).map((a) => card(q, a))).join("");
+  try { localStorage.setItem("exp005-q", String(q.qid)); } catch (e) {}
+}
+
+function renderOverview() {
+  const cols = MODELS.flatMap((m) => ARMS.map((a) => [m, a]));
+  const head = `<thead><tr><th>Question</th><th class="num">Live</th>${cols.map(([m, a]) => `<th class="num">${esc(short(m))} ${a}</th>`).join("")}</tr></thead>`;
+  const body = DATA.questions.map((q) => `<tr data-q="${q.qid}" tabindex="0"><td><span class="mono">${q.qid}</span> ${esc(q.title.length > 80 ? q.title.slice(0, 78) + "…" : q.title)}</td><td class="num">${pct(q.live.aggregate)}</td>${cols.map(([m, a]) => {
+    const x = ans(q, m, a);
+    if (!x) return `<td class="num">–</td>`;
+    if (!x.forecast) return `<td class="num"><span class="chip bad">failed</span></td>`;
+    return `<td class="num"><b>${pct(x.forecast.final)}</b><div class="sub">p0 ${pct(x.forecast.p0)}${x.forecast.agree === false ? " · override" : ""}</div></td>`;
+  }).join("")}</tr>`).join("");
+  $("overview").innerHTML = head + `<tbody>${body}</tbody>`;
+  $("overview").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-q]"); if (tr) { renderQuestion(tr.dataset.q); $("qh").scrollIntoView({ behavior: "smooth" }); } });
+  $("overview").addEventListener("keydown", (e) => { const tr = e.target.closest("tr[data-q]"); if (tr && e.key === "Enter") renderQuestion(tr.dataset.q); });
+}
+
+const nAns = DATA.questions.reduce((s, q) => s + q.answers.length, 0);
+$("lede").textContent = `Ten disputed questions from the live bot, re-forecast with the structured protocol (base rate → scenarios → drivers → reconcile, all arithmetic in code). ${nAns} answers from a frontier and a cheap model, arms B and C. Run ${DATA.run}, cost $${DATA.cost.toFixed(2)}. This shows how the protocol behaves; accuracy is decided later, on resolved questions (EXP-005 card).`;
+$("qsel").innerHTML = DATA.questions.map((q) => `<option value="${q.qid}">${q.qid} · ${esc(q.title.length > 70 ? q.title.slice(0, 68) + "…" : q.title)}</option>`).join("");
+$("qsel").addEventListener("change", () => renderQuestion($("qsel").value));
+$("foot").innerHTML = `Built by <code>poetry run python tools/build_structured_view.py</code> from <code>data/experiments/EXP-005/${esc(DATA.run)}</code>. Protocol <code>structured-v1</code> (<code>forecast_engine/structured.py</code>).`;
+renderOverview();
+let start = DATA.questions[0].qid;
+try { start = localStorage.getItem("exp005-q") || start; } catch (e) {}
+renderQuestion(start);
+</script>

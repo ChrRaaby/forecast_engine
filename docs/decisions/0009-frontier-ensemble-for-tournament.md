@@ -35,3 +35,16 @@ newest models (they may know outcomes; protocol §1), so the switch has to be ju
 - nostreambot found 3 members ≈ 6 on accuracy; five members are chosen for diversity, so member error correlation (B-47) should
   show whether Grok and the Chinese model actually add independent signal.
 - The shadow comparison may show the money isn't buying accuracy; then we revisit at the PoC gate.
+
+## Amendment 2026-10-07: method experiments run on frontier models
+- **Change:** experiments that decide *forecasting method* for the tournament bot (first: EXP-005, structured reasoning) run on
+  frontier models, not cheap ones. A method that helps a cheap model may not help a strong one (rigid structure can help weak
+  models and hurt strong ones), so evidence gathered on cheap models has little bearing on the frontier bot's design (Christian).
+  This replaces "all experiments stay cheap" above for method experiments; research and plumbing experiments may still use cheap models.
+- **How:** live-replay of our own stored records with their frozen research and as_of. A model may re-forecast a record only if it
+  was released at least one day before the record's as_of (`evals/model_release.py`, refused in code, unit-tested). That keeps the
+  model from knowing anything after as_of (protocol T1). Long-running questions stay in, as their as_of is recent.
+- **Budget:** **$180 experiment budget for frontier-model method experiments**, approved by Christian 2026-10-07, on top of the
+  $100 PoC budget and separate from the $300 tournament budget. Spend is tracked in `docs/experiments/budget-ledger.md`; each run
+  has its own hard cap in code.
+- **Cost control:** screens use 2 frontier members at k=1; only the confirmation uses the full roster at k=3 (EXP-005 card).

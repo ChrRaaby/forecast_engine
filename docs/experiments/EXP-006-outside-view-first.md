@@ -1,5 +1,7 @@
 # EXP-006: Outside view first
 
+> **Merged into EXP-005 on 2026-10-07** (Christian): arm B here became EXP-005's protocol base-rate step, arm C (blind outside-view call) is EXP-005 arm C, and arm D (retrieved anchor, B-56) is deferred to a new card once the library is big enough. This card is kept for the reasoning; it will not be run as written.
+
 _Card written BEFORE running. Results section filled by the report generator. Not run yet: needs B-38 (frozen research + outcomes),
 B-31 (reports) and, for arm D, B-56 (reference-class library). Runs before EXP-004. Absorbs B-12's experiment._
 
