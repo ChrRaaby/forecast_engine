@@ -32,6 +32,14 @@ jobs:
           installer-parallel: true
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
+      # B-61: the retry ledger (state/retries.json) survives between runs in the Actions cache. Restore the newest entry,
+      # save under a new key at the end (cache entries are immutable). A cache miss just means no history.
+      - name: Restore retry ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: retry-ledger-${{ github.run_id }}
+          restore-keys: retry-ledger-
       - name: Run bot
         run: poetry run python main.py --mode tournament --publish
         env:
@@ -57,6 +65,12 @@ jobs:
           ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
           ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
           ASKNEWS_API_KEY: ${{ secrets.ASKNEWS_API_KEY }}
+      - name: Save retry ledger
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: retry-ledger-${{ github.run_id }}
       # Records can contain licensed news text (AskNews), and artifacts on a public repo are downloadable by anyone, so they
       # are encrypted with ARCHIVE_KEY. tools/build_monitor.py decrypts them into the private archive. Never upload plaintext.
       - name: Encrypt forecast records

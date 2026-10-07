@@ -55,6 +55,7 @@ from forecast_engine.config import (  # noqa: E402
 from forecast_engine.core import ForecastFailed, forecast  # noqa: E402
 from forecast_engine.llm import LlmClient, OpenRouterClient  # noqa: E402
 from forecast_engine.records import RecordWriter  # noqa: E402
+from forecast_engine.retries import RetryLedger  # noqa: E402
 from forecast_engine.research import gather_research  # noqa: E402
 from forecast_engine.schema import ForecastRecord, QuestionSnapshot  # noqa: E402
 
@@ -164,6 +165,7 @@ class EngineBot(ForecastBot):
         writer: RecordWriter,
         publish: bool,
         max_run_cost_usd: float,
+        retries: RetryLedger | None = None,
         max_concurrent: int = 3,
     ) -> None:
         super().__init__(
@@ -174,6 +176,7 @@ class EngineBot(ForecastBot):
         )
         self.clock, self.cfg, self.llm, self.writer = clock, cfg, llm, writer
         self.max_run_cost_usd = max_run_cost_usd
+        self.retries = retries
         self.spent_usd = 0.0
         self._sem = asyncio.Semaphore(max_concurrent)
 
@@ -189,6 +192,7 @@ class EngineBot(ForecastBot):
             except ForecastFailed as e:
                 self.spent_usd += e.record.cost_usd
                 self.writer.write(e.record, published=False, status="failed")
+                self._count_failure(question)
                 raise
             self.spent_usd += record.cost_usd
             if self.publish_reports_to_metaculus and research.is_empty:
@@ -206,6 +210,7 @@ class EngineBot(ForecastBot):
             except Exception as e:
                 record.errors.append(f"could not convert forecast for Metaculus: {type(e).__name__}: {e}")
                 self.writer.write(record, published=False, status="failed")
+                self._count_failure(question)
                 raise
             report = report_type(
                 question=question,
@@ -230,7 +235,14 @@ class EngineBot(ForecastBot):
                     raise
                 published = True
             self.writer.write(record, published=published, status="ok")
+            if self.retries:
+                self.retries.succeeded(question.id_of_question)
             return report
+
+    def _count_failure(self, question: MetaculusQuestion) -> None:
+        """B-61: forecasting failures repeat on every run, so they count towards the retry cap."""
+        if self.retries:
+            self.retries.failed(question.id_of_question, self.clock.now())
 
     # The template's per-type hooks are unused: _run_individual_question above replaces the whole pipeline.
     async def run_research(self, question):  # pragma: no cover
@@ -249,6 +261,18 @@ class EngineBot(ForecastBot):
 def question_forecastable(q: MetaculusQuestion, clock: Clock) -> tuple[bool, str]:
     state = q.state.value if q.state is not None else None
     return guards.forecastable(state, q.close_time, q.resolution_string, clock.now())
+
+
+def skip_capped(questions: list[MetaculusQuestion], retries: RetryLedger, clock: Clock) -> list[MetaculusQuestion]:
+    """Drop questions that hit the retry cap (B-61), logging why."""
+    out = []
+    for q in questions:
+        why = retries.blocked(q.id_of_question, clock.now())
+        if why:
+            logger.warning(f"Skipping {q.page_url}: {why}")
+        else:
+            out.append(q)
+    return out
 
 
 def check_clock(clock: Clock) -> None:
@@ -317,6 +341,7 @@ def main() -> int:
     print(f"🤖  forecast_engine {CONFIG_VERSION} (config {run_cfg.config_hash()}) mode={args.mode} "
           f"publish={'yes' if args.publish else 'no (dry run)'} max_questions={args.max_questions} max_cost=${args.max_cost}")
 
+    retries = RetryLedger(CONFIG_VERSION) if args.publish else None  # dry runs neither use nor change the ledger
     bot = EngineBot(
         clock=clock,
         cfg=run_cfg,
@@ -324,6 +349,7 @@ def main() -> int:
         writer=RecordWriter(run_id),
         publish=args.publish,
         max_run_cost_usd=args.max_cost,
+        retries=retries,
     )
     check_clock(clock)
     questions = fetch_questions(bot.metaculus_client, args.mode, clock, args.main_site_max)
@@ -338,6 +364,8 @@ def main() -> int:
     if args.mode in ("tournament", "wide") or args.publish:
         questions = [q for q in questions if not q.already_forecasted]
     supported = [q for q in questions if isinstance(q, (BinaryQuestion, MultipleChoiceQuestion, NumericQuestion))]
+    if retries:
+        supported = skip_capped(supported, retries, clock)
     if len(supported) < len(questions):
         logger.warning(f"Skipping {len(questions) - len(supported)} unsupported questions (date/conditional)")
     selected = supported[: args.max_questions]
@@ -347,6 +375,8 @@ def main() -> int:
     reports = asyncio.run(bot.forecast_questions(selected, return_exceptions=True))
     print_run_summary_banner(reports, will_publish=args.publish, tournament_url=TOURNAMENT_URLS.get(args.mode))
     print(f"Records: {bot.writer.run_dir}  |  run cost ${bot.spent_usd:.4f}")
+    if retries:
+        retries.save()
     all_failed = bool(reports) and all(isinstance(r, BaseException) for r in reports)
     return 1 if all_failed else 0
 
