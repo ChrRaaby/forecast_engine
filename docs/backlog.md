@@ -48,12 +48,15 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 20 | B-50 | EXP-005: graph-first reasoning vs free text (after EXP-004) | I-16, I-12, R-21; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 21 | B-11 | Experiment: prediction capping (e.g. clip binary to [0.02, 0.98]) | R-07 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 22 | B-12 | Experiment: explicit base-rate step + similar resolved questions in the prompt (no "Bayesian" wording). Superseded: the experiment is now EXP-006 (B-58), library in B-56 | R-08, R-09, R-21 | Claude Code | M | Dropped | Sonnet 5.5 · PC |
-| 23 | B-13 | Experiment: second research source (as-of prediction-market prices) | R-06, research/04 | Claude Code | M | Todo | Sonnet 5.5 · PC |
+| 23 | B-13 | Experiment: second research source (as-of prediction-market prices). Also covers the "other communities" part of I-19 | R-06, research/04 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 24 | B-15 | Experiment: numeric-question pipeline vs. template default | R-19 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 25 | B-56 | Reference-class library: Yes-rates of resolved binary questions per tournament/category and a similar-question lookup (up to 5 with outcomes) over our resolved live records + B-39 data; hard "resolved before as-of" filter with a unit test (protocol T1/T6). Needs B-38. Feeds EXP-006 arm D | I-18, R-08, R-09; research/10 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 26 | B-58 | EXP-006: outside view first, 4 arms (baseline / prompted anchor / blind outside-view call / retrieved anchor) on frozen research. Runs **before** EXP-004 (B-49), whose arm B then uses the winner. Needs B-38, B-31, B-56 (arm D) | I-18, R-08, R-09; research/10 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 27 | B-59 | EXP-007: Fermi decomposition with code doing the arithmetic (rate shape: 1 − exp(−rate × t); numeric: Monte Carlo percentiles), only on matching-shape questions, reported per shape. After EXP-006; relates to B-15 | I-18, R-19; research/10 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 28 | B-57 | Anchor → adjustments → final on B-46's reasoning graph; the monitor shows how far each forecast moved from its base rate. Alongside B-46 | I-18; research/10 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+| 29 | B-62 | Shadow-run mode: run an unpublished config alongside live on the same questions, stored separately and scored as they resolve. Prerequisite for EXP-008 and the last step of EXP-005's path to live | I-19, I-16; research/12 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 30 | B-64 | EXP-008: research desk, 3 arms (baseline / critic lists ≤5 gaps → targeted Gemini searches / critic hunts for evidence against the leading conclusion), shadow run on live questions. Needs B-62 | I-19, R-03, R-06; research/12 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 31 | B-65 | EXP-009: Delphi round, 3 arms (independent median / revise after seeing others' reasoning + numbers / arguments only), replay on frozen research, herding check via B-47. Needs B-38, B-31, B-47; after EXP-004 | I-19, R-04; research/12 | Claude Code | M | Todo | Opus 5.5 · PC |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
@@ -96,6 +99,7 @@ _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gat
 ## Parked
 | ID | Item | Why parked | Revisit when |
 |---|---|---|---|
+| B-63 | Lessons library: dated lessons from post-mortems on resolved misses (B-46 graphs), retrievable only for questions opened after each lesson's date (I-19; research/12; Sonnet 5.5 · PC) | Needs B-38 outcomes, B-46, ~50 resolved misses | After ~50 resolved misses |
 | B-23 | Graph DB for analysing past forecasts, then as a reasoning aid | Needs B-20 data first | After M2 |
 | B-24 | Fine-tune an open-weight model on resolved questions (4090) | Promising (R-12) but a large effort | After M3, if gap to frontier remains |
 | B-25 | Prediction-market trading with real money | Non-goal for v1; legal/tax check needed. Paper-trading side branch: B-41…B-44 | After the B-42 gate and B-44 check |
