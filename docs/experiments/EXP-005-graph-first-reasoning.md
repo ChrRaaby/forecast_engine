@@ -55,7 +55,8 @@ v3 is what the screen runs. Any later change counts as variant 4 and is reported
 3. **Freeze:** protocol version, prompts, parser and analysis script (B-31 report generator) committed and hashed; the card's
    Results section records the hashes and the number of variants tried in development.
 4. **Confirmation (confirmation set, k=3):** A vs the chosen arm with the **full frontier roster** (B-16). Per-question score = mean
-   over the 3 repeats.
+   of the 3 repeats' scores, each repeat scored on its own (the expected score of one live run; protocol §5 as amended
+   2026-10-08). Analysis: `python -m evals.report <table> --baseline A --arm <B or C> --rule exp005 --card <this card>`.
 
 ## Metrics
 - **Primary:** binary log score of the aggregate, paired per question (chosen arm − A). 95% CI by cluster bootstrap (question series
@@ -72,20 +73,29 @@ v3 is what the screen runs. Any later change counts as variant 4 and is reported
 | **Structure crowding out judgement** | how often the two routes disagree and the model overrides; code number vs model number scores; score difference vs A by question type and by how much research there was; failure rate |
 
 ## Expected effect, MDE, cost
-- **MDE:** stated after the screen from the measured SD(diff) at N = 100+ (protocol §5: ≈ 2.8·SD/√N; for Brier with SD 0.06,
-  N = 100 → 0.017).
+- **MDE:** stated after the screen from the measured SD(diff) at N = 100+ (protocol §5: ≈ 2.8·SD/√N, and the cluster-aware
+  2.8 × bootstrap SE; for Brier with SD 0.06, N = 100 → 0.017). Descriptive since 2026-10-08: the kill rule uses the fixed
+  threshold below, not the MDE.
 - **Cost (from the pilot's measured cost; budget $180, ledger `docs/experiments/budget-ledger.md`):** the screen ≈ 50 records ×
   2 members × 4 calls; confirmation ≈ 100 records × roster × 2-3 calls × 3 repeats. The confirmation roster size is fixed before
   the run so the total fits the $180; at least 3 members. Each run has a hard cap in code.
 
 ## Decision rule (confirmation set only)
 - **Adopt** (then shadow run → Christian's OK → CONFIG_VERSION bump, see "Path to live") only if: mean Δ log score > 0 **and** its
-  95% CI excludes 0, **and** the reliability term is not worse than A's by more than 0.005, **and** parse failures are not higher
-  than A's by more than 2 percentage points.
-- **Kill:** point estimate ≤ 0, **or** CI upper bound < MDE/2 → structured reasoning is dropped for the season. No re-tuning on the
-  confirmation set.
+  95% CI excludes 0, **and** the reliability term is not worse than A's by more than 0.005, **and** the failure rate (member
+  forecasts with no usable number after retries, any cause: parse, validation, timeout) is not higher than A's by more than 2
+  percentage points. "Routes disagreed, the model's own number was used" is not a failure.
+- **Kill:** point estimate ≤ 0, **or** CI upper bound < **0.015 nats** of log score (≈ 2 Metaculus baseline points per question, the
+  smallest effect worth the protocol's extra calls and complexity) → structured reasoning is dropped for the season. No re-tuning
+  on the confirmation set.
+- **Adopt and kill both hold** (CI above 0 but entirely below 0.015: real but too small) → **kill**.
 - **Otherwise inconclusive:** keep A. A later retry needs a new card, new unseen questions and counts as a new variant.
 - Report per-model results either way; a single model's win does not override the aggregate rule.
+- In code: `evals/report.py`, `EXP005_RULE` (`--rule exp005`).
+- **Amended 2026-10-08 with Christian, before any scored run** (analysis only; prompts, parser and arms unchanged, so not a
+  protocol variant): per-question score = mean of per-repeat scores (was ambiguous; the protocol said average forecasts first);
+  kill threshold fixed at 0.015 nats (was CI upper < MDE/2 with the MDE from the screen, whose k = 1 / 2-member noise would
+  overstate the confirmation's); adopt-and-kill conflict → kill; failure rate defined as above (was "parse failures").
 
 ## Path to live
 1. Win on the confirmation set under the rule above.

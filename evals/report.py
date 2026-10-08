@@ -3,7 +3,7 @@
 Reads a long table of forecasts, scores it with `evals/scoring.py` and writes a Markdown report:
 
     poetry run python -m evals.report runs.csv --baseline A --name EXP-005 --rule exp005
-    poetry run python -m evals.report runs.csv --baseline A --name EXP-005 --rule exp005 --mde 0.04 \\
+    poetry run python -m evals.report runs.csv --baseline A --name EXP-005 --rule exp005 --arm B \\
         --card docs/experiments/EXP-005-graph-first-reasoning.md     # also fills the card's "Results (generated)" section
 
 Input (CSV, or JSONL with one object per line), one row per forecast:
@@ -16,11 +16,15 @@ Input (CSV, or JSONL with one object per line), one row per forecast:
   forward set), `cost_usd`, `tokens` (or `prompt_tokens` + `completion_tokens`), and any other column to break results down by
   (`--by domain`).
 
-Method (protocol §5): the k repeats of a question are averaged into one forecast *before* scoring (what we would submit). Each
-arm is compared with the baseline arm on the questions both have, as a per-question paired difference. The 95% CI is a
-percentile cluster bootstrap (resample `cluster_id`, 10,000 reps, fixed seed). MDE ≈ 2.8·SD(diff)/√N. Calibration is the Brier
-reliability term of the Murphy decomposition over 10 bins. `DecisionRule` + `apply_decision_rule` turn a pre-registered rule
-into code; the report never calls a difference a win unless its CI excludes 0 (T9).
+Method (protocol §5, amended 2026-10-08): each of a question's k repeats is scored on its own and the scores are averaged
+(`--repeat-mode score`, default). That estimates the score of one live run, which is what the bot submits (one call per member).
+`--repeat-mode forecast` averages the forecasts first and scores once; use it only for a config that submits a k-run average
+(log and Brier are curved, so averaging forecasts first gives the noisier config a bonus). The report also shows the other mode's
+primary comparison as a descriptive line. Each arm is compared with the baseline arm on the questions both have, as a
+per-question paired difference. The 95% CI is a percentile cluster bootstrap (resample `cluster_id`, 10,000 reps, fixed seed).
+MDE ≈ 2.8·SD(diff)/√N, plus a cluster-aware MDE = 2.8·bootstrap SE. Calibration is the Brier reliability term of the Murphy
+decomposition over 10 bins. `DecisionRule` + `apply_decision_rule` turn a pre-registered rule into code; the report never calls
+a difference a win unless its CI excludes 0 (T9).
 
 The report is deterministic: the same input, seed and generator give the same bytes (no timestamps). Its header records the git
 commit, the sha256 of the input and of this file, the seed, N per arm and every dropped question with its reason.
@@ -46,7 +50,7 @@ import numpy as np
 
 from . import scoring
 
-REPORT_VERSION = "1.0.0"
+REPORT_VERSION = "1.1.0"
 DEFAULT_SEED = 3101
 DEFAULT_REPS = 10_000
 DEFAULT_BINS = 10
@@ -54,6 +58,8 @@ AGGREGATE = "aggregate"
 FORWARD_SOURCE = "benchmark-forward"
 REQUIRED_COLUMNS = ("question_id", "cluster_id", "arm", "member", "repeat", "p", "outcome")
 FEW_CLUSTERS = 20  # below this the percentile bootstrap is known to give too-narrow intervals
+REPEAT_MODES = ("score", "forecast")  # score each repeat then average (default) / average forecasts then score
+NO_KIND = "failed (no kind given)"
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTS = ROOT / "docs" / "experiments"
 
@@ -74,6 +80,7 @@ METRICS = {
     "log": Metric("log", "log score", True, scoring.binary_log_score),
     "brier": Metric("brier", "Brier", False, scoring.binary_brier),
 }
+BASELINE_SCORE = Metric("baseline", "Metaculus baseline score", True, scoring.binary_baseline_score)  # descriptive only
 
 
 # --------------------------------------------------------------------------- input
@@ -209,6 +216,43 @@ class ArmData:
     def repeat_values(self, member: str = AGGREGATE) -> dict[str, list[float]]:
         return {qid: [p for p in reps.values() if p is not None] for qid, reps in self._source(member).items()}
 
+    def question_scores(
+        self, metric: Metric, outcomes: dict[str, int], mode: str = "score", member: str = AGGREGATE
+    ) -> dict[str, float | None]:
+        """Question -> score (None if every repeat failed).
+
+        mode "score": each successful repeat is scored on its own and the scores are averaged: the expected score of one live
+        run. mode "forecast": the repeats' forecasts are averaged first and scored once: the score of a k-run average."""
+        if mode not in REPEAT_MODES:
+            raise ValueError(f"unknown repeat mode {mode!r}; choose from {REPEAT_MODES}")
+        out: dict[str, float | None] = {}
+        for qid, ok in self.repeat_values(member).items():
+            if qid not in outcomes:
+                continue
+            if not ok:
+                out[qid] = None
+            elif mode == "score":
+                out[qid] = float(np.mean([metric.score(p, outcomes[qid]) for p in ok]))
+            else:
+                out[qid] = metric.score(float(np.mean(ok)), outcomes[qid])
+        return out
+
+    def calibration_points(
+        self, outcomes: dict[str, int], mode: str = "score", qids: Iterable[str] | None = None
+    ) -> tuple[list[float], list[int]]:
+        """(forecasts, outcomes) for calibration of the aggregate: every successful repeat in mode "score" (each is a forecast we
+        could have submitted), the per-question mean in mode "forecast"."""
+        keep = set(qids) if qids is not None else None
+        probs: list[float] = []
+        outs: list[int] = []
+        for qid, ok in sorted(self.repeat_values().items()):
+            if not ok or qid not in outcomes or (keep is not None and qid not in keep):
+                continue
+            ps = ok if mode == "score" else [float(np.mean(ok))]
+            probs += ps
+            outs += [outcomes[qid]] * len(ps)
+        return probs, outs
+
     @property
     def aggregate_attempts(self) -> int:
         return sum(len(r) for r in self.aggregate.values())
@@ -311,7 +355,7 @@ def prepare(rows: Sequence[Row], aggregation: str = "auto") -> Prepared:
         a.member_rows += 1
         if r.failed:
             a.member_failures += 1
-            a.errors[r.error or "failed (no kind given)"] += 1
+            a.errors[r.error or NO_KIND] += 1
 
     for a in arms.values():
         qids = {q for m in a.members.values() for q in m} | {q for (arm, q) in given if arm == a.name}
@@ -398,6 +442,11 @@ class Comparison:
     dropped: Counter = field(default_factory=Counter)
 
     @property
+    def mde_cluster(self) -> float:
+        """Cluster-aware MDE: 2.8 × the bootstrap standard error (honest when questions come in clusters)."""
+        return 2.8 * self.se_boot if self.n else float("nan")
+
+    @property
     def win_rate(self) -> float:
         """Share of questions where the arm scored better than the baseline (ties count half)."""
         return (self.wins + 0.5 * self.ties) / self.n if self.n else float("nan")
@@ -428,9 +477,8 @@ _ABSENT = object()
 
 
 def paired_compare(
-    arm_fc: dict[str, float | None],
-    base_fc: dict[str, float | None],
-    outcomes: dict[str, int],
+    arm_scores: dict[str, float | None],
+    base_scores: dict[str, float | None],
     clusters: dict[str, str],
     metric: Metric,
     *,
@@ -440,15 +488,16 @@ def paired_compare(
     seed: int = DEFAULT_SEED,
     restrict: set[str] | None = None,
 ) -> Comparison:
-    """Paired comparison on the questions both sides forecast. Questions missing or failed on one side are dropped and
-    counted by reason. `restrict` limits the comparison to a subset of questions (breakdowns)."""
-    qids = sorted((set(arm_fc) | set(base_fc)) & set(outcomes))
+    """Paired comparison of per-question scores (`ArmData.question_scores`; None = every forecast failed) on the questions
+    both sides scored. Questions missing or failed on one side are dropped and counted by reason. `restrict` limits the
+    comparison to a subset of questions (breakdowns)."""
+    qids = sorted(set(arm_scores) | set(base_scores))
     if restrict is not None:
         qids = [q for q in qids if q in restrict]
     dropped: Counter = Counter()
     paired = []
     for q in qids:
-        a, b = arm_fc.get(q, _ABSENT), base_fc.get(q, _ABSENT)
+        a, b = arm_scores.get(q, _ABSENT), base_scores.get(q, _ABSENT)
         if a is _ABSENT:
             dropped[f"not run by {arm}"] += 1
         elif b is _ABSENT:
@@ -459,8 +508,8 @@ def paired_compare(
             dropped[f"every forecast failed in {baseline}"] += 1
         else:
             paired.append(q)
-    sa = np.array([metric.score(arm_fc[q], outcomes[q]) for q in paired])
-    sb = np.array([metric.score(base_fc[q], outcomes[q]) for q in paired])
+    sa = np.array([arm_scores[q] for q in paired], dtype=float)
+    sb = np.array([base_scores[q] for q in paired], dtype=float)
     d = sa - sb
     n = len(paired)
     cl = [clusters[q] for q in paired]
@@ -516,6 +565,11 @@ class DecisionRule:
 
     Adopt needs every adopt condition; kill needs any kill condition; neither → inconclusive. A `None` threshold switches its
     condition off. If both adopt and kill hold (a significant effect smaller than the kill threshold), `on_conflict` decides.
+
+    Kill thresholds: `kill_if_ci_upper_below` is a fixed smallest effect worth having, written into the card before the run
+    (preferred: it is a value judgement, not a power calculation); `kill_if_ci_upper_below_mde_fraction` ties it to an MDE
+    instead (pass the pre-registered MDE; without one the cluster-aware MDE of the same data is used, with a warning).
+    The failure rate is the share of member forecasts that ended with no usable number after retries, any cause.
     """
 
     name: str
@@ -525,11 +579,18 @@ class DecisionRule:
     max_failure_rate_increase: float | None = 0.02
     max_cost_per_question: float | None = None
     kill_if_point_at_most: float | None = 0.0
-    kill_if_ci_upper_below_mde_fraction: float | None = 0.5
+    kill_if_ci_upper_below: float | None = None
+    kill_if_ci_upper_below_mde_fraction: float | None = None
     on_conflict: str = "inconclusive"
 
 
-EXP005_RULE = DecisionRule(name="EXP-005 confirmation rule (card of 2026-10-07)")
+# EXP-005 card as amended 2026-10-08 with Christian, before any scored run: fixed kill threshold of 0.015 nats of log score
+# (≈ 2 Metaculus baseline points per question) instead of MDE/2; a significant effect below it is killed ("real but too small").
+EXP005_RULE = DecisionRule(
+    name="EXP-005 confirmation rule (card amended 2026-10-08)",
+    kill_if_ci_upper_below=0.015,
+    on_conflict="kill",
+)
 RULES = {"exp005": EXP005_RULE}
 
 
@@ -575,15 +636,17 @@ def apply_decision_rule(
     cost_per_question_arm: float | None = None,
     mde_value: float | None = None,
 ) -> Decision:
-    """Apply `rule` to one arm-vs-baseline comparison. `mde_value` is the pre-registered MDE (EXP-005: stated after the screen);
-    without it the MDE measured on this comparison is used and the decision says so. A condition that cannot be evaluated
-    (no data) counts as not met."""
+    """Apply `rule` to one arm-vs-baseline comparison. `mde_value` is the pre-registered MDE, used only by a rule with
+    `kill_if_ci_upper_below_mde_fraction`; without it the cluster-aware MDE measured on this comparison is used and the
+    decision says so. A condition that cannot be evaluated (no data) counts as not met."""
     if comparison.metric != rule.metric:
         raise ValueError(f"rule is on {rule.metric!r}, comparison is on {comparison.metric!r}")
-    if mde_value is not None:
+    if rule.kill_if_ci_upper_below_mde_fraction is None:
+        m, m_src = float("nan"), "not used by this rule"
+    elif mde_value is not None:
         m, m_src = float(mde_value), "pre-registered (passed in)"
     else:
-        m, m_src = comparison.mde, "measured on this comparison (no pre-registered MDE was given)"
+        m, m_src = comparison.mde_cluster, "cluster-aware MDE measured on this comparison (no pre-registered MDE was given)"
     point = comparison.improvement
     lo, hi = comparison.improvement_ci
     checks: list[Check] = []
@@ -608,7 +671,8 @@ def apply_decision_rule(
         checks.append(
             Check(
                 "adopt",
-                f"failure rate not higher than baseline by more than {rule.max_failure_rate_increase * 100:g} pp",
+                "failure rate (member forecasts with no usable number, any cause) not higher than baseline by more than "
+                f"{rule.max_failure_rate_increase * 100:g} pp",
                 not math.isnan(inc) and inc <= rule.max_failure_rate_increase + 1e-12,
                 f"arm {failure_rate_arm:.1%} vs baseline {failure_rate_base:.1%} (Δ {inc * 100:+.1f} pp)",
             )
@@ -625,6 +689,9 @@ def apply_decision_rule(
                 f"point {_f(point)}",
             )
         )
+    if rule.kill_if_ci_upper_below is not None:
+        t = rule.kill_if_ci_upper_below
+        checks.append(Check("kill", f"CI upper < {t:g} (smallest effect worth having)", hi < t, f"upper {_f(hi)}"))
     if rule.kill_if_ci_upper_below_mde_fraction is not None:
         frac = rule.kill_if_ci_upper_below_mde_fraction
         if math.isnan(m):
@@ -639,7 +706,10 @@ def apply_decision_rule(
     note = ""
     if adopt and kill:
         verdict = rule.on_conflict
-        note = "adopt and kill conditions both hold (a significant effect below the kill threshold); on_conflict decides"
+        note = (
+            "adopt and kill conditions both hold: the effect is real (CI excludes 0) but below the kill threshold; "
+            f"the rule's on_conflict says {rule.on_conflict}"
+        )
     elif adopt:
         verdict = "adopt"
     elif kill:
@@ -678,9 +748,11 @@ class Analysis:
     reps: int
     seed: int
     aggregation: str
+    repeat_mode: str
     prepared: Prepared
     summaries: dict[str, ArmSummary]
     comparisons: dict[str, dict[str, Comparison]]  # arm -> metric -> comparison
+    other_mode: dict[str, Comparison]  # arm -> primary comparison in the other repeat mode (descriptive; only when k > 1)
     calibration_paired: dict[str, tuple[float, float]]  # arm -> (reliability arm, reliability baseline) on paired questions
     member_rows: list[dict[str, Any]]
     breakdowns: dict[str, list[dict[str, Any]]]  # grouping -> rows
@@ -693,21 +765,22 @@ class Analysis:
         return self.prepared.arms
 
 
-def _summarise(a: ArmData, outcomes: dict[str, int], n_bins: int) -> ArmSummary:
-    fc = {q: p for q, p in a.forecasts().items() if p is not None and q in outcomes}
-    qs = sorted(fc)
-    probs = [fc[q] for q in qs]
-    outs = [outcomes[q] for q in qs]
+def _mean_or_nan(scores: dict[str, float | None]) -> float:
+    vals = [v for v in scores.values() if v is not None]
+    return float(np.mean(vals)) if vals else float("nan")
+
+
+def _summarise(a: ArmData, outcomes: dict[str, int], n_bins: int, mode: str) -> ArmSummary:
     nan = float("nan")
-    if qs:
-        logs = [scoring.binary_log_score(p, o) for p, o in zip(probs, outs)]
-        base = [scoring.binary_baseline_score(p, o) for p, o in zip(probs, outs)]
+    log = a.question_scores(METRICS["log"], outcomes, mode)
+    probs, outs = a.calibration_points(outcomes, mode)
+    if probs:
         mur = murphy_decomposition(probs, outs, n_bins)
         ece = scoring.expected_calibration_error(probs, outs, n_bins)
         sharp = scoring.sharpness(probs)
         cal = scoring.calibration_table(probs, outs, n_bins)
     else:
-        logs, base, mur, ece, sharp, cal = [], [], {}, nan, nan, []
+        mur, ece, sharp, cal = {}, nan, nan, []
     rv = {q: v for q, v in a.repeat_values().items() if len(v) > 1 and q in outcomes}
     sds_p = [float(np.std(v, ddof=1)) for v in rv.values()]
     sds_log = [float(np.std([scoring.binary_log_score(p, outcomes[q]) for p in v], ddof=1)) for q, v in rv.items()]
@@ -717,10 +790,10 @@ def _summarise(a: ArmData, outcomes: dict[str, int], n_bins: int) -> ArmSummary:
     toks = [t / a.repeats_by_question.get(q, 1) for q, t in a.tokens_by_question.items()]
     return ArmSummary(
         arm=a.name,
-        n=len(qs),
-        mean_log=float(np.mean(logs)) if logs else nan,
-        mean_baseline_score=float(np.mean(base)) if base else nan,
-        mean_brier=mur.get("brier", nan),
+        n=sum(v is not None for v in log.values()),
+        mean_log=_mean_or_nan(log),
+        mean_baseline_score=_mean_or_nan(a.question_scores(BASELINE_SCORE, outcomes, mode)),
+        mean_brier=_mean_or_nan(a.question_scores(METRICS["brier"], outcomes, mode)),
         murphy=mur,
         ece=ece,
         sharpness=sharp,
@@ -744,6 +817,7 @@ def analyse(
     reps: int = DEFAULT_REPS,
     seed: int = DEFAULT_SEED,
     aggregation: str = "auto",
+    repeat_mode: str = "score",
     rule: DecisionRule | None = None,
     mde_value: float | None = None,
     decision_arms: Sequence[str] | None = None,
@@ -754,6 +828,8 @@ def analyse(
 ) -> Analysis:
     if metric not in METRICS:
         raise ValueError(f"unknown metric {metric!r}; choose from {sorted(METRICS)}")
+    if repeat_mode not in REPEAT_MODES:
+        raise ValueError(f"unknown repeat mode {repeat_mode!r}; choose from {REPEAT_MODES}")
     if rule is not None and rule.metric != metric:
         raise ValueError(f"the rule's primary metric is {rule.metric!r}, the report's is {metric!r}")
     prep = prepare(rows, aggregation)
@@ -762,24 +838,31 @@ def analyse(
     out, cl = prep.outcomes, prep.clusters
     others = [a for a in sorted(prep.arms) if a != baseline]
     warnings: list[str] = list(prep.notes)
-    base_fc = prep.arms[baseline].forecasts()
+    base_arm = prep.arms[baseline]
 
-    def compare(arm_fc: dict[str, float | None], other_fc: dict[str, float | None], arm: str, key: str, restrict=None):
+    def scores(arm: str, key: str, member: str = AGGREGATE, mode: str = repeat_mode) -> dict[str, float | None]:
+        return prep.arms[arm].question_scores(METRICS[key], out, mode, member)
+
+    def compare(arm: str, key: str, member: str = AGGREGATE, mode: str = repeat_mode, restrict=None) -> Comparison:
         return paired_compare(
-            arm_fc, other_fc, out, cl, METRICS[key], arm=arm, baseline=baseline, reps=reps, seed=seed, restrict=restrict
+            scores(arm, key, member, mode), scores(baseline, key, member, mode), cl, METRICS[key], arm=arm,
+            baseline=baseline, reps=reps, seed=seed, restrict=restrict,
         )
 
-    summaries = {a: _summarise(prep.arms[a], out, n_bins) for a in [baseline, *others]}
+    summaries = {a: _summarise(prep.arms[a], out, n_bins, repeat_mode) for a in [baseline, *others]}
     comparisons: dict[str, dict[str, Comparison]] = {}
+    other_mode: dict[str, Comparison] = {}
+    multi_repeat = any(k > 1 for d in prep.arms.values() for k in d.repeats_by_question.values())
     calib_paired: dict[str, tuple[float, float]] = {}
     for a in others:
-        fc = prep.arms[a].forecasts()
-        comparisons[a] = {key: compare(fc, base_fc, a, key) for key in METRICS}
-        paired = [q for q in out if fc.get(q) is not None and base_fc.get(q) is not None]
+        comparisons[a] = {key: compare(a, key) for key in METRICS}
+        if multi_repeat:
+            other_mode[a] = compare(a, metric, mode=next(m for m in REPEAT_MODES if m != repeat_mode))
+        sa, sb = scores(a, metric), scores(baseline, metric)
+        paired = {q for q in out if sa.get(q) is not None and sb.get(q) is not None}
         if paired:
-            outs = [out[q] for q in paired]
-            rel_a = murphy_decomposition([fc[q] for q in paired], outs, n_bins)["reliability"]
-            rel_b = murphy_decomposition([base_fc[q] for q in paired], outs, n_bins)["reliability"]
+            rel_a = murphy_decomposition(*prep.arms[a].calibration_points(out, repeat_mode, paired), n_bins)["reliability"]
+            rel_b = murphy_decomposition(*base_arm.calibration_points(out, repeat_mode, paired), n_bins)["reliability"]
             calib_paired[a] = (rel_a, rel_b)
         c = comparisons[a][metric]
         if 0 < c.n_clusters < FEW_CLUSTERS:
@@ -789,26 +872,20 @@ def analyse(
 
     # each member alone
     member_rows: list[dict[str, Any]] = []
-    base_arm = prep.arms[baseline]
     for a in [baseline, *others]:
         arm = prep.arms[a]
         for member in sorted(arm.members):
-            fc = arm.forecasts(member)
-            qs = [q for q, p in fc.items() if p is not None and q in out]
             all_reps = [p for q in arm.members[member].values() for p in q.values()]
+            log = scores(a, "log", member)
             member_rows.append(
                 {
                     "arm": a,
                     "member": member,
-                    "n": len(qs),
-                    "log": float(np.mean([scoring.binary_log_score(fc[q], out[q]) for q in qs])) if qs else float("nan"),
-                    "brier": float(np.mean([scoring.binary_brier(fc[q], out[q]) for q in qs])) if qs else float("nan"),
+                    "n": sum(v is not None for v in log.values()),
+                    "log": _mean_or_nan(log),
+                    "brier": _mean_or_nan(scores(a, "brier", member)),
                     "failure_rate": sum(p is None for p in all_reps) / len(all_reps) if all_reps else float("nan"),
-                    "vs_baseline": (
-                        compare(fc, base_arm.forecasts(member), a, metric)
-                        if a != baseline and member in base_arm.members
-                        else None
-                    ),
+                    "vs_baseline": compare(a, metric, member) if a != baseline and member in base_arm.members else None,
                 }
             )
 
@@ -827,12 +904,19 @@ def analyse(
         groupings[f"forward set ({forward_source}) vs own records"] = fwd
     breakdowns = {
         col: [
-            {"group": g, "comparison": compare(prep.arms[a].forecasts(), base_fc, a, metric, groups[g])}
+            {"group": g, "comparison": compare(a, metric, restrict=groups[g])}
             for g in sorted(groups)
             for a in others
         ]
         for col, groups in groupings.items()
     }
+
+    unkinded = {a: d.errors[NO_KIND] for a, d in prep.arms.items() if d.errors.get(NO_KIND)}
+    if unkinded:
+        warnings.append(
+            "failures without a kind (add an `error` column: parse / validation / timeout / ...): "
+            + ", ".join(f"{a}: {n}" for a, n in sorted(unkinded.items()))
+        )
 
     decisions: dict[str, Decision] = {}
     if rule is not None:
@@ -856,9 +940,9 @@ def analyse(
                 cost_per_question_arm=summaries[a].cost_per_question,
                 mde_value=mde_value,
             )
-            if mde_value is None:
+            if mde_value is None and rule.kill_if_ci_upper_below_mde_fraction is not None:
                 warnings.append(
-                    f"{a}: no pre-registered MDE was passed (--mde); the kill rule used the MDE measured on this same data."
+                    f"{a}: no pre-registered MDE was passed (--mde); the kill rule used the cluster-aware MDE of this same data."
                 )
 
     return Analysis(
@@ -868,9 +952,11 @@ def analyse(
         reps=reps,
         seed=seed,
         aggregation=aggregation,
+        repeat_mode=repeat_mode,
         prepared=prep,
         summaries=summaries,
         comparisons=comparisons,
+        other_mode=other_mode,
         calibration_paired=calib_paired,
         member_rows=member_rows,
         breakdowns=breakdowns,
@@ -927,8 +1013,14 @@ def _aggregation_words(an: Analysis) -> str:
         parts.append(f"{a}: {src or 'none'}")
     return (
         f"mode `{an.aggregation}`; per repeat ({'; '.join(parts)}); median = median of the members that produced a number "
-        "(live rule); then the mean over the k repeats, scored once per question"
+        "(live rule)"
     )
+
+
+_REPEAT_WORDS = {
+    "score": "`score`: each repeat scored on its own, scores averaged per question (expected score of one live run)",
+    "forecast": "`forecast`: the repeats' forecasts averaged per question, then scored once (score of a k-run average)",
+}
 
 
 def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | None = None) -> str:
@@ -955,6 +1047,7 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
             ["input", f"`{meta.get('input', 'n/a')}`, sha256 `{meta.get('input_sha256', 'n/a')}`"],
             ["bootstrap", f"{an.reps:,} reps, resampling cluster_id, seed {an.seed}, percentile 95% CI"],
             ["aggregation", _aggregation_words(an)],
+            ["repeats", _REPEAT_WORDS[an.repeat_mode]],
             ["baseline arm", an.baseline],
             ["primary metric", f"{m.label} ({'higher' if m.higher_is_better else 'lower'} is better)"],
             ["questions scored per arm", n_per_arm],
@@ -966,7 +1059,8 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
     if an.decisions:
         lines += ["## Decision (pre-registered rule, applied in code)", ""]
         for d in an.decisions.values():
-            lines += [f"**Arm {d.arm}: {d.verdict.upper()}** under _{d.rule.name}_. MDE used: {_f(d.mde_used)}, {d.mde_source}.", ""]
+            mde_words = "" if math.isnan(d.mde_used) else f" MDE used: {_f(d.mde_used)}, {d.mde_source}."
+            lines += [f"**Arm {d.arm}: {d.verdict.upper()}** under _{d.rule.name}_.{mde_words}", ""]
             lines += _table(
                 ["type", "condition", "met?", "detail"],
                 [[c.kind, c.condition, "yes" if c.met else "no", c.detail] for c in d.checks],
@@ -1005,6 +1099,17 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
     if se_lines:
         lines += ["The √N formula treats questions as independent; with clustered questions the bootstrap SE is the honest one:", ""]
         lines += se_lines + [""]
+    if an.other_mode:
+        other = next(k for k in REPEAT_MODES if k != an.repeat_mode)
+        lines += [
+            (
+                f"Descriptive only: the {m.label} comparison in the other repeat mode ({_REPEAT_WORDS[other]}). A gap between "
+                "the two modes shows how much of the difference is noise between repeats rather than the method:"
+            ),
+            "",
+        ]
+        lines += _table(["arm", *_CMP_HEADER], [[a, *_cmp_cells(c)] for a, c in an.other_mode.items()])
+        lines += [""]
 
     lines += ["## Scores per arm", ""]
     lines += _table(
@@ -1034,7 +1139,13 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
         )
         lines += [""]
 
-    lines += ["## Calibration", "", "_matplotlib is not a project dependency, so no plot; the table is the reliability diagram._", ""]
+    unit = "every repeat counts as one forecast" if an.repeat_mode == "score" else "one averaged forecast per question"
+    lines += [
+        "## Calibration",
+        "",
+        f"_matplotlib is not a project dependency, so no plot; the table is the reliability diagram. Here {unit}._",
+        "",
+    ]
     for a, s in an.summaries.items():
         lines += [f"**{a}**", ""]
         lines += _table(
@@ -1053,7 +1164,7 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
         "## Each member alone",
         "",
         (
-            "Each model's own forecast (repeats averaged), scored like the aggregate. The last column pairs the member with the "
+            "Each model's own forecasts, scored like the aggregate (same repeat mode). The last column pairs the member with the "
             f"same model in arm {an.baseline} ({m.label} Δ). Descriptive: a single model's win does not override the aggregate rule."
         ),
         "",
@@ -1202,9 +1313,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--reps", type=int, default=DEFAULT_REPS)
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--aggregation", default="auto", choices=("auto", "median", "given"))
+    ap.add_argument(
+        "--repeat-mode", default="score", choices=REPEAT_MODES,
+        help="score: score each repeat, average the scores (default; one live run); forecast: average forecasts, then score",
+    )
     ap.add_argument("--rule", choices=sorted(RULES), help="pre-registered decision rule to apply")
     ap.add_argument("--rule-json", help="custom DecisionRule as JSON or a path to a JSON file; 'base' names a rule to start from")
-    ap.add_argument("--mde", type=float, help="pre-registered MDE for the kill rule (EXP-005: from the screen)")
+    ap.add_argument("--mde", type=float, help="pre-registered MDE, for a rule that kills below a fraction of the MDE")
     ap.add_argument("--arm", action="append", dest="arms", help="arm(s) the decision rule applies to (default: every non-baseline)")
     ap.add_argument("--by", action="append", help="column(s) to break results down by (default: question_type, source)")
     ap.add_argument("--forward-source", default=FORWARD_SOURCE, help="source value of the forward set ('' to skip)")
@@ -1227,6 +1342,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         reps=args.reps,
         seed=args.seed,
         aggregation=args.aggregation,
+        repeat_mode=args.repeat_mode,
         rule=rule,
         mde_value=args.mde,
         decision_arms=args.arms,

@@ -16,10 +16,10 @@ def row(q, arm, member, p, outcome=1, repeat=1, cluster=None, **kw):
     return r.parse_row(d)
 
 
-def comparison(mean_diff, lo, hi, n=100, mde=0.04, higher_is_better=True):
+def comparison(mean_diff, lo, hi, n=100, mde=0.04, higher_is_better=True, se_boot=0.0):
     return r.Comparison(
         arm="B", baseline="A", metric="log", higher_is_better=higher_is_better, n=n, n_clusters=n, mean_arm=0.0, mean_base=0.0,
-        mean_diff=mean_diff, ci_low=lo, ci_high=hi, se_boot=0.0, median_diff=mean_diff, wins=0, ties=0, losses=0, sd_diff=0.1,
+        mean_diff=mean_diff, ci_low=lo, ci_high=hi, se_boot=se_boot, median_diff=mean_diff, wins=0, ties=0, losses=0, sd_diff=0.1,
         mde=mde,
     )
 
@@ -100,16 +100,57 @@ def test_mde_formula():
 
 
 # ---------------------------------------------------------------- aggregation and repeats
-def test_repeats_are_averaged_before_scoring():
+def test_repeats_are_scored_one_by_one_by_default():
+    """Default (protocol §5 as amended 2026-10-08): each repeat is scored, then the scores are averaged (one live run)."""
     rows = [
         row("q1", "A", "aggregate", 0.5),
         row("q1", "B", "aggregate", 0.2, repeat=1),
         row("q1", "B", "aggregate", 0.8, repeat=2),
     ]
     an = r.analyse(rows, "A", reps=100)
-    assert an.summaries["B"].mean_log == pytest.approx(math.log(0.5))  # mean forecast 0.5, not mean of ln .2 and ln .8
-    assert an.comparisons["B"]["log"].mean_diff == pytest.approx(0.0)
+    expected = (math.log(0.2) + math.log(0.8)) / 2
+    assert an.summaries["B"].mean_log == pytest.approx(expected)
+    assert an.comparisons["B"]["log"].mean_diff == pytest.approx(expected - math.log(0.5))
     assert an.summaries["B"].repeat_sd_p == pytest.approx(np.std([0.2, 0.8], ddof=1))
+    # the other mode is shown as a descriptive line: forecasts averaged first gives 0.5 -> ln 0.5, no difference
+    assert an.other_mode["B"].mean_diff == pytest.approx(0.0)
+    assert "Descriptive only" in r.render_report(an)
+
+
+def test_forecast_mode_averages_the_repeats_before_scoring():
+    rows = [
+        row("q1", "A", "aggregate", 0.5),
+        row("q1", "B", "aggregate", 0.2, repeat=1),
+        row("q1", "B", "aggregate", 0.8, repeat=2),
+    ]
+    an = r.analyse(rows, "A", reps=100, repeat_mode="forecast")
+    assert an.summaries["B"].mean_log == pytest.approx(math.log(0.5))
+    assert an.comparisons["B"]["log"].mean_diff == pytest.approx(0.0)
+
+
+def test_score_mode_gives_no_bonus_to_noise_between_repeats():
+    """Arm B = arm A plus symmetric noise between repeats. Averaging forecasts first cancels the noise and hides it; scoring
+    each repeat shows that a single live run of B is worse."""
+    rng = np.random.default_rng(11)
+    rows = []
+    for i in range(200):
+        p = float(rng.uniform(0.2, 0.8))
+        y = int(rng.random() < p)
+        rows.append(row(f"q{i}", "A", "aggregate", p, y, repeat=1))
+        rows.append(row(f"q{i}", "A", "aggregate", p, y, repeat=2))
+        rows.append(row(f"q{i}", "B", "aggregate", p - 0.15, y, repeat=1))
+        rows.append(row(f"q{i}", "B", "aggregate", p + 0.15, y, repeat=2))
+    by_score = r.analyse(rows, "A", reps=500).comparisons["B"]["log"]
+    by_forecast = r.analyse(rows, "A", reps=500, repeat_mode="forecast").comparisons["B"]["log"]
+    assert by_forecast.mean_diff == pytest.approx(0.0, abs=1e-12)
+    assert by_score.mean_diff < 0 and by_score.ci_high < 0
+
+
+def test_calibration_counts_every_repeat_in_score_mode():
+    rows = [row("q1", "A", "aggregate", 0.2, repeat=1), row("q1", "A", "aggregate", 0.8, repeat=2)]
+    arm = r.prepare(rows).arms["A"]
+    assert arm.calibration_points({"q1": 1}, "score") == ([0.2, 0.8], [1, 1])
+    assert arm.calibration_points({"q1": 1}, "forecast") == ([pytest.approx(0.5)], [1])
 
 
 def test_members_are_aggregated_with_the_live_median_per_repeat():
@@ -173,11 +214,28 @@ def test_rule_kill_on_point_estimate():
     assert [c.met for c in d.checks if c.kind == "kill"] == [True, False]
 
 
+def test_rule_kill_when_ci_upper_is_below_the_fixed_threshold():
+    d = decide(comparison(0.004, -0.010, 0.012))  # EXP-005: upper 0.012 < 0.015
+    assert d.verdict == "kill"
+    assert [c.met for c in d.checks if c.kind == "kill"] == [False, True]
+    assert math.isnan(d.mde_used)  # the amended EXP-005 rule does not use an MDE
+    assert decide(comparison(0.004, -0.010, 0.016)).verdict == "inconclusive"
+
+
+MDE_RULE = r.DecisionRule(name="MDE/2 rule", kill_if_ci_upper_below_mde_fraction=0.5)
+
+
 def test_rule_kill_when_ci_upper_is_below_half_the_mde():
-    d = decide(comparison(0.004, -0.010, 0.015), mde_value=0.04)  # upper 0.015 < 0.02
+    d = decide(comparison(0.004, -0.010, 0.015), mde_value=0.04, rule=MDE_RULE)  # upper 0.015 < 0.02
     assert d.verdict == "kill"
     assert d.mde_source.startswith("pre-registered")
     assert [c.met for c in d.checks if c.kind == "kill"] == [False, True]
+
+
+def test_rule_without_a_preregistered_mde_uses_the_cluster_aware_one():
+    d = decide(comparison(0.004, -0.010, 0.015, se_boot=0.02), rule=MDE_RULE)  # 2.8 * 0.02 = 0.056 -> half 0.028
+    assert d.mde_used == pytest.approx(0.056) and "cluster-aware" in d.mde_source
+    assert d.verdict == "kill"
 
 
 def test_rule_inconclusive():
@@ -199,10 +257,11 @@ def test_rule_failure_rate_increase_blocks_adoption():
 
 
 def test_rule_conflict_between_adopt_and_kill_goes_to_on_conflict():
-    c = comparison(0.006, 0.002, 0.010)  # significant, but the whole CI is below MDE/2 = 0.02
-    d = decide(c, mde_value=0.04)
-    assert d.verdict == "inconclusive" and "both hold" in d.note
-    assert decide(c, mde_value=0.04, rule=r.DecisionRule(name="x", on_conflict="kill")).verdict == "kill"
+    c = comparison(0.006, 0.002, 0.010)  # significant, but the whole CI is below the 0.015 threshold
+    d = decide(c)
+    assert d.verdict == "kill" and "both hold" in d.note  # EXP-005 (amended): a real but too small effect is killed
+    generic = r.DecisionRule(name="x", kill_if_ci_upper_below=0.015)
+    assert decide(c, rule=generic).verdict == "inconclusive"  # the generic default
 
 
 def test_rule_with_no_paired_questions_is_inconclusive():
@@ -222,7 +281,7 @@ def test_rule_is_generic_and_orients_lower_is_better_metrics():
 
 def test_rule_from_json_never_keeps_the_preregistered_name_when_modified():
     rule = r.rule_from_json('{"base": "exp005", "max_reliability_increase": 0.01}')
-    assert rule.max_reliability_increase == 0.01 and rule.kill_if_ci_upper_below_mde_fraction == 0.5
+    assert rule.max_reliability_increase == 0.01 and rule.kill_if_ci_upper_below == 0.015 and rule.on_conflict == "kill"
     assert rule.name != r.EXP005_RULE.name and "modified" in rule.name
 
 
@@ -248,6 +307,7 @@ def test_full_report_from_csv_has_every_section(tmp_path):
                     "## Repeats, failures and cost", "## Diversity (B-47)"):
         assert heading in md, heading
     assert r.sha256_file(path) in md and "seed 3101" in md and "300 reps" in md
+    assert "`score`: each repeat scored on its own" in md and "under _EXP-005 confirmation rule (card amended 2026-10-08)_" in md
     # deterministic: the same input gives the same report
     out2 = tmp_path / "rep2.md"
     r.main([str(path), "--baseline", "A", "--name", "T", "--rule", "exp005", "--reps", "300", "--out", str(out2)])
@@ -279,3 +339,12 @@ def test_costs_and_tokens_are_per_question_per_repeat():
     s = r.analyse(rows, "A", reps=50).summaries["A"]
     assert s.cost_per_question == pytest.approx(0.04)
     assert s.tokens_per_question == pytest.approx(300)
+
+
+def test_failures_without_a_kind_are_flagged():
+    rows = [row("q1", "A", "m1", 0.6), row("q1", "A", "m2", None), row("q1", "B", "m1", None, error="timeout"),
+            row("q1", "B", "m2", 0.7)]
+    an = r.analyse(rows, "A", reps=50)
+    assert any("without a kind" in w and "A: 1" in w for w in an.warnings)
+    assert an.arms["B"].errors == {"timeout": 1}
+
