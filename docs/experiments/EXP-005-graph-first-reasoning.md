@@ -37,6 +37,43 @@ Results section filled by the report generator._
 - **Confirmation set:** the next **100+** resolved eligible records, which nobody looks at before the confirmation run. The decision
   is taken **once**, on this set. HOLDOUT (protocol §3) is not touched.
 
+### benchmark-forward (data amendment, 2026-10-08, Christian; before any scored run)
+A forward test on the Metaculus bot-benchmarking project (B-39). **A data amendment, not a protocol variant**: arms, protocol
+(`structured-v3`) and decision rule are unchanged.
+- **Questions:** open binary benchmark questions scheduled to resolve by 2026-12-31 (29 in the 2026-10-08 fetch, posts file
+  `posts_32979_20261008T2032Z.jsonl`), excluding questions already closed for forecasting (22310, 39825, 43687, 43690). At most 3
+  per question group, chosen by lowest question id. Final list, **11 questions**:
+
+  | Question | Post (group) | Scheduled resolution |
+  |---|---|---|
+  | 36515 | 37137 | 2026-11-04 |
+  | 37460 | 38166 | 2026-11-03 |
+  | 37484 | 38209 | 2026-11-05 |
+  | 39090 | 39711 | 2026-11-04 |
+  | 40180 | 40598 (Senate group) | 2026-11-04 |
+  | 40184 | 40598 (Senate group) | 2026-11-04 |
+  | 40185 | 40598 (Senate group) | 2026-11-04 |
+  | 41205 | 41481 | 2026-11-05 |
+  | 41219 | 41490 | 2026-11-10 |
+  | 41418 | 41678 | 2026-11-30 |
+  | 41930 | 42151 | 2026-11-04 |
+
+  Questions that are annulled or resolve after 2026-12-31 are dropped and counted; nothing is swapped in.
+- **Research:** one frozen snapshot per question, taken once with the live pipeline (AskNews latest + Gemini grounded search,
+  `forecast_engine/research.py`, live research config), stored encrypted with `ARCHIVE_KEY` like live records. All arms and members
+  use the same bundle. Prompts get only the question's title, background, resolution criteria and fine print: no community
+  prediction, no resolution fields (T4, T7).
+- **as_of:** the run date (2026-10-08). The release-date check runs on every (model, question) pair.
+- **Arms and members:** A = today's live binary prompt (`forecast_prompt`, parsed with the live parser; no polarity guard, which is
+  an aggregation step); B and C = `structured-v3`. Members `openai/gpt-6.1-sol` and `google/gemini-3.1-pro-preview`, k=1.
+- **Role:** screen data only. Pooled with the dev records to choose between B and C, and also reported separately. Bootstrap
+  clusters follow the question groups (the three Senate questions are one cluster).
+- **Overlap with our own records:** 8 of the 11 (all but 40180, 40184, 40185) were also forecast live by the bot in wide mode, so
+  they can enter the dev set as live records too. In the pooled screen each question counts **once**: the live record (earlier
+  as_of, the bundle the bot actually used) is used, and the benchmark-forward copy appears only in the separate report.
+- **Outcomes:** none read before the screen.
+- **Cost:** hard cap **$5** in code; ledger entry in `docs/experiments/budget-ledger.md`.
+
 ## Procedure
 1. **Pilot (unscored, done 2026-10-07):** 10 disputed records (research/11 set), arms B and C, one frontier + one cheap model; for
    inspecting the protocol's behaviour, not its accuracy. `docs/research/13-structured-protocol-pilot.md`. Ran `structured-v1`.
