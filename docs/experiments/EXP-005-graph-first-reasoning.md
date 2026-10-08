@@ -14,14 +14,14 @@ Results section filled by the report generator._
 - **Why frontier models:** method effects may not transfer between model strengths, and the tournament bot moves to frontier models
   (ADR-0009 and its 2026-10-07 amendment). All arms run on frontier models.
 
-## Arms (protocol `structured-v2`, `forecast_engine/structured.py`)
+## Arms (protocol `structured-v3`, `forecast_engine/structured.py`)
 | Arm | What each member does | Calls/member |
 |---|---|---|
 | **A** baseline | today's live binary prompt (`forecast_engine/prompts.py`, template-2026-09-26), unchanged | 1 |
 | **B** protocol | one call, JSON: (1) base rate from 2-3 reference classes, each with fit/misfit, a frequency (a count of comparable cases, k of n, which code shrinks to (k+1)/(n+2) and flags when n < 5; or an event rate that code converts to the question window, 1 − exp(−rate·t)) and a source (research item, question, or "memory"), weights → p0 in code; (2) 3-5 exclusive, exhaustive scenarios with P(s) and P(YES\|s), written before the drivers → p_scen = Σ P(s)·P(YES\|s) in code; (3) drivers: direction, evidence ref, odds multiplier from ×1.25/×1.5/×2/×3 (or ÷), independent of the reference classes and of each other → p_drv = odds(p0)·Πm in code, product capped at ×10 either way; (4) reconcile: model names the route it trusts and gives a final number | 1 |
 | **C** blind base rate | as B, but step 1 is a separate call that sees the question, its background, resolution criteria, fine print and dates, but no research. The protocol call gets that p0 and may not change it (EXP-006 arm C) | 2 |
 
-- **The arm's forecast (pre-registered):** per member, the code number: if p_drv and p_scen agree (within 10 pp or a 1.5× odds factor)
+- **The arm's forecast (pre-registered):** per member, the code number: if p_drv and p_scen agree (their odds within a factor of 1.5)
   their log-odds mean, otherwise the model's own final number. Clipped to [0.01, 0.99] like live. Per question: median of members, as live.
   The model's own final number is stored on every answer and compared as a pre-registered secondary.
 - **No "Bayesian" wording** in any prompt (R-21; a test checks it).
@@ -47,7 +47,9 @@ Results section filled by the report generator._
 | 1 | `structured-v1` | 2026-10-07 | the card's original design | | yes |
 | 2 | `structured-v2` | 2026-10-07, Christian, after the unscored pilot | (a) proportions as k of n, shrunk in code to (k+1)/(n+2), n < 5 flagged; (b) the blind base-rate call (arm C) also sees the question background, still no research | pilot: 10 of 91 reference classes sat at exactly 0% or 100% from tiny remembered sets; the blind call missed the setup on q46076 (1% base rate) | **yes**: no scored run had been made |
 
-v2 is what the screen runs. Any later change counts as variant 3 and is reported with the results.
+| 3 | `structured-v3` | 2026-10-08, Christian | routes agree only if their odds are within 1.5× (v2: within 10 pp **or** 1.5×) | near 0% or 100%, the 10 pp test let a tenfold odds gap count as agreement (1% vs 10% → averaged to ~3%), hiding a real conflict | **yes**: no scored run had been made |
+
+v3 is what the screen runs. Any later change counts as variant 4 and is reported with the results.
 2. **Screen (dev set, k=1):** arms A, B, C with **2 frontier members**. Picks which of B or C goes to confirmation (the one with the
    better mean log score vs A; ties → C, the stricter base rate). Only one arm is confirmed, so there is one confirmatory comparison.
 3. **Freeze:** protocol version, prompts, parser and analysis script (B-31 report generator) committed and hashed; the card's

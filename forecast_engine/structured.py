@@ -6,7 +6,7 @@ base rate -> scenarios -> drivers -> reconcile, as JSON; every number that can b
      (1 - exp(-rate * t)); weights -> p0.
   2. Scenarios (written before the drivers): 3-5 mutually exclusive, exhaustive; P(s) and P(YES|s); p_scen = sum P(s)P(YES|s).
   3. Drivers: direction, evidence ref, odds multiplier from a fixed scale; p_drv = odds(p0) * product (capped).
-  4. Reconcile: if p_drv and p_scen agree (within 10 pp or a 1.5x odds factor) the code number is their log-odds mean;
+  4. Reconcile: if p_drv and p_scen agree (odds within a factor of 1.5) the code number is their log-odds mean;
      otherwise the model's own final number, with the route it trusts. Both are stored.
 
 No "Bayesian" wording in the prompts (R-21). Experiment-only: not imported by the live bot (main.py / core.py / prompts.py).
@@ -22,13 +22,14 @@ from typing import Any
 
 # v2 (2026-10-07, after the unscored pilot, research/13; before any scored run): proportions as k of n with shrinkage, and the
 # blind base-rate call sees the question background (still no research). v1 was used only by the pilot.
-PROTOCOL_VERSION = "structured-v2"
+# v3 (2026-10-08, Christian; before any scored run): routes agree only if their odds are within 1.5x. v2 also accepted 10 pp,
+# which near 0% or 100% let a tenfold odds gap (1% vs 10%) count as agreement and averaged a real conflict away.
+PROTOCOL_VERSION = "structured-v3"
 SMALL_N = 5  # a proportion from fewer comparable cases is flagged
 
 MULTIPLIERS = (1.25, 1.5, 2.0, 3.0)  # allowed odds factors per driver (inverse for "down")
 TOTAL_ODDS_CAP = 10.0  # product of all drivers is clipped to [1/10, 10]
-AGREE_PP = 0.10  # routes agree if within 10 percentage points ...
-AGREE_ODDS = 1.5  # ... or within a 1.5x odds factor
+AGREE_ODDS = 1.5  # routes agree if their odds are within this factor of each other
 SCENARIO_SUM_TOL = 0.05  # scenario probabilities must sum to 1 +- this (then renormalised)
 P_FLOOR = 0.001  # keeps logit finite
 FINAL_CLIP = (0.01, 0.99)  # same as the live binary clip
@@ -66,7 +67,8 @@ def apply_drivers(p0: float, factors: list[float], cap: float = TOTAL_ODDS_CAP) 
 
 
 def routes_agree(a: float, b: float) -> bool:
-    return abs(a - b) <= AGREE_PP or abs(logit(a) - logit(b)) <= math.log(AGREE_ODDS)
+    """Odds test only: |log-odds(a) - log-odds(b)| <= ln 1.5. 40% vs 48% agree (x1.38); 1% vs 10% don't (x11)."""
+    return abs(logit(a) - logit(b)) <= math.log(AGREE_ODDS)
 
 
 def logodds_mean(a: float, b: float) -> float:

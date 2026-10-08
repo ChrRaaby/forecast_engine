@@ -18,8 +18,8 @@ def answer(**over):
         ], "reasoning": "r", "confidence": "medium"},
         "scenarios": [
             {"name": "s1", "description": "d", "probability": 0.5, "p_yes": 0.1},
-            {"name": "s2", "description": "d", "probability": 0.3, "p_yes": 0.2},
-            {"name": "s3", "description": "d", "probability": 0.2, "p_yes": 0.5},
+            {"name": "s2", "description": "d", "probability": 0.3, "p_yes": 0.15},
+            {"name": "s3", "description": "d", "probability": 0.2, "p_yes": 0.2},
         ],
         "drivers": [{"text": "t", "direction": "down", "multiplier": 1.25, "evidence": "R0", "independence": "i"}],
         "reconcile": {"trusted_route": "both", "reason": "r", "final_probability": 0.15},
@@ -45,11 +45,29 @@ def test_apply_drivers_odds_and_cap():
     assert st.apply_drivers(0.3, [])[0] == pytest.approx(0.3)
 
 
-def test_routes_agree_by_pp_or_odds():
-    assert st.routes_agree(0.30, 0.39)  # 9 pp
-    assert st.routes_agree(0.02, 0.029)  # 0.9 pp
-    assert st.routes_agree(0.90, 0.99) is False or st.routes_agree(0.90, 0.99)  # pp rule may hold; covered below
-    assert not st.routes_agree(0.10, 0.30)  # 20 pp and odds ratio 3.9
+def test_routes_agree_by_odds_only():
+    """v3: only the odds test counts (within 1.5x); percentage-point closeness alone is not agreement."""
+    assert st.routes_agree(0.40, 0.48)  # odds 0.667 vs 0.923: x1.38
+    assert not st.routes_agree(0.01, 0.10)  # only 9 pp apart, but odds x11
+    assert not st.routes_agree(0.90, 0.99)  # 9 pp, odds x11
+    assert st.routes_agree(0.02, 0.029)  # x1.46
+    assert not st.routes_agree(0.10, 0.30)  # x3.9
+    assert st.routes_agree(0.2, 0.2)
+
+
+def test_one_vs_ten_percent_routes_use_model_number():
+    """The case that motivated v3: drivers land near 2% (x10 cap), scenarios at 10%; under 10 pp apart, so v2 would have averaged
+    them. v3 sees odds x6 apart: no averaging, the model's number is used."""
+    raw = answer(scenarios=[{"name": "a", "description": "", "probability": 0.5, "p_yes": 0.1},
+                            {"name": "b", "description": "", "probability": 0.3, "p_yes": 0.1},
+                            {"name": "c", "description": "", "probability": 0.2, "p_yes": 0.1}],
+                 drivers=[{"text": "t", "direction": "down", "multiplier": 3, "evidence": "R0", "independence": "i"},
+                          {"text": "u", "direction": "down", "multiplier": 3, "evidence": "R0", "independence": "i"},
+                          {"text": "v", "direction": "down", "multiplier": 2, "evidence": "R0", "independence": "i"}],
+                 reconcile={"trusted_route": "scenarios", "final_probability": 0.06})
+    f = st.build(raw)
+    assert f.p_scen == pytest.approx(0.10) and f.p_drv < 0.02 and abs(f.p_scen - f.p_drv) <= 0.10
+    assert f.agree is False and f.code_final == 0.06
     assert st.logodds_mean(0.2, 0.2) == pytest.approx(0.2)
 
 
@@ -58,7 +76,7 @@ def test_build_computes_every_number_in_code():
     f = st.build(answer())
     p_b = 1 - math.exp(-0.1)
     assert f.p0 == pytest.approx((0.2 + p_b) / 2)
-    assert f.p_scen == pytest.approx(0.5 * 0.1 + 0.3 * 0.2 + 0.2 * 0.5)  # 0.21
+    assert f.p_scen == pytest.approx(0.5 * 0.1 + 0.3 * 0.15 + 0.2 * 0.2)  # 0.135
     assert f.p_drv == pytest.approx(st.sigmoid(st.logit(f.p0) + math.log(1 / 1.25)))
     assert f.agree is True and f.code_final == pytest.approx(st.logodds_mean(f.p_drv, f.p_scen))
     assert f.model_final == 0.15 and f.final == f.code_final
