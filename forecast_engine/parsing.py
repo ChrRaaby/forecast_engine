@@ -50,7 +50,8 @@ def _mc_by_letter(text: str, options: tuple[str, ...] | list[str]) -> dict[str, 
     for i, opt in enumerate(options):
         letter = chr(ord("A") + i)
         found = re.findall(
-            r"^[\s\*\-#>]*Option[_\s]*" + letter + r"\**\s*:\s*\**\s*([0-9]+(?:\.[0-9]+)?)\s*%?",
+            # "Option_A: 7%", also "Option_A (Eintracht Frankfurt vs. Köln): 7%" (Qwen3.8 Max, 2026-10-08)
+            r"^[\s\*\-#>]*Option[_\s]*" + letter + r"\**\s*(?:\([^)\n]*\))?\**\s*:\s*\**\s*([0-9]+(?:\.[0-9]+)?)\s*%?",
             text,
             flags=re.MULTILINE,
         )

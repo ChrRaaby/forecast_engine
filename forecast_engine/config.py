@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
 
-CONFIG_VERSION = "m1-baseline-2026-10-06"
+CONFIG_VERSION = "frontier-2026-10-08"
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,31 @@ class BotConfig:
         return hashlib.sha256(blob).hexdigest()[:12]
 
 
-DEFAULT_CONFIG = BotConfig()
+DEFAULT_CONFIG = BotConfig()  # the cheap M1 ensemble: experiments, test runs, and the shadow on tournament questions
+
+# ADR-0009 / ADR-0010: FutureEval and MiniBench questions use a frontier ensemble from five vendors (incl. Grok and a Chinese
+# model, Christian). Roster confirmed by Christian 2026-10-07 (option A); list prices on OpenRouter that day, per M tokens in/out:
+# GPT-6.1 Sol $2/$10, Claude Sonnet 5.5 $2/$10, Gemini 3.1 Pro $2/$12, Grok 4.7 $2/$6, Qwen3.8 Max $2/$6. Gemini 3.1 Pro is
+# Google's newest Pro-tier model but dates from Feb 2026. Median of five, at least three must succeed.
+TOURNAMENT_CONFIG = replace(
+    DEFAULT_CONFIG,
+    forecasters=(
+        ForecasterSpec("openai/gpt-6.1-sol"),
+        ForecasterSpec("anthropic/claude-sonnet-5.5"),
+        ForecasterSpec("google/gemini-3.1-pro-preview"),
+        ForecasterSpec("x-ai/grok-4.7"),
+        ForecasterSpec("qwen/qwen3.8-max-0902"),
+    ),
+    min_successful_forecasters=3,
+)
+# Fall 2026 tournament budget for the frontier ensemble (ADR-0009), enforced in code (forecast_engine/spend.py). Once reached,
+# tournament questions fall back to DEFAULT_CONFIG instead of going silent.
+TOURNAMENT_SEASON = "fall-2026"
+TOURNAMENT_SEASON_CAP_USD = 300.0
+# Shadow-run mode (B-62): configs run unpublished on every tournament question with the live question's research, stored as
+# separate records and scored as they resolve. The cheap ensemble gives the paired live comparison ADR-0009 asks for; experiments
+# (EXP-005, EXP-008) add their arm here. Shadow failures never affect the live forecast.
+SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
@@ -69,6 +93,8 @@ WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, 
 # Run-level safety rails (live adapter only).
 DEFAULT_MAX_QUESTIONS_PER_RUN = 20
 DEFAULT_MAX_RUN_COST_USD = 2.00
+# Frontier forecasts cost ~$0.3/question, so a 20-question tournament run needs more headroom; the season cap is the real limit.
+TOURNAMENT_MAX_RUN_COST_USD = 10.00
 # Wide mode (B-40): Metaculus Cup + a few main-site questions per run, to unlock outcomes for evaluation.
 DEFAULT_MAIN_SITE_PER_RUN = 2
 MAIN_SITE_HORIZON_DAYS = 90  # only questions scheduled to resolve within this many days (fast feedback)

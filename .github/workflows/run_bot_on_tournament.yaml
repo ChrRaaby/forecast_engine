@@ -32,7 +32,7 @@ jobs:
           installer-parallel: true
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
-      # B-61: the retry ledger (state/retries.json) survives between runs in the Actions cache. Restore the newest entry,
+      # B-61/B-16: state/ (retry ledger, frontier season spend) survives between runs in the Actions cache. Restore the newest entry,
       # save under a new key at the end (cache entries are immutable). A cache miss just means no history.
       - name: Restore retry ledger
         uses: actions/cache/restore@v4
@@ -49,22 +49,8 @@ jobs:
           ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
           ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
           ASKNEWS_API_KEY: ${{ secrets.ASKNEWS_API_KEY }}
-      # B-40: Metaculus Cup + 2 main-site questions, 5 times a day (slots at 00/05/10/15/20 UTC, first ~12 minutes of the hour),
-      # so we unlock outcomes for evaluation (~10 main-site questions/day). Bots are allowed there; comments stay private.
-      - name: Run bot on Metaculus Cup + main-site questions
-        if: success() || failure()
-        run: |
-          H=$(date -u +%H); M=$(date -u +%M)
-          case "$H" in 00|05|10|15|20) ;; *) echo "Not a wide-run slot"; exit 0;; esac
-          if [ "$M" -ge 12 ]; then echo "Not a wide-run slot"; exit 0; fi
-          poetry run python main.py --mode wide --publish --main-site-max 2
-        env:
-          METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
-          ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
-          ASKNEWS_API_KEY: ${{ secrets.ASKNEWS_API_KEY }}
+      # Wide mode (Cup + main-site questions, B-40/ADR-0007) stopped 2026-10-08 (ADR-0010): the Metaculus benchmarking data
+      # (B-39) replaces it as our source of resolved questions. `main.py --mode wide` still works for a manual run.
       - name: Save retry ledger
         if: always()
         uses: actions/cache/save@v4
