@@ -1,12 +1,12 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-06_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-08_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
 - `Why` links each item to a playbook recommendation (R-xx, `docs/playbook-tracker.md`), an idea (I-xx, `docs/ideas.md`)
   or a milestone (spec §8). An item with no *why* doesn't belong here.
-- Status: `Todo` · `Doing` · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
+- Status: `Todo` · `Doing` · `Review` (built, PR awaiting Christian) · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
 - Follow-ups & reminders: dated or waiting actions that aren't development (renewals, checks, decisions) live in their own section
   below, so they don't hide in session logs.
 - Size: S (≤2 h) · M (≤1 session ~4 h) · L (several sessions).
@@ -37,7 +37,7 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 11 | B-54 | Living pipeline map: architecture diagram generated from `config.py` and `core.py`'s step order, current values printed in each box and evidence colour from the ledger (B-52); a changed box is highlighted in the weekly brief. Section in the dashboard or monitor | I-17 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 12 | B-55 | Scorecard + ensemble health tab in the bot monitor, on B-38's outcomes: resolved N, Brier/log score vs community with CIs, calibration curve once N ≥ 30, each model alone (skill board), frontier vs cheap shadow (ADR-0009). Owned by the B-46/EXP-005 thread since 2026-10-07; starts after the EXP-005 work settles. The per-question model spread chart moves into the Question X-ray (B-46). Uses B-29's scorer; shares metrics with B-47 | I-17; B-38 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 13 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 14 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 14 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/`. Built 2026-10-08 (`evals/report.py`, `python -m evals.report`; synthetic demo `evals/report_demo.py`; 26 offline tests): repeats averaged before scoring, cluster bootstrap (10,000 reps, seed recorded), win rate, median, SD(Δ), MDE, Murphy reliability + calibration table (no plot: matplotlib isn't a dependency), per member / type / source / forward set, failures and cost, EXP-005's rule as code (`DecisionRule`), provenance header, fills a card's Results section (`--card`); B-47 hook `EXTRA_SECTIONS`. In PR, awaiting Christian's review; see F-12 before the EXP-005 freeze | Protocol §5, T9, T12 | Claude Code | M | Review | Opus 5.5 · cloud |
 | 15 | B-47 | Diversity metrics in every experiment report: member error correlation, member spread, diversity bonus (ensemble vs mean member); on top of B-31 | I-16; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 16 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
 | 17 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
@@ -79,6 +79,7 @@ _Dated or waiting items that aren't development work. Checked at the start of ev
 | F-07 | Update the cron-job.org `X-GitHub-Api-Version` header (2022-11-28 is deprecated) | B-06 | before 2028-03-10 | Christian | Todo | Haiku 4.5 · PC |
 | F-09 | Fresh confirmation sample (~20 new questions, 100 credits) for the dual leakage screen, required before the first large archive batch, since its settings were chosen after seeing the B-45 confirmation set | B-45; research/07 | after 2026-10-30 (AskNews reset) | Claude | Todo | Sonnet 5.5 · PC |
 | F-10 | Raise the OpenRouter key limit before it runs out (no Metaculus credits). $4.29 of $20 used on 2026-10-05; ~$0.30/day with MiniBench live (incl. ~$3 of one-off B-45 QA), so roughly early-to-mid November. Stay within the $100 PoC budget | B-01; spec §6 | before ~2026-11-10 | Christian | Todo | Haiku 4.5 · PC |
+| F-12 | Before the EXP-005 freeze (B-31 PR): (a) fix the card's wording "Per-question score = mean over the 3 repeats", which contradicts protocol §5 and the generator (repeats averaged *before* scoring); (b) record the screen's MDE in the card so the confirmation run passes `--mde` (otherwise the kill rule uses the MDE measured on the confirmation data); (c) decide what wins if a significant effect sits entirely below MDE/2 (adopt and kill both hold; the generator says inconclusive); (d) confirm "parse failures" means every failed member forecast | B-31, B-50 | before the EXP-005 screen | Christian | Todo | Haiku 4.5 · PC |
 | F-08 | Keep `ARCHIVE_KEY` safe outside `.env` too (e.g. a password manager): unsynced artifacts are unreadable without it | ADR-0002 | now | Christian | Todo | Haiku 4.5 · PC |
 
 ## Side branch: trading (paper only, no real money)
