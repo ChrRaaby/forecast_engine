@@ -64,12 +64,19 @@ Each threat has a control and an **automated check**. A control without a check 
 - **Paired design:** every config in an experiment runs on the same questions, in the same time window, with the baseline re-run (T11).
 - **Uncertainty:** 95% CI of the mean per-question difference via cluster bootstrap (resample question clusters, 10,000 reps).
   Also report the win rate and the median difference.
-- **Repeats:** LLM outputs are stochastic. k = 1 for screening, k = 3 for decisions. Average the k forecasts per question
-  *before* scoring (this is what we'd submit), and report within-config variance.
+- **Repeats:** LLM outputs are stochastic. k = 1 for screening, k = 3 for decisions. Score each repeat on its own and average
+  the k scores per question: that estimates the score of one live run, which is what the bot submits (one call per member).
+  Averaging the forecasts first would score a k-run average the bot never submits, and because log and Brier scores are curved
+  it gives the config that varies more between runs a bonus (≈ ½·Var(p)/p² per question in log score). Average the forecasts
+  first only for a config that itself submits an average of k runs. Report within-config variance, and the other averaging as a
+  descriptive line (`evals/report.py --repeat-mode`).
 - **Power, stated honestly:** MDE ≈ 2.8 × SD(diff) / √N (α = 0.05, 80% power). Illustration with an assumed SD of 0.06 in Brier
   differences: N = 100 → MDE ≈ 0.017; N = 150 → 0.014; N = 400 → 0.008. The published Platt-scaling gain (0.016) is
   borderline detectable on our set sizes. **Many plausible tweaks will be undetectable**, so we prioritise changes with large
-  expected effects and say "inconclusive" when warranted. The real SD is measured in EXP-001, and the MDE is recomputed.
+  expected effects and say "inconclusive" when warranted. The real SD is measured in EXP-001, and the MDE is recomputed. With
+  clustered questions the √N formula is optimistic; also report the cluster-aware MDE ≈ 2.8 × the bootstrap SE.
+- **Kill thresholds:** a "too small to be worth it" rule uses a fixed smallest effect of interest written into the card before
+  the run (a value judgement about cost and complexity), not a fraction of an MDE measured later.
 - **Multiplicity:** one primary metric per experiment. Secondary metrics are descriptive, not decision-making.
 
 ## 6. Decision rules
@@ -130,3 +137,6 @@ Systematic disagreement means the harness is wrong (leakage or distribution mism
 
 ## Change log
 - 2026-09-29: v0.1 drafted (Claude, at Christian's request).
+- 2026-10-08: §5 repeats: score each repeat, then average the scores (was: average forecasts first), because the live bot
+  submits one run per question; cluster-aware MDE; fixed kill thresholds. Agreed with Christian while building B-31, before
+  any scored experiment run.

@@ -1,12 +1,12 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-06_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-08_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
 - `Why` links each item to a playbook recommendation (R-xx, `docs/playbook-tracker.md`), an idea (I-xx, `docs/ideas.md`)
   or a milestone (spec §8). An item with no *why* doesn't belong here.
-- Status: `Todo` · `Doing` · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
+- Status: `Todo` · `Doing` · `Review` (built, PR awaiting Christian) · `Done` · `Blocked` · `Dropped`. Done items move to the Done section with the date and a result.
 - Follow-ups & reminders: dated or waiting actions that aren't development (renewals, checks, decisions) live in their own section
   below, so they don't hide in session logs.
 - Size: S (≤2 h) · M (≤1 session ~4 h) · L (several sessions).
@@ -37,7 +37,6 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 11 | B-54 | Living pipeline map: architecture diagram generated from `config.py` and `core.py`'s step order, current values printed in each box and evidence colour from the ledger (B-52); a changed box is highlighted in the weekly brief. Section in the dashboard or monitor | I-17 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 12 | B-55 | Scorecard + ensemble health tab in the bot monitor, on B-38's outcomes: resolved N, Brier/log score vs community with CIs, calibration curve once N ≥ 30, each model alone (skill board), frontier vs cheap shadow (ADR-0009). Owned by the B-46/EXP-005 thread since 2026-10-07; starts after the EXP-005 work settles. The per-question model spread chart moves into the Question X-ray (B-46). Uses B-29's scorer; shares metrics with B-47 | I-17; B-38 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 13 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Sonnet 5.5 · PC |
-| 14 | B-31 | Report generator: paired cluster-bootstrap CIs, MDE, calibration plot, per-type breakdown, cost → `docs/experiments/` | Protocol §5, T9, T12 | Claude Code | M | Todo | Opus 5.5 · cloud |
 | 15 | B-47 | Diversity metrics in every experiment report: member error correlation, member spread, diversity bonus (ensemble vs mean member); on top of B-31 | I-16; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 16 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
 | 17 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
@@ -103,6 +102,8 @@ _Gated on the M2 harness (B-29, B-31, B-38). Real stakes only after the B-42 gat
 ## Done
 | ID | Item | Date | Result |
 |---|---|---|---|
+| B-31 | Report generator (`evals/report.py`, `python -m evals.report`) | 2026-10-08 | PR #9 merged with Christian's OK. Paired comparison vs a baseline arm (mean/median Δ, win rate, SD, √N and cluster-aware MDE, 10,000-rep cluster bootstrap with recorded seed); repeats scored one by one (`--repeat-mode`, protocol §5 amended); Murphy reliability + calibration table (no plot: no matplotlib); per member / type / source / forward set; failures, tokens, cost; EXP-005's amended rule as `--rule exp005` (fixed 0.015-nat kill threshold, conflict → kill); provenance header with input and generator sha256; fills a card's Results section; B-47 hook. Generator v1.1.0; synthetic demo `evals/report_demo.py`; 32 offline tests |
+| F-12 | EXP-005 analysis questions before the freeze (raised by B-31) | 2026-10-08 | Agreed with Christian: (1) per-question score = mean of per-repeat scores, since live submits one run (protocol §5 amended; generator default `--repeat-mode score`); (2) kill threshold fixed at 0.015 nats of log score instead of MDE/2; (3) adopt-and-kill conflict → kill; (4) failure = member forecast with no usable number after retries, any cause. Card amended before any scored run; `EXP005_RULE` updated |
 | B-39 | Metaculus Bot Benchmarking Access Tier: data fetched (project 32979, user ChristianR) | 2026-10-08 | 412 posts / 820 questions (533 binary, 218 numeric, 27 MC, 25 discrete, 17 date); 532 resolved, 270 open, 18 closed; final CP for 760/818, no CP history or score data from the API. Overlap: 3 questions with the B-27 census, 0 with our forecast records. Raw data in private repo (`data/benchmark/`); `tools/fetch_benchmark.py`, `tools/benchmark_census.py`. Outcomes not yet analysed; feeds B-27/B-30/B-31/B-56 |
 | B-60 | Discrete questions: accept point forecasts | 2026-10-06 | All three models answered "3" for every percentile on MiniBench 46123 (0-3 judges); the parser rejected identical values and 19 runs failed. Now allowed on discrete questions only (the tie-break keeps the mass in that value's bucket, ~91% on 3); continuous questions still reject them. Config `m1-baseline-2026-10-06`. Follow-up: retry cap B-61 |
 | B-29 | Scorer package (`evals/scoring.py`, `tests/test_scoring.py`) | 2026-10-06 | Pure functions: binary log/Brier/baseline, MC log/Brier/baseline, numeric baseline (Metaculus's 202-bucket pmf rule), numeric log score and exact CRPS on the 201-point CDF, 10-bin calibration, ECE, sharpness. 23 tests (golden, propriety, edge cases) pass offline. Formulas verified against Metaculus's public scoring code; the FAQ's own worked examples were unreachable (403), so goldens are hand-derived, not copied. Not yet wired to records; B-31 and the experiments depend on it |

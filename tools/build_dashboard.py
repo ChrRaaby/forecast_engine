@@ -213,7 +213,7 @@ section.block > h2 {{ font:700 24px var(--display); margin:0; }}
 .sub {{ font-size:12.5px; color:var(--muted); }}
 .chip {{ font:500 11.5px var(--body); padding:2px 9px; border-radius:999px; white-space:nowrap; background:var(--idle-soft); color:var(--muted); }}
 .md-frontier {{ background:var(--warn-soft); color:var(--warn); font-weight:600; }} .md-heavy {{ background:var(--accent-soft); color:var(--accent); font-weight:600; }} .md-dev {{ background:var(--ok-soft); color:var(--ok); }} .md-light {{ background:var(--idle-soft); color:var(--muted); }}
-.st-done {{ background:var(--ok-soft); color:var(--ok); }} .st-partial, .st-doing {{ background:var(--warn-soft); color:var(--warn); }}
+.st-done {{ background:var(--ok-soft); color:var(--ok); }} .st-partial, .st-doing, .st-review {{ background:var(--warn-soft); color:var(--warn); }}
 .st-planned, .st-todo {{ background:var(--accent-soft); color:var(--accent); }} .st-blocked {{ background:var(--bad-soft); color:var(--bad); }}
 .seg.st-done, .dot.st-done {{ background:var(--ok); }} .seg.st-partial, .dot.st-partial {{ background:var(--warn); }}
 .seg.st-planned, .dot.st-planned {{ background:var(--accent); }} .seg.st-not-started, .dot.st-not-started {{ background:var(--idle); }} .seg.st-n-a, .dot.st-n-a {{ background:var(--line); }}
