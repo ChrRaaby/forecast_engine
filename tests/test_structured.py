@@ -12,7 +12,7 @@ from forecast_engine import structured as st
 def answer(**over):
     d = {
         "base_rate": {"reference_classes": [
-            {"name": "A", "fit": "f", "misfit": "m", "kind": "proportion", "value": 0.2, "of_what": "x", "source": "memory", "weight": 0.5},
+            {"name": "A", "fit": "f", "misfit": "m", "kind": "proportion", "k": 4, "n": 23, "of_what": "x", "source": "memory", "weight": 0.5},
             {"name": "B", "fit": "f", "misfit": "m", "kind": "rate", "events": 1, "per_days": 100, "window_days": 10,
              "source": "R1", "weight": 0.5},
         ], "reasoning": "r", "confidence": "medium"},
@@ -104,12 +104,35 @@ def test_scenarios_within_tolerance_are_renormalised():
     assert sum(s.p for s in st.build(raw).scenarios) == pytest.approx(1)
 
 
-def test_percent_inputs_and_window_cap():
+def test_proportion_is_k_of_n_with_shrinkage():
+    assert st.shrunk_proportion(4, 23) == pytest.approx(0.2)
+    assert st.shrunk_proportion(2, 2) == 0.75 and st.shrunk_proportion(0, 2) == 0.25  # the q46107 pilot case
+    with pytest.raises(ValueError):
+        st.shrunk_proportion(3, 2)
+    f = st.build(answer())
+    c = f.base.classes[0]
+    assert c.p == pytest.approx(0.2) and c.detail["raw"] == pytest.approx(4 / 23) and f.problems == []
+
+
+def test_small_n_flagged_and_bad_counts_unusable():
     raw = answer()
-    raw["base_rate"]["reference_classes"][0]["value"] = 20
+    raw["base_rate"]["reference_classes"][0].update(k=2, n=2)
+    f = st.build(raw)
+    assert f.base.classes[0].p == 0.75 and any("only 2 comparable cases" in p for p in f.problems)
+    for bad in ({"k": 3, "n": 2}, {"k": 1.5, "n": 4}, {"k": None, "n": 4}, {"value": 0.2}):
+        raw = answer()
+        c = raw["base_rate"]["reference_classes"][0]
+        c.pop("k"), c.pop("n")
+        c.update(bad)
+        f = st.build(raw)
+        assert [x.name for x in f.base.classes] == ["B"]  # the bad class is dropped, the rate class stays
+        assert any("class 0: unusable" in p for p in f.problems)
+
+
+def test_window_cap():
+    raw = answer()
     raw["base_rate"]["reference_classes"][1]["window_days"] = 400
     f = st.build(raw, max_window_days=12)
-    assert f.base.classes[0].p == pytest.approx(0.2)
     assert f.base.classes[1].p == pytest.approx(1 - math.exp(-0.12))
     assert any("capped" in p for p in f.problems)
 
@@ -166,10 +189,12 @@ def test_prompts_number_research_and_avoid_bayesian_framing():
         assert "bayes" not in prompt.lower()
 
 
-def test_blind_prompt_sees_no_research_or_background():
+def test_blind_prompt_sees_background_but_no_research():
+    """v2: the blind call gets the question background (where things stand), still no research."""
     p = st.blind_base_rate_prompt(Q, "2026-10-05")
-    assert "Will X happen?" in p and "RC" in p
-    assert "BACKGROUND NEWS" not in p and "news 0" not in p and "R<n>" not in p and '"scenarios"' not in p
+    assert "Will X happen?" in p and "RC" in p and "BACKGROUND NEWS" in p
+    assert "news 0" not in p and "[R0]" not in p and "R<n>" not in p and '"scenarios"' not in p
+    assert '"k": 3, "n": 25' in p
 
 
 def test_given_base_prompt_carries_the_blind_number():

@@ -47,3 +47,7 @@ base-rate call, then the protocol from that p0). Models: `openai/gpt-6.1-sol` (f
 - Arm B's drift toward the news (finding 3) is exactly why arm C exists; keep both arms in the screen.
 - The cost is well inside the budget: ≈ $0.03 per frontier call puts the screen (50 records × 2 members × 4 calls) near $12 and a
   3-member confirmation (100 × 3 × 3 calls × 3 repeats) near $80; five members ≈ $135.
+
+## Outcome (2026-10-07)
+Christian approved both fixes before any scored run. They are protocol `structured-v2` (`forecast_engine/structured.py`) and
+variant 2 on the EXP-005 card. The pilot was not re-run; its page notes that it shows v1.

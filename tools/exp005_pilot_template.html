@@ -29,6 +29,7 @@ h3 { font:600 16px var(--display); margin:0; }
 h4 { font:600 11.5px var(--body); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0; }
 p { margin:0; max-width:75ch; }
 .lede { color:var(--muted); }
+.notice { background:var(--warn-soft); color:var(--fg); border-radius:8px; padding:10px 14px; font-size:14px; max-width:none; }
 a { color:var(--accent); }
 a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .panel { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; display:grid; gap:12px; min-width:0; }
@@ -76,6 +77,10 @@ code { font:12px var(--mono); background:var(--idle-soft); padding:1px 4px; bord
     <span class="eyebrow">EXP-005 · protocol pilot · not scored</span>
     <h1>Structured reasoning pilot</h1>
     <p class="lede" id="lede"></p>
+    <p class="notice"><b>This pilot predates two fixes.</b> It ran protocol v1. After reviewing it, Christian approved two changes
+      before any scored run (protocol v2): a share of comparable cases must be given as a count, "k of n", which the code shrinks to
+      (k+1)/(n+2) and flags when n is under 5, so "2 of 2" counts as 75%, not 100%; and the blind base-rate call (arm C) now also
+      sees the question's background, still without the research. The pilot was not re-run; the numbers below are v1.</p>
   </header>
 
   <section class="panel" aria-labelledby="howto">
@@ -122,7 +127,9 @@ const fmtFactor = (f) => f >= 1 ? `×${+f.toFixed(2)}` : `÷${+(1 / f).toFixed(2
 function freqText(c) {
   const d = c.detail || {};
   if (c.kind === "rate") return `${d.events} per ${d.per_days} days, over a ${(d.window_days_capped ?? d.window_days)}-day window`;
-  return `${pct(c.p, 1)} of ${d.of_what ? esc(d.of_what) : "comparable cases"}`;
+  const what = d.of_what ? esc(d.of_what) : "comparable cases";
+  if (d.n != null) return `${d.k} of ${d.n} ${what} (raw ${pct(d.raw, 1)}, shrunk to ${pct(c.p, 1)})`;
+  return `${pct(c.p, 1)} of ${what}`;
 }
 
 function baseStep(a) {

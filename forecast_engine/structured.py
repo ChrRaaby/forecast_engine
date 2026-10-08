@@ -1,8 +1,9 @@
 """Structured-reasoning protocol for binary questions (EXP-005): the forecasting model itself works through
 base rate -> scenarios -> drivers -> reconcile, as JSON; every number that can be computed is computed here, in code.
 
-  1. Base rate: 2-3 reference classes, each with fit/misfit, a frequency and a source; either a proportion of comparable
-     cases or an event rate that code converts to the question window (1 - exp(-rate * t)); weights -> p0.
+  1. Base rate: 2-3 reference classes, each with fit/misfit, a frequency and a source; either a count of comparable cases
+     (k of n, shrunk in code to (k+1)/(n+2); n < 5 flagged) or an event rate that code converts to the question window
+     (1 - exp(-rate * t)); weights -> p0.
   2. Scenarios (written before the drivers): 3-5 mutually exclusive, exhaustive; P(s) and P(YES|s); p_scen = sum P(s)P(YES|s).
   3. Drivers: direction, evidence ref, odds multiplier from a fixed scale; p_drv = odds(p0) * product (capped).
   4. Reconcile: if p_drv and p_scen agree (within 10 pp or a 1.5x odds factor) the code number is their log-odds mean;
@@ -19,7 +20,10 @@ from dataclasses import asdict, dataclass, field
 from textwrap import dedent
 from typing import Any
 
-PROTOCOL_VERSION = "structured-v1"
+# v2 (2026-10-07, after the unscored pilot, research/13; before any scored run): proportions as k of n with shrinkage, and the
+# blind base-rate call sees the question background (still no research). v1 was used only by the pilot.
+PROTOCOL_VERSION = "structured-v2"
+SMALL_N = 5  # a proportion from fewer comparable cases is flagged
 
 MULTIPLIERS = (1.25, 1.5, 2.0, 3.0)  # allowed odds factors per driver (inverse for "down")
 TOTAL_ODDS_CAP = 10.0  # product of all drivers is clipped to [1/10, 10]
@@ -45,6 +49,13 @@ def window_probability(events: float, per_days: float, window_days: float) -> fl
     if events < 0 or per_days <= 0 or window_days < 0:
         raise ValueError("events >= 0, per_days > 0 and window_days >= 0 required")
     return 1 - math.exp(-(events / per_days) * window_days)
+
+
+def shrunk_proportion(k: int, n: int) -> float:
+    """k YES out of n comparable cases, shrunk toward 1/2: (k + 1) / (n + 2). 2 of 2 -> 0.75, 0 of 2 -> 0.25, 30 of 100 -> 0.304."""
+    if not 0 <= k <= n:
+        raise ValueError("0 <= k <= n required")
+    return (k + 1) / (n + 2)
 
 
 def apply_drivers(p0: float, factors: list[float], cap: float = TOTAL_ODDS_CAP) -> tuple[float, float]:
@@ -76,7 +87,7 @@ class RefClass:
     source: str  # "R3" (research item), "question", or "memory"
     p: float  # probability for the question window, computed in code for "rate"
     weight: float
-    detail: dict[str, Any] = field(default_factory=dict)  # the raw numbers (value, or events/per_days/window_days)
+    detail: dict[str, Any] = field(default_factory=dict)  # the raw numbers (k/n/of_what, or events/per_days/window_days)
 
 
 @dataclass
@@ -182,8 +193,13 @@ def parse_base_rate(raw: Any, problems: list[str], max_window_days: float | None
         detail: dict[str, Any] = {}
         p = None
         if kind == "proportion":
-            p = _prob(c.get("value"))
-            detail = {"value": c.get("value"), "of_what": _s(c.get("of_what"))}
+            k, n = _num(c.get("k")), _num(c.get("n"))
+            detail = {"k": k, "n": n, "of_what": _s(c.get("of_what"))}
+            if k is not None and n is not None and k.is_integer() and n.is_integer() and 0 <= k <= n and n >= 1:
+                p = shrunk_proportion(int(k), int(n))
+                detail["raw"] = k / n
+                if n < SMALL_N:
+                    problems.append(f"base_rate class {i}: only {int(n)} comparable cases (k of n = {int(k)}/{int(n)})")
         elif kind == "rate":
             ev, per, win = _num(c.get("events")), _num(c.get("per_days")), _num(c.get("window_days"))
             detail = {"events": ev, "per_days": per, "window_days": win}
@@ -308,8 +324,9 @@ Give 2-3 different reference classes (groups of comparable past cases). For each
   - name: the class, defined precisely enough that someone could count its members;
   - fit: why this case belongs to it; misfit: how this case differs;
   - a frequency, in ONE of two forms:
-      kind "proportion": value = share of comparable cases that ended the way this question resolves YES (0-1), and of_what =
-        what was counted (e.g. "court appeals of this type decided within 2 weeks of the hearing, 2015-2025");
+      kind "proportion": k of n = in n comparable cases, k ended the way this question resolves YES (whole numbers you could
+        list), and of_what = what was counted (e.g. "court appeals of this type decided within 2 weeks of the hearing,
+        2015-2025"). The code turns it into (k+1)/(n+2), so small samples count for less; n under 5 is flagged;
       kind "rate": events = how many times such an event happened in per_days days (e.g. 3 events per 3650 days), and
         window_days = the length of the window this question asks about. The code converts it: P = 1 - exp(-rate x window);
   - source: "R<n>" for a research item that gives the number, "question" if the question text gives it, or "memory" if it comes
@@ -341,7 +358,7 @@ _JSON_SHAPE = """\
 {
   "base_rate": {
     "reference_classes": [
-      {"name": "...", "fit": "...", "misfit": "...", "kind": "proportion", "value": 0.12, "of_what": "...", "source": "memory", "weight": 0.6},
+      {"name": "...", "fit": "...", "misfit": "...", "kind": "proportion", "k": 3, "n": 25, "of_what": "...", "source": "memory", "weight": 0.6},
       {"name": "...", "fit": "...", "misfit": "...", "kind": "rate", "events": 3, "per_days": 3650, "window_days": 12, "source": "R2", "weight": 0.4}
     ],
     "reasoning": "...",
@@ -411,15 +428,17 @@ Today is {today}.
 
 
 def blind_base_rate_prompt(q: dict[str, Any], today: str) -> str:
-    """Arm C, call 1: base rate from the question alone (no background, no research), so it can't be fitted to the news."""
+    """Arm C, call 1: base rate from the question and its background, without the research, so it can't be fitted to the news
+    but still knows where things stand (v2: v1 hid the background too, and missed the setup on q46076, research/13)."""
     shape = _JSON_SHAPE.split('"scenarios"')[0].rstrip().rstrip(",") + "\n}"
     return _clean(f"""
-You are a professional forecaster doing only the first step of a forecast: the base rate. You see the question but deliberately
-no news or background, so that your base rate is independent of the specifics of this case. Answer with ONE JSON object only,
-no other text, in exactly this shape:
+You are a professional forecaster doing only the first step of a forecast: the base rate. You see the question and its
+background, but deliberately none of the research or recent news, so that your base rate doesn't simply echo the latest
+reports. Use the background to understand where things stand, then ask how often cases like this end in YES. Answer with ONE
+JSON object only, no other text, in exactly this shape:
 {shape}
 
-{_question_block(q, with_background=False)}
+{_question_block(q, with_background=True)}
 
 Today is {today}.
 
@@ -436,7 +455,7 @@ def protocol_prompt_given_base(q: dict[str, Any], research: str, today: str, bas
     """Arm C, call 2: steps 2-4, starting from the blind base rate (the model may not change it)."""
     shape = '{\n  "scenarios"' + _JSON_SHAPE.split('"scenarios"', 1)[1]
     return _clean(f"""
-You are a professional forecaster. A colleague who saw only the question (no news) has already set the base rate below. Take it
+You are a professional forecaster. A colleague who saw the question and its background, but no research, has already set the base rate below. Take it
 as your starting point; do not change it. Work through steps 2-4 in order and answer with ONE JSON object only, no other text, in
 exactly this shape:
 {shape}
