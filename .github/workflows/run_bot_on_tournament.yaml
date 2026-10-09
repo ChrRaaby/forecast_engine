@@ -17,7 +17,7 @@ jobs:
     # Live publishing is off until the repository variable LIVE_ENABLED is set to "true"
     # (Settings → Secrets and variables → Actions → Variables). Manual runs are allowed regardless.
     if: ${{ vars.LIVE_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned 2026-10-09 while Christian is away (F-03); move to ubuntu-latest after checking Ubuntu 26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

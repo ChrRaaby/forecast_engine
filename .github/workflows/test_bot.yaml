@@ -6,7 +6,7 @@ on:
 
 jobs:
   forecast_job:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned 2026-10-09 while Christian is away (F-03); move to ubuntu-latest after checking Ubuntu 26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

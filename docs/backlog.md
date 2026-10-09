@@ -71,7 +71,7 @@ _Dated or waiting items that aren't development work. Checked at the start of ev
 | ID | Item | Why | Date | Owner | Status | Model |
 |---|---|---|---|---|---|---|
 | F-02 | Check the Google billing console for the per-search grounding fee (not in our cost records) | B-10; ADR-0006 | after a few days live | Christian | Todo | Haiku 4.5 · PC |
-| F-03 | Check the workflows still run after GitHub moves `ubuntu-latest` to Ubuntu 26 (and Node 20 actions are forced to Node 24) | Ops | 2026-10-19 | Claude | Todo | Haiku 4.5 · PC |
+| F-03 | Workflows pinned to `ubuntu-24.04` on 2026-10-09 (Christian away ~10-10..18); Node 24 forcing already passes. Unpin: test a run on `ubuntu-latest` (Ubuntu 26, Python 3.11 via setup-python), then switch back | Ops | after 2026-10-19 | Claude | Todo | Haiku 4.5 · PC |
 | F-04 | Use the free $100 cloud credit for the Opus 5.5 · cloud items before it expires | Model rule | by 2026-11-05 | Christian | Todo | Haiku 4.5 · PC |
 | F-05 | AskNews Pro promo (100% off for 4 months) ends: decide whether to pay $7.99/month or fall back | research/03 | ~2027-01 (check the billing page) | Christian | Todo | Haiku 4.5 · PC |
 | F-06 | Renew the cron-job.org GitHub token and paste it into the job | B-06 | before 2027-10-01 | Christian | Todo | Haiku 4.5 · PC |
