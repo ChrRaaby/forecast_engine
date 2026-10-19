@@ -50,10 +50,13 @@ import numpy as np
 
 from . import scoring
 
-REPORT_VERSION = "1.1.0"
+REPORT_VERSION = "1.2.0"
 DEFAULT_SEED = 3101
 DEFAULT_REPS = 10_000
 DEFAULT_BINS = 10
+FAMILY_ALPHA = 0.05  # protocol §5: the chance of at least one false win across all candidate arms
+CALLS_TOLERANCE = 0.10  # a compute-matched control should use within ±10% of the candidate's calls per question
+RUN_KINDS = ("screen", "rerun", "confirm")
 AGGREGATE = "aggregate"
 FORWARD_SOURCE = "benchmark-forward"
 REQUIRED_COLUMNS = ("question_id", "cluster_id", "arm", "member", "repeat", "p", "outcome")
@@ -99,6 +102,7 @@ class Row:
     source: str = ""
     cost_usd: float | None = None
     tokens: float | None = None
+    calls: float | None = None  # model calls this row cost; blank = one call per member row
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -162,6 +166,7 @@ def parse_row(d: dict[str, Any], line: int = 0) -> Row:
             source="" if _blank(d.get("source")) else str(d["source"]).strip(),
             cost_usd=_num(d.get("cost_usd")),
             tokens=tokens,
+            calls=_num(d.get("calls")),
             extra={k: "" if _blank(v) else str(v) for k, v in d.items() if k not in _KNOWN},
         )
     except (TypeError, ValueError) as e:
@@ -200,6 +205,8 @@ class ArmData:
     errors: Counter = field(default_factory=Counter)
     cost_by_question: dict[str, float] = field(default_factory=dict)
     tokens_by_question: dict[str, float] = field(default_factory=dict)
+    calls_by_question: dict[str, float] = field(default_factory=dict)
+    calls_given: bool = False  # True when the input had a `calls` column for this arm (else one call per member row)
     repeats_by_question: dict[str, int] = field(default_factory=dict)
 
     def _source(self, member: str) -> dict[str, dict[int, float | None]]:
@@ -342,6 +349,11 @@ def prepare(rows: Sequence[Row], aggregation: str = "auto") -> Prepared:
             a.cost_by_question[r.question_id] = a.cost_by_question.get(r.question_id, 0.0) + r.cost_usd
         if r.tokens is not None:
             a.tokens_by_question[r.question_id] = a.tokens_by_question.get(r.question_id, 0.0) + r.tokens
+        if r.calls is not None:
+            a.calls_given = True
+            a.calls_by_question[r.question_id] = a.calls_by_question.get(r.question_id, 0.0) + r.calls
+        elif r.member != AGGREGATE:
+            a.calls_by_question[r.question_id] = a.calls_by_question.get(r.question_id, 0.0) + 1.0
         if r.member == AGGREGATE:
             key = (r.arm, r.question_id)
             if r.repeat in given[key]:
@@ -440,6 +452,7 @@ class Comparison:
     sd_diff: float
     mde: float
     dropped: Counter = field(default_factory=Counter)
+    level: float = 0.95  # confidence level of ci_low/ci_high
 
     @property
     def mde_cluster(self) -> float:
@@ -473,6 +486,16 @@ class Comparison:
         return "arm better (CI excludes 0)" if self.improvement > 0 else "arm worse (CI excludes 0)"
 
 
+def family_level(m: int, alpha: float = FAMILY_ALPHA) -> float:
+    """Confidence level of the per-arm CI when m candidate arms are tested against the baseline (Bonferroni, protocol §5):
+    1 − α/m, so the chance of at least one false win across the family stays at α. m = 1 gives the normal 95%."""
+    return 1.0 - alpha / max(int(m), 1)
+
+
+def _level_words(level: float) -> str:
+    return f"{level * 100:.1f}".rstrip("0").rstrip(".") + "%"
+
+
 _ABSENT = object()
 
 
@@ -487,6 +510,7 @@ def paired_compare(
     reps: int = DEFAULT_REPS,
     seed: int = DEFAULT_SEED,
     restrict: set[str] | None = None,
+    level: float = 0.95,
 ) -> Comparison:
     """Paired comparison of per-question scores (`ArmData.question_scores`; None = every forecast failed) on the questions
     both sides scored. Questions missing or failed on one side are dropped and counted by reason. `restrict` limits the
@@ -513,7 +537,7 @@ def paired_compare(
     d = sa - sb
     n = len(paired)
     cl = [clusters[q] for q in paired]
-    lo, hi, se = cluster_bootstrap_ci(d, cl, reps, seed)
+    lo, hi, se = cluster_bootstrap_ci(d, cl, reps, seed, level)
     better = d > 0 if metric.higher_is_better else d < 0
     worse = d < 0 if metric.higher_is_better else d > 0
     sd = float(np.std(d, ddof=1)) if n > 1 else float("nan")
@@ -538,6 +562,7 @@ def paired_compare(
         sd_diff=sd,
         mde=mde(sd, n),
         dropped=dropped,
+        level=level,
     )
 
 
@@ -611,6 +636,9 @@ class Decision:
     mde_used: float
     mde_source: str
     note: str = ""
+    next_step: str = ""  # what the protocol says happens now (§6.2 tiers, §6.3 rerun), from run kind and tier
+    level: float = 0.95
+    control: str = ""
 
     def lines(self) -> list[str]:
         out = [f"Decision for arm {self.arm} under '{self.rule.name}': {self.verdict.upper()}"]
@@ -618,11 +646,62 @@ class Decision:
             out.append(f"  [{'x' if c.met else ' '}] {c.kind:5s} {c.condition}: {c.detail}")
         if self.note:
             out.append(f"  note: {self.note}")
+        if self.next_step:
+            out.append(f"  next: {self.next_step}")
         return out
 
 
 def _f(x: float | None, nd: int = 4) -> str:
     return "n/a" if x is None or (isinstance(x, float) and math.isnan(x)) else f"{x:.{nd}f}"
+
+
+def next_step_words(verdict: str, comparison: Comparison, rule: DecisionRule, run_kind: str, tier: int | None) -> str:
+    """What the protocol says happens after this verdict (§6.2 confirmation tiers, §6.3 one rerun on fresh questions).
+
+    run_kind "screen" = first run, "rerun" = the one rerun on questions that resolved after the first run (it decides),
+    "confirm" = confirmation of a win on fresh questions (§6.2). A narrow win is a CI that excludes 0 but whose lower end is
+    below the rule's smallest effect of interest (`kill_if_ci_upper_below`)."""
+    if run_kind not in RUN_KINDS:
+        raise ValueError(f"unknown run kind {run_kind!r}; choose from {RUN_KINDS}")
+    if tier not in (None, 1, 2):
+        raise ValueError(f"tier must be 1 or 2, got {tier!r}")
+    tier_words = {
+        1: "Tier 1: stays live (or goes live now) with the old config running as the shadow (B-62).",
+        2: "Tier 2: may go live now.",
+        None: "No tier given on the card: treat as Tier 2.",
+    }
+    lo = comparison.improvement_ci[0]
+    smallest = rule.kill_if_ci_upper_below
+    narrow = smallest is not None and 0 < lo < smallest
+    if run_kind == "confirm":
+        if verdict == "adopt":
+            return f"Confirmed on fresh questions. {tier_words[tier]}"
+        if tier == 1:
+            return "Not confirmed: Tier 1, so live goes back to the old config."
+        return "Not confirmed: it does not go live."
+    if verdict == "kill":
+        return "Dropped: it hit the kill threshold (§5); not rerun."
+    if run_kind == "rerun":
+        if verdict == "adopt":
+            return f"The rerun decides and the win holds on fresh questions, which counts as the confirmation. {tier_words[tier]}"
+        return "Dropped: still not a clear win after the one rerun (§6.3). A changed version is a new variant with its own card."
+    if verdict == "adopt":
+        if narrow:
+            return (
+                "Narrow win (CI lower end below the smallest effect of interest): keep the simpler/cheaper config and schedule "
+                "the one rerun on questions resolved after this run (§6.3); this run counts as a screen."
+            )
+        if tier == 1:
+            return "Win. Tier 1: goes live at once with the old config as shadow; confirm on fresh questions while live (§6.2)."
+        return (
+            "Win on the screen. "
+            + ("Tier 2" if tier == 2 else "No tier given, treated as Tier 2")
+            + ": confirm by rerun or a shadow run on fresh questions before it goes live (§6.2)."
+        )
+    return (
+        "Inconclusive: keep the simpler/cheaper config and schedule the one rerun on questions resolved after this run "
+        "(§6.3); this run counts as a screen."
+    )
 
 
 def apply_decision_rule(
@@ -635,10 +714,17 @@ def apply_decision_rule(
     failure_rate_base: float,
     cost_per_question_arm: float | None = None,
     mde_value: float | None = None,
+    control_comparison: Comparison | None = None,
+    run_kind: str = "screen",
+    tier: int | None = None,
 ) -> Decision:
     """Apply `rule` to one arm-vs-baseline comparison. `mde_value` is the pre-registered MDE, used only by a rule with
     `kill_if_ci_upper_below_mde_fraction`; without it the cluster-aware MDE measured on this comparison is used and the
-    decision says so. A condition that cannot be evaluated (no data) counts as not met."""
+    decision says so. A condition that cannot be evaluated (no data) counts as not met.
+
+    `control_comparison` is the arm against the compute-matched control (protocol §5): adopting also needs its CI to exclude 0
+    in the arm's favour. The CI level is the comparison's own (1 − 0.05/m when several arms compete). `run_kind` and `tier`
+    only choose the `next_step` wording; they never change the verdict."""
     if comparison.metric != rule.metric:
         raise ValueError(f"rule is on {rule.metric!r}, comparison is on {comparison.metric!r}")
     if rule.kill_if_ci_upper_below_mde_fraction is None:
@@ -650,12 +736,29 @@ def apply_decision_rule(
     point = comparison.improvement
     lo, hi = comparison.improvement_ci
     checks: list[Check] = []
+    lvl = _level_words(comparison.level)
+    ctl = control_comparison.baseline if control_comparison is not None else ""
     if comparison.n == 0:
-        return Decision(comparison.arm, rule, "inconclusive", checks, m, m_src, "no paired questions")
+        return Decision(
+            comparison.arm, rule, "inconclusive", checks, m, m_src, "no paired questions",
+            next_step_words("inconclusive", comparison, rule, run_kind, tier), comparison.level, ctl,
+        )
 
     checks.append(Check("adopt", "mean improvement > 0", point > 0, f"point {_f(point)}"))
     if rule.adopt_requires_ci_excluding_zero:
-        checks.append(Check("adopt", "95% CI excludes 0 (lower bound > 0)", lo > 0, f"CI [{_f(lo)}, {_f(hi)}]"))
+        checks.append(Check("adopt", f"{lvl} CI excludes 0 (lower bound > 0)", lo > 0, f"CI [{_f(lo)}, {_f(hi)}]"))
+    if control_comparison is not None:
+        clo, chi = control_comparison.improvement_ci
+        checks.append(
+            Check(
+                "adopt",
+                f"beats the compute-matched control {ctl} ({_level_words(control_comparison.level)} CI lower bound > 0)",
+                control_comparison.n > 0 and clo > 0,
+                f"vs {ctl}: CI [{_f(clo)}, {_f(chi)}], N {control_comparison.n}"
+                if control_comparison.n
+                else f"vs {ctl}: no paired questions",
+            )
+        )
     if rule.max_reliability_increase is not None:
         inc = reliability_arm - reliability_base
         checks.append(
@@ -716,7 +819,10 @@ def apply_decision_rule(
         verdict = "kill"
     else:
         verdict = "inconclusive"
-    return Decision(comparison.arm, rule, verdict, checks, m, m_src, note)
+    return Decision(
+        comparison.arm, rule, verdict, checks, m, m_src, note,
+        next_step_words(verdict, comparison, rule, run_kind, tier), comparison.level, ctl,
+    )
 
 
 # --------------------------------------------------------------------------- analysis
@@ -734,6 +840,8 @@ class ArmSummary:
     failure_rate: float
     aggregate_failure_rate: float
     cost_per_question: float | None  # mean over questions of (total cost / repeats): the cost of one live forecast
+    calls_per_question: float | None  # same for model calls (a `calls` column, else one per member row)
+    calls_source: str
     tokens_per_question: float | None
     repeat_sd_p: float  # mean over questions of the SD of the aggregate forecast across repeats
     repeat_sd_log: float
@@ -759,6 +867,13 @@ class Analysis:
     decisions: dict[str, Decision]
     meta: dict[str, str]
     warnings: list[str]
+    candidates: list[str] = field(default_factory=list)  # the m arms that compete against the baseline
+    control: str = ""  # the compute-matched control arm ("" = none); it does not count towards m
+    level: float = 0.95  # per-arm CI level for candidates: 1 − 0.05/m
+    control_comparisons: dict[str, Comparison] = field(default_factory=dict)  # candidate -> candidate vs the control
+    run_kind: str = "screen"
+    tier: int | None = None
+    label: str = ""  # free text from the card, e.g. "rerun of EXP-004"
 
     @property
     def arms(self) -> dict[str, ArmData]:
@@ -788,6 +903,7 @@ def _summarise(a: ArmData, outcomes: dict[str, int], n_bins: int, mode: str) -> 
     k = ", ".join(f"{kk}" if len(ks) == 1 else f"{kk} ({c} q)" for kk, c in sorted(ks.items())) or "n/a"
     costs = [c / a.repeats_by_question.get(q, 1) for q, c in a.cost_by_question.items()]
     toks = [t / a.repeats_by_question.get(q, 1) for q, t in a.tokens_by_question.items()]
+    calls = [c / a.repeats_by_question.get(q, 1) for q, c in a.calls_by_question.items()]
     return ArmSummary(
         arm=a.name,
         n=sum(v is not None for v in log.values()),
@@ -802,6 +918,8 @@ def _summarise(a: ArmData, outcomes: dict[str, int], n_bins: int, mode: str) -> 
         aggregate_failure_rate=a.aggregate_failures / a.aggregate_attempts if a.aggregate_attempts else nan,
         cost_per_question=float(np.mean(costs)) if costs else None,
         tokens_per_question=float(np.mean(toks)) if toks else None,
+        calls_per_question=float(np.mean(calls)) if calls else None,
+        calls_source="`calls` column" if a.calls_given else "one per member row",
         repeat_sd_p=float(np.mean(sds_p)) if sds_p else nan,
         repeat_sd_log=float(np.mean(sds_log)) if sds_log else nan,
         k=k,
@@ -825,7 +943,15 @@ def analyse(
     forward_source: str = FORWARD_SOURCE,
     n_bins: int = DEFAULT_BINS,
     meta: dict[str, str] | None = None,
+    control: str | None = None,
+    run_kind: str = "screen",
+    tier: int | None = None,
+    label: str = "",
 ) -> Analysis:
+    """`decision_arms` are the m candidate arms (default: every arm except the baseline and the control). Each is compared with
+    the baseline at CI level 1 − 0.05/m so the family-wide false-win risk stays 5% (protocol §5). `control` names the
+    compute-matched control arm: it does not count towards m, and a candidate is adopted only if it also beats it.
+    `run_kind` ("screen" / "rerun" / "confirm") and `tier` (1 / 2) only label the outcome (protocol §6.2, §6.3)."""
     if metric not in METRICS:
         raise ValueError(f"unknown metric {metric!r}; choose from {sorted(METRICS)}")
     if repeat_mode not in REPEAT_MODES:
@@ -837,16 +963,42 @@ def analyse(
         raise ValueError(f"baseline arm {baseline!r} not in the data (arms: {sorted(prep.arms)})")
     out, cl = prep.outcomes, prep.clusters
     others = [a for a in sorted(prep.arms) if a != baseline]
+    if run_kind not in RUN_KINDS:
+        raise ValueError(f"unknown run kind {run_kind!r}; choose from {RUN_KINDS}")
+    if control is not None:
+        if control == baseline:
+            raise ValueError("the compute-matched control must be a different arm from the baseline")
+        if control not in prep.arms:
+            raise ValueError(f"control arm {control!r} not in the data (arms: {sorted(prep.arms)})")
+    candidates = list(decision_arms) if decision_arms else [a for a in others if a != control]
+    for a in candidates:
+        if a not in others:
+            raise ValueError(f"decision arm {a!r} is not a non-baseline arm in the data")
+        if a == control:
+            raise ValueError(f"decision arm {a!r} is the compute-matched control; the control is not a candidate")
+    level = family_level(len(candidates))
     warnings: list[str] = list(prep.notes)
+    if len(candidates) > 1:
+        warnings.append(
+            f"{len(candidates)} candidate arms: each is judged at CI level {_level_words(level)} (1 − 0.05/{len(candidates)}) "
+            "so the chance of at least one false win stays 5% (protocol §5). Other tables stay at 95% and are descriptive."
+        )
+    if candidates and reps * (1.0 - level) / 2.0 < 50:
+        warnings.append(
+            f"CI level {_level_words(level)} with {reps:,} bootstrap reps leaves under 50 replicates in each tail; "
+            "raise --reps for a stable interval."
+        )
     base_arm = prep.arms[baseline]
 
     def scores(arm: str, key: str, member: str = AGGREGATE, mode: str = repeat_mode) -> dict[str, float | None]:
         return prep.arms[arm].question_scores(METRICS[key], out, mode, member)
 
-    def compare(arm: str, key: str, member: str = AGGREGATE, mode: str = repeat_mode, restrict=None) -> Comparison:
+    def compare(
+        arm: str, key: str, member: str = AGGREGATE, mode: str = repeat_mode, restrict=None, vs: str = baseline, lvl: float = 0.95
+    ) -> Comparison:
         return paired_compare(
-            scores(arm, key, member, mode), scores(baseline, key, member, mode), cl, METRICS[key], arm=arm,
-            baseline=baseline, reps=reps, seed=seed, restrict=restrict,
+            scores(arm, key, member, mode), scores(vs, key, member, mode), cl, METRICS[key], arm=arm,
+            baseline=vs, reps=reps, seed=seed, restrict=restrict, level=lvl,
         )
 
     summaries = {a: _summarise(prep.arms[a], out, n_bins, repeat_mode) for a in [baseline, *others]}
@@ -854,8 +1006,9 @@ def analyse(
     other_mode: dict[str, Comparison] = {}
     multi_repeat = any(k > 1 for d in prep.arms.values() for k in d.repeats_by_question.values())
     calib_paired: dict[str, tuple[float, float]] = {}
+    control_cmp: dict[str, Comparison] = {}
     for a in others:
-        comparisons[a] = {key: compare(a, key) for key in METRICS}
+        comparisons[a] = {key: compare(a, key, lvl=level if key == metric and a in candidates else 0.95) for key in METRICS}
         if multi_repeat:
             other_mode[a] = compare(a, metric, mode=next(m for m in REPEAT_MODES if m != repeat_mode))
         sa, sb = scores(a, metric), scores(baseline, metric)
@@ -864,6 +1017,8 @@ def analyse(
             rel_a = murphy_decomposition(*prep.arms[a].calibration_points(out, repeat_mode, paired), n_bins)["reliability"]
             rel_b = murphy_decomposition(*base_arm.calibration_points(out, repeat_mode, paired), n_bins)["reliability"]
             calib_paired[a] = (rel_a, rel_b)
+        if control is not None and a in candidates:
+            control_cmp[a] = compare(a, metric, vs=control, lvl=level)
         c = comparisons[a][metric]
         if 0 < c.n_clusters < FEW_CLUSTERS:
             warnings.append(
@@ -918,17 +1073,34 @@ def analyse(
             + ", ".join(f"{a}: {n}" for a, n in sorted(unkinded.items()))
         )
 
+    cand_calls = {a: summaries[a].calls_per_question for a in [baseline, *others]}
+    if control is not None:
+        for a in candidates:
+            ca, cc = cand_calls[a], cand_calls[control]
+            if ca and cc and abs(cc / ca - 1.0) > CALLS_TOLERANCE:
+                warnings.append(
+                    f"the control {control} makes {cc:.1f} calls/question but {a} makes {ca:.1f}: not compute-matched "
+                    f"(more than ±{CALLS_TOLERANCE:.0%} apart)."
+                )
+    for a in [x for x in candidates if x != control]:
+        ca, cb = cand_calls[a], cand_calls[baseline]
+        if control is None and ca and cb and ca > cb * (1.0 + CALLS_TOLERANCE):
+            warnings.append(
+                f"{a} makes {ca:.1f} calls/question against {cb:.1f} for {baseline} and no compute-matched control was given "
+                "(--control): it could win from the extra calls alone (protocol §5)."
+            )
+    if any(d.calls_given != base_arm.calls_given for d in prep.arms.values()):
+        warnings.append("calls/question come from a `calls` column for some arms and from member-row counts for others.")
+
     decisions: dict[str, Decision] = {}
     if rule is not None:
-        targets = list(decision_arms) if decision_arms else others
+        targets = candidates
         if len(targets) > 1:
             warnings.append(
-                f"the decision rule was applied to {len(targets)} arms; a pre-registered rule normally has one confirmatory "
-                "comparison (protocol §5 multiplicity)."
+                f"the decision rule was applied to {len(targets)} arms; the Bonferroni level above keeps the family-wide "
+                "false-win risk at 5%, but every extra arm raises the MDE (protocol §5)."
             )
         for a in targets:
-            if a not in comparisons:
-                raise ValueError(f"decision arm {a!r} is not a non-baseline arm in the data")
             rel_a, rel_b = calib_paired.get(a, (float("nan"), float("nan")))
             decisions[a] = apply_decision_rule(
                 rule,
@@ -939,6 +1111,9 @@ def analyse(
                 failure_rate_base=summaries[baseline].failure_rate,
                 cost_per_question_arm=summaries[a].cost_per_question,
                 mde_value=mde_value,
+                control_comparison=control_cmp.get(a),
+                run_kind=run_kind,
+                tier=tier,
             )
             if mde_value is None and rule.kill_if_ci_upper_below_mde_fraction is not None:
                 warnings.append(
@@ -963,6 +1138,13 @@ def analyse(
         decisions=decisions,
         meta=dict(meta or {}),
         warnings=warnings,
+        candidates=candidates,
+        control=control or "",
+        level=level,
+        control_comparisons=control_cmp,
+        run_kind=run_kind,
+        tier=tier,
+        label=label,
     )
 
 
@@ -982,14 +1164,17 @@ def _table(header: Sequence[str], rows: Iterable[Sequence[Any]]) -> list[str]:
 
 
 def _ci(c: Comparison) -> str:
-    return f"[{_f(c.ci_low)}, {_f(c.ci_high)}]" if c.n else "n/a"
+    if not c.n:
+        return "n/a"
+    suffix = "" if abs(c.level - 0.95) < 1e-9 else f" @{_level_words(c.level)}"
+    return f"[{_f(c.ci_low)}, {_f(c.ci_high)}]{suffix}"
 
 
 def _pct(x: float) -> str:
     return "n/a" if math.isnan(x) else f"{x:.1%}"
 
 
-_CMP_HEADER = ["N", "clusters", "mean Δ", "95% CI", "median Δ", "win rate (W/T/L)", "SD(Δ)", "MDE", "reading"]
+_CMP_HEADER = ["N", "clusters", "mean Δ", "CI (95% unless marked)", "median Δ", "win rate (W/T/L)", "SD(Δ)", "MDE", "reading"]
 
 
 def _cmp_cells(c: Comparison) -> list[str]:
@@ -1016,6 +1201,12 @@ def _aggregation_words(an: Analysis) -> str:
         "(live rule)"
     )
 
+
+_RUN_WORDS = {
+    "screen": "screen (first run; a win still has to be confirmed on fresh questions, protocol §6.2)",
+    "rerun": "deciding rerun on fresh questions (protocol §6.3)",
+    "confirm": "confirmation of a win on fresh questions (protocol §6.2)",
+}
 
 _REPEAT_WORDS = {
     "score": "`score`: each repeat scored on its own, scores averaged per question (expected score of one live run)",
@@ -1049,6 +1240,17 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
             ["aggregation", _aggregation_words(an)],
             ["repeats", _REPEAT_WORDS[an.repeat_mode]],
             ["baseline arm", an.baseline],
+            [
+                "run",
+                f"{_RUN_WORDS[an.run_kind]}; tier: {an.tier if an.tier else 'not given'}"
+                + (f"; {an.label}" if an.label else ""),
+            ],
+            [
+                "candidate arms (m)",
+                f"{len(an.candidates)} ({', '.join(an.candidates) or 'none'}): CI level {_level_words(an.level)} = "
+                f"1 − 0.05/{max(len(an.candidates), 1)} for the primary comparison",
+            ],
+            ["compute-matched control", an.control or "none"],
             ["primary metric", f"{m.label} ({'higher' if m.higher_is_better else 'lower'} is better)"],
             ["questions scored per arm", n_per_arm],
             ["questions dropped before scoring", f"{dropped_words} (of {len(prep.outcomes) + len(prep.dropped)} in the input)"],
@@ -1068,6 +1270,8 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
             lines += ["", "Adopt needs every adopt condition; kill needs any kill condition; otherwise inconclusive."]
             if d.note:
                 lines += ["", f"Note: {d.note}."]
+            if d.next_step:
+                lines += ["", f"**What happens next:** {d.next_step}"]
             lines += [""]
 
     lines += [
@@ -1084,6 +1288,14 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
     for key in [an.metric] + [k for k in METRICS if k != an.metric]:
         lines += [f"**{METRICS[key].label}**{' (primary)' if key == an.metric else ''}", ""]
         lines += _table(["arm", *_CMP_HEADER], [[a, *_cmp_cells(c[key])] for a, c in an.comparisons.items()])
+        lines += [""]
+    if an.control_comparisons:
+        lines += [
+            f"**Against the compute-matched control {an.control}** ({m.label}, same CI level as the baseline comparison). "
+            "A candidate is adopted only if it beats this control as well as the baseline:",
+            "",
+        ]
+        lines += _table(["arm", *_CMP_HEADER], [[a, *_cmp_cells(c)] for a, c in an.control_comparisons.items()])
         lines += [""]
     drops = {a: c[an.metric].dropped for a, c in an.comparisons.items() if c[an.metric].dropped}
     if drops:
@@ -1199,11 +1411,12 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
     lines += _table(
         [
             "arm", "k", "SD of p across repeats", "SD of log score across repeats", "member failure rate",
-            "aggregate failure rate", "$ per question", "tokens per question",
+            "aggregate failure rate", "calls per question", "$ per question", "tokens per question",
         ],
         [
             [
                 a, s.k, _f(s.repeat_sd_p), _f(s.repeat_sd_log), _pct(s.failure_rate), _pct(s.aggregate_failure_rate),
+                "n/a" if s.calls_per_question is None else f"{s.calls_per_question:.1f}",
                 "n/a" if s.cost_per_question is None else f"{s.cost_per_question:.4f}",
                 "n/a" if s.tokens_per_question is None else f"{s.tokens_per_question:,.0f}",
             ]
@@ -1216,7 +1429,9 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
             "SD across repeats is within-config variance: the mean over questions of the SD of the aggregate forecast between "
             "repeats (n/a when k = 1). Member failure rate = failed member forecasts / all member forecasts; aggregate failure "
             "rate = repeats where no member produced a number. Cost and tokens are per question per repeat (one live forecast), "
-            "summed over members."
+            "summed over members. Calls are counted the same way, from the optional `calls` column or else one per member row "
+            "(an arm with extra rounds, an auditor or revisions should supply `calls`). Compare the arms' calls and dollars: "
+            "a candidate that spends more than the baseline needs the compute-matched control (protocol §5)."
         ),
         "",
     ]
@@ -1320,7 +1535,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--rule", choices=sorted(RULES), help="pre-registered decision rule to apply")
     ap.add_argument("--rule-json", help="custom DecisionRule as JSON or a path to a JSON file; 'base' names a rule to start from")
     ap.add_argument("--mde", type=float, help="pre-registered MDE, for a rule that kills below a fraction of the MDE")
-    ap.add_argument("--arm", action="append", dest="arms", help="arm(s) the decision rule applies to (default: every non-baseline)")
+    ap.add_argument(
+        "--arm", "--arms", action="append", dest="arms",
+        help="candidate arm(s) the decision rule applies to; their number m sets the CI level 1 − 0.05/m "
+        "(default: every arm except the baseline and the control)",
+    )
+    ap.add_argument("--control", help="compute-matched control arm: not counted in m; a candidate must also beat it to be adopted")
+    ap.add_argument("--run-kind", default="screen", choices=RUN_KINDS, help="screen (first run), rerun (the one rerun, §6.3) or confirm (§6.2)")
+    ap.add_argument("--tier", type=int, choices=(1, 2), help="confirmation tier from the experiment card (§6.2)")
+    ap.add_argument("--label", default="", help="free text for the report, e.g. 'rerun of EXP-004; questions resolved after 2026-11-20'")
     ap.add_argument("--by", action="append", help="column(s) to break results down by (default: question_type, source)")
     ap.add_argument("--forward-source", default=FORWARD_SOURCE, help="source value of the forward set ('' to skip)")
     ap.add_argument("--out", help="output path (default: docs/experiments/<name>-report.md)")
@@ -1346,6 +1569,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         rule=rule,
         mde_value=args.mde,
         decision_arms=args.arms,
+        control=args.control,
+        run_kind=args.run_kind,
+        tier=args.tier,
+        label=args.label,
         by=args.by or ("question_type", "source"),
         forward_source=args.forward_source,
         meta=provenance(args.input),

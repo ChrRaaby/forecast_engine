@@ -348,3 +348,177 @@ def test_failures_without_a_kind_are_flagged():
     assert any("without a kind" in w and "A: 1" in w for w in an.warnings)
     assert an.arms["B"].errors == {"timeout": 1}
 
+
+
+# ---------------------------------------------------------------- several arms, control, labels (B-66, protocol §5/§6)
+BASIC_RULE = r.DecisionRule(
+    name="test rule", max_reliability_increase=None, max_failure_rate_increase=None, kill_if_point_at_most=None
+)
+
+
+def arm_rows(noise, n=160, seed=11, **kw):
+    return [r.parse_row(x) for x in synthetic_rows(n_questions=n, n_clusters=n // 2, arm_noise=noise, seed=seed, **kw)]
+
+
+def test_family_level_is_bonferroni():
+    assert r.family_level(1) == pytest.approx(0.95)
+    assert r.family_level(3) == pytest.approx(1 - 0.05 / 3)  # 98.3%
+    assert r.family_level(10) == pytest.approx(0.995)
+    assert r.family_level(0) == pytest.approx(0.95)
+
+
+def test_three_candidates_get_a_wider_ci_than_one():
+    rows = arm_rows({"A": 1.0, "B": 0.6, "C": 0.7, "D": 0.8})
+    one = r.analyse(rows, "A", reps=1000, decision_arms=["B"]).comparisons["B"]["log"]
+    three = r.analyse(rows, "A", reps=1000).comparisons["B"]["log"]
+    assert one.level == pytest.approx(0.95) and three.level == pytest.approx(1 - 0.05 / 3)
+    assert one.mean_diff == three.mean_diff
+    assert three.ci_high - three.ci_low > one.ci_high - one.ci_low
+    assert "@98.3%" in r._ci(three)
+
+
+def test_control_arm_does_not_count_towards_m():
+    rows = arm_rows({"A": 1.0, "B": 0.6, "C": 1.0})
+    an = r.analyse(rows, "A", reps=300, control="C")
+    assert an.candidates == ["B"] and an.level == pytest.approx(0.95)
+    assert an.comparisons["B"]["log"].level == pytest.approx(0.95)
+    assert "C" in an.comparisons  # still shown, descriptive
+    assert set(an.control_comparisons) == {"B"} and an.control_comparisons["B"].baseline == "C"
+
+
+def test_win_over_the_baseline_is_not_adopted_unless_it_also_beats_the_control():
+    # B and the control are equally good: both beat A, B does not beat the control
+    same = r.analyse(arm_rows({"A": 1.5, "B": 0.3, "C": 0.3}), "A", reps=500, rule=BASIC_RULE, control="C")
+    assert same.comparisons["B"]["log"].ci_low > 0
+    d = same.decisions["B"]
+    assert d.verdict != "adopt"
+    ctl = [c for c in d.checks if "compute-matched control" in c.condition]
+    assert len(ctl) == 1 and not ctl[0].met
+    # the control is much worse than B: now B is adopted
+    better = r.analyse(arm_rows({"A": 1.5, "B": 0.3, "C": 1.5}), "A", reps=500, rule=BASIC_RULE, control="C")
+    assert better.decisions["B"].verdict == "adopt"
+    assert all(c.met for c in better.decisions["B"].checks if "compute-matched control" in c.condition)
+
+
+def test_no_control_means_no_control_check():
+    an = r.analyse(arm_rows({"A": 1.5, "B": 0.3}), "A", reps=300, rule=BASIC_RULE)
+    assert not any("control" in c.condition for c in an.decisions["B"].checks)
+
+
+def test_control_must_be_a_real_other_arm():
+    rows = arm_rows({"A": 1.0, "B": 0.6})
+    with pytest.raises(ValueError, match="control"):
+        r.analyse(rows, "A", reps=50, control="A")
+    with pytest.raises(ValueError, match="control"):
+        r.analyse(rows, "A", reps=50, control="Z")
+    with pytest.raises(ValueError, match="compute-matched control"):
+        r.analyse(arm_rows({"A": 1.0, "B": 0.6, "C": 1.0}), "A", reps=50, control="C", decision_arms=["C"])
+
+
+def test_stricter_bar_widens_the_same_interval():
+    """Same data, same point estimate: ten candidates judge it at 99.5% instead of 95%, so the interval is wider."""
+    rows = arm_rows({"A": 1.0, "B": 0.7}, n=80)
+    prep = r.prepare(rows)
+    sa = prep.arms["B"].question_scores(r.METRICS["log"], prep.outcomes)
+    sb = prep.arms["A"].question_scores(r.METRICS["log"], prep.outcomes)
+
+    def cmp(level):
+        return r.paired_compare(sa, sb, prep.clusters, r.METRICS["log"], arm="B", baseline="A", reps=4000, level=level)
+
+    alone, crowded = cmp(0.95), cmp(r.family_level(10))
+    assert crowded.ci_low < alone.ci_low and crowded.ci_high > alone.ci_high
+    assert crowded.mean_diff == alone.mean_diff
+
+
+def test_calls_and_dollars_per_question_per_arm():
+    rows = [
+        row("q1", "A", "m1", 0.6, cost_usd=0.01), row("q1", "A", "m2", 0.6, cost_usd=0.01),
+        row("q1", "B", "m1", 0.6, cost_usd=0.02, calls=3), row("q1", "B", "m2", 0.6, cost_usd=0.02, calls=3),
+        row("q1", "B", "aggregate", 0.6, cost_usd=0.01, calls=1),  # an auditor call attached to the aggregate row
+    ]
+    an = r.analyse(rows, "A", reps=50)
+    assert an.summaries["A"].calls_per_question == pytest.approx(2.0)  # counted: one per member row
+    assert an.summaries["A"].calls_source == "one per member row"
+    assert an.summaries["B"].calls_per_question == pytest.approx(7.0)  # from the calls column
+    assert an.summaries["B"].cost_per_question == pytest.approx(0.05)
+    md = r.render_report(an)
+    assert "calls per question" in md and "7.0" in md
+    assert any("`calls` column" in w and "member-row counts" in w for w in an.warnings)
+
+
+def test_calls_are_per_repeat_like_cost():
+    rows = [row("q1", "A", "m1", 0.6, repeat=1, calls=2), row("q1", "A", "m1", 0.6, repeat=2, calls=2)]
+    assert r.analyse(rows, "A", reps=50).summaries["A"].calls_per_question == pytest.approx(2.0)
+
+
+def test_warns_when_an_arm_uses_more_calls_without_a_control_and_when_the_control_is_not_matched():
+    rows = []
+    for i in range(4):
+        rows += [
+            row(f"q{i}", "A", "m1", 0.6, calls=1), row(f"q{i}", "B", "m1", 0.7, calls=4), row(f"q{i}", "C", "m1", 0.6, calls=2),
+        ]
+    no_ctl = r.analyse(rows, "A", reps=50, decision_arms=["B"])
+    assert any("no compute-matched control" in w and "B makes 4.0" in w for w in no_ctl.warnings)
+    off = r.analyse(rows, "A", reps=50, control="C", decision_arms=["B"])
+    assert any("not compute-matched" in w for w in off.warnings)
+    assert not any("no compute-matched control was given" in w for w in off.warnings)
+
+
+def test_next_step_screen_win_by_tier():
+    c = comparison(0.05, 0.03, 0.07)
+    t1 = r.next_step_words("adopt", c, r.EXP005_RULE, "screen", 1)
+    t2 = r.next_step_words("adopt", c, r.EXP005_RULE, "screen", 2)
+    assert "goes live at once" in t1 and "shadow" in t1
+    assert "before it goes live" in t2 and "Tier 2" in t2
+    assert "No tier given" in r.next_step_words("adopt", c, r.EXP005_RULE, "screen", None)
+
+
+def test_next_step_narrow_win_and_inconclusive_get_one_rerun():
+    narrow = comparison(0.03, 0.005, 0.055)  # CI excludes 0 but the lower end is below the 0.015 smallest effect
+    assert "Narrow win" in r.next_step_words("adopt", narrow, r.EXP005_RULE, "screen", 1)
+    assert "rerun" in r.next_step_words("inconclusive", comparison(0.01, -0.02, 0.04), r.EXP005_RULE, "screen", 2)
+
+
+def test_next_step_rerun_decides_and_kill_is_never_rerun():
+    c = comparison(0.05, 0.03, 0.07)
+    assert "counts as the confirmation" in r.next_step_words("adopt", c, r.EXP005_RULE, "rerun", 2)
+    assert "Dropped" in r.next_step_words("inconclusive", comparison(0.01, -0.02, 0.04), r.EXP005_RULE, "rerun", 2)
+    killed = r.next_step_words("kill", comparison(0.001, -0.01, 0.01), r.EXP005_RULE, "screen", 1)
+    assert "Dropped" in killed and "not rerun" in killed
+
+
+def test_next_step_failed_confirmation_by_tier():
+    c = comparison(0.0, -0.02, 0.02)
+    assert "back to the old config" in r.next_step_words("inconclusive", c, r.EXP005_RULE, "confirm", 1)
+    assert "does not go live" in r.next_step_words("inconclusive", c, r.EXP005_RULE, "confirm", 2)
+    with pytest.raises(ValueError):
+        r.next_step_words("adopt", c, r.EXP005_RULE, "bogus", 1)
+    with pytest.raises(ValueError):
+        r.next_step_words("adopt", c, r.EXP005_RULE, "screen", 3)
+
+
+def test_labels_never_change_the_verdict():
+    rows = arm_rows({"A": 1.5, "B": 0.3})
+    verdicts = {
+        (k, t): r.analyse(rows, "A", reps=300, rule=BASIC_RULE, run_kind=k, tier=t).decisions["B"].verdict
+        for k in r.RUN_KINDS
+        for t in (None, 1, 2)
+    }
+    assert len(set(verdicts.values())) == 1
+
+
+def test_cli_multi_arm_report(tmp_path):
+    rows = synthetic_rows(n_questions=60, n_clusters=30, arm_noise={"A": 1.5, "B": 0.4, "C": 1.5, "D": 1.0}, seed=8)
+    path = tmp_path / "t.csv"
+    write_csv(rows, path)
+    out = tmp_path / "rep.md"
+    assert r.main([
+        str(path), "--baseline", "A", "--name", "T", "--rule", "exp005", "--reps", "400", "--out", str(out),
+        "--arms", "B", "--arms", "D", "--control", "C", "--tier", "2", "--run-kind", "rerun", "--label", "rerun of EXP-004",
+    ]) == 0
+    md = out.read_text(encoding="utf-8")
+    assert "CI level 97.5%" in md and "(B, D)" in md
+    assert "compute-matched control | C" in md
+    assert "deciding rerun on fresh questions" in md and "rerun of EXP-004" in md
+    assert "Against the compute-matched control C" in md
+    assert "What happens next" in md and "calls per question" in md
