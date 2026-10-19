@@ -78,13 +78,48 @@ Each threat has a control and an **automated check**. A control without a check 
 - **Kill thresholds:** a "too small to be worth it" rule uses a fixed smallest effect of interest written into the card before
   the run (a value judgement about cost and complexity), not a fraction of an MDE measured later.
 - **Multiplicity:** one primary metric per experiment. Secondary metrics are descriptive, not decision-making.
+- **Several arms:** each arm compared with the baseline is one more chance of a lucky "win" (with a 5% false-alarm bar per arm:
+  1 arm → 5%, 3 arms → ~14%, 10 arms → ~40% that at least one fake winner appears). With m candidate arms, an arm wins only if
+  its CI at level 1 − 0.05/m excludes 0 (Bonferroni; 3 arms → 98.3% CI). This raises the MDE (~+15% at 3 arms, ~+30% at 10), so
+  every extra arm makes the others harder to detect: an arm goes on the card only with a real prior. Compute-matched control arms
+  (below) don't count towards m.
+- **Many experiments:** the lucky-win problem also grows with the number of experiments over the season: with 20 tested changes
+  that do nothing, about one will "win" by luck. A stricter bar across all experiments would make every real effect undetectable,
+  so the defence is confirmation instead: every win must repeat on fresh questions, before or while it is live (§6.2 tiers). A lucky win
+  rarely repeats (about 5% × 5%, i.e. well under 1 in 100 per useless change). The Results log in `docs/playbook-tracker.md` is the running count of
+  experiments and wins, so the expected number of lucky wins is always visible.
+- **Compute-matched control:** an arm that makes more model calls per question than the baseline (an extra round, an auditor,
+  revisions) can win simply because more answers were averaged. Such an experiment includes a control arm that spends about the
+  same number of calls without the new idea (e.g. each member forecasts twice and the two are averaged). The arm is adopted only if
+  it beats both the baseline and this control. Where the extra spend is reasoning length rather than calls, the control gets the
+  same reasoning effort/token budget. Every report shows calls/q and $/q per arm. (Lesson from Pappu et al. 2026: a 3-model team
+  beat its best member by 18 points, but ~10 of those came from the extra compute alone.)
 
 ## 6. Decision rules
 1. **Experiment card first.** Before running, copy `docs/experiments/TEMPLATE.md` to `docs/experiments/EXP-NNN.md` and fill in:
    hypothesis, change, primary metric, expected effect, set + N, k, cost estimate, decision rule.
 2. **Adopt to live** if, on DEV: the primary-metric CI excludes 0 in favour of the change, there's no meaningful regression in
-   calibration or failure rate, and cost stays within the cap.
-3. **Inconclusive** → keep the simpler/cheaper config. It's allowed to re-test once with more N if the change has a strong prior.
+   calibration or failure rate, and cost stays within the cap. Every win is then confirmed on fresh questions (see "Many
+   experiments" in §5): the arm must again beat the baseline (one-sided 95% CI above 0) on questions that resolve after the
+   decision, with the confirmation rule written before it starts. *When* it is confirmed depends on the change's tier, written on
+   the card:
+   - **Tier 1, confirm while live:** cheap, simple, easy-to-undo changes (post-processing such as extremizing or capping, an
+     aggregation tweak; no extra calls, no prompt change). The winner goes live at once and the old config keeps running as a
+     shadow (B-62). If confirmation fails, live goes back to the old config.
+   - **Tier 2, confirm before live:** changes that cost more per question, add complexity, or change how the models reason (new
+     prompts or reasoning protocols, discussion rounds such as Delphi, auditors, extra calls). Confirmation by rerun (§6.3) or a
+     shadow run of the winner must pass before it goes live. Reason: these are costly and hard to undo cleanly, and the outside
+     evidence on elaborate reasoning prompts is thin and leans slightly negative (R-21 is suggestive only: other teams' tests,
+     no effect size).
+   - When unsure, Tier 2.
+3. **Inconclusive or a narrow win** → keep the simpler/cheaper config and schedule **one** rerun once enough new questions have
+   resolved. A narrow win is a CI that excludes 0 but whose lower end is below the card's smallest effect of interest. The first run
+   then counts as a screen and the rerun decides:
+   - The rerun uses **only questions that resolved after the first run**, never the first set plus a few more (topping up and
+     re-checking until it looks good lets luck win, like testing many arms).
+   - The rerun card is written before it runs, with the same arms, metric and decision rule; it states the N it waits for.
+   - Still inconclusive after the rerun → dropped. A changed version is a new variant with its own card.
+   - An arm that hits its kill threshold (§5) is dropped, not rerun.
 4. **Milestone gates** (PoC gate, M3 exit) are evaluated **once** on HOLDOUT with the decision rule written beforehand.
 5. **Every live config change** gets a new `CONFIG_VERSION`. Live results are compared per era.
 
@@ -140,3 +175,7 @@ Systematic disagreement means the harness is wrong (leakage or distribution mism
 - 2026-10-08: §5 repeats: score each repeat, then average the scores (was: average forecasts first), because the live bot
   submits one run per question; cluster-aware MDE; fixed kill thresholds. Agreed with Christian while building B-31, before
   any scored experiment run.
+- 2026-10-19: §5 several arms (Bonferroni across candidate arms), many experiments, compute-matched control; §6.2 every win is
+  confirmed on fresh questions (Tier 1 while live with the old config in shadow, Tier 2 before live); §6.3 inconclusive or narrow wins get one rerun on fresh questions only, then a final
+  decision. Agreed with Christian after reviewing arXiv 2609.22682 (research note
+  in the project files).

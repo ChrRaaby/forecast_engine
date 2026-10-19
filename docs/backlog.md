@@ -1,6 +1,6 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-08_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-19_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
@@ -53,6 +53,7 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 28 | B-57 | Anchor → adjustments → final: show how far each forecast moved from its base rate. Now comes from the EXP-005 protocol's own output (base rate → driver waterfall → final, see the pilot page); a monitor view waits for the protocol to reach live | I-18; research/10 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 30 | B-64 | EXP-008: research desk, 3 arms (baseline / critic lists ≤5 gaps → targeted Gemini searches / critic hunts for evidence against the leading conclusion), shadow run on live questions. Needs B-62 | I-19, R-03, R-06; research/12 | Claude Code | M | Todo | Opus 5.5 · PC |
 | 31 | B-65 | EXP-009: Delphi round, 3 arms (independent median / revise after seeing others' reasoning + numbers / arguments only), replay on frozen research, herding check via B-47. Needs B-38, B-31, B-47; after EXP-004 | I-19, R-04; research/12 | Claude Code | M | Todo | Opus 5.5 · PC |
+| 32 | B-66 | Report generator follows the 2026-10-19 protocol rules: CI level 1 − 0.05/m for m candidate arms (`--arms`), compute-control arms excluded from m, calls/q and $/q per arm, and an "adopt" only when the arm also beats the compute-matched control. Needed before the first multi-arm decision (EXP-004/008/009) | Protocol §5, §6.3; arXiv 2609.22682 note | Claude Code | S | Todo | Sonnet 5.5 · PC |
 
 ## Later: M3 better bot (after the gate)
 | Rank | ID | Item | Why | Owner | Size | Status | Model |
