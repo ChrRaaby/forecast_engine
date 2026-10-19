@@ -522,3 +522,66 @@ def test_cli_multi_arm_report(tmp_path):
     assert "deciding rerun on fresh questions" in md and "rerun of EXP-004" in md
     assert "Against the compute-matched control C" in md
     assert "What happens next" in md and "calls per question" in md
+
+
+# ---------------------------------------------------------------- rerun cut-off: resolved_at (protocol §6.3)
+def dated_rows():
+    rows = []
+    for q, day in (("old", "2026-10-01"), ("edge", "2026-10-15"), ("new1", "2026-10-16"), ("new2", "2026-11-02"), ("undated", "")):
+        for arm, p in (("A", 0.5), ("B", 0.7)):
+            rows.append(row(q, arm, "m1", p, resolved_at=day))
+    return rows
+
+
+def test_resolved_after_keeps_only_strictly_later_questions():
+    from datetime import date
+
+    an = r.analyse(dated_rows(), "A", reps=50, resolved_after=date(2026, 10, 15))
+    assert sorted(an.prepared.outcomes) == ["new1", "new2"]
+    assert an.prepared.dropped == {"old": r.DROP_NOT_FRESH, "edge": r.DROP_NOT_FRESH, "undated": r.DROP_NO_DATE}
+    assert an.comparisons["B"]["log"].n == 2
+    assert "only questions resolved after 2026-10-15" in r.render_report(an)
+
+
+def test_no_cutoff_keeps_every_question_and_dates_are_optional():
+    an = r.analyse(dated_rows(), "A", reps=50)
+    assert len(an.prepared.outcomes) == 5
+    assert r.analyse([row("q1", "A", "m1", 0.6), row("q1", "B", "m1", 0.7)], "A", reps=50).prepared.dropped == {}
+
+
+def test_cutoff_without_a_date_column_is_refused():
+    from datetime import date
+
+    with pytest.raises(ValueError, match="resolved_at"):
+        r.analyse([row("q1", "A", "m1", 0.6), row("q1", "B", "m1", 0.7)], "A", reps=50, resolved_after=date(2026, 10, 1))
+
+
+def test_conflicting_or_malformed_dates_are_refused():
+    with pytest.raises(ValueError, match="resolved_at"):
+        r.prepare([row("q1", "A", "m1", 0.6, resolved_at="2026-10-01"), row("q1", "B", "m1", 0.7, resolved_at="2026-10-02")])
+    with pytest.raises(ValueError):
+        row("q1", "A", "m1", 0.6, resolved_at="soon")
+
+
+def test_rerun_without_a_cutoff_warns():
+    an = r.analyse(dated_rows(), "A", reps=50, run_kind="rerun")
+    assert any("no --resolved-after" in w for w in an.warnings)
+    from datetime import date
+
+    ok = r.analyse(dated_rows(), "A", reps=50, run_kind="rerun", resolved_after=date(2026, 10, 15))
+    assert not any("no --resolved-after" in w for w in ok.warnings)
+
+
+def test_cli_resolved_after(tmp_path):
+    rows = synthetic_rows(n_questions=20, n_clusters=10, arm_noise={"A": 1.0, "B": 0.6}, seed=3)
+    ids = sorted({x["question_id"] for x in rows})
+    late = set(ids[: len(ids) // 2])
+    for x in rows:
+        x["resolved_at"] = "2026-11-01" if x["question_id"] in late else "2026-10-10"
+    path = tmp_path / "t.csv"
+    write_csv(rows, path)
+    out = tmp_path / "rep.md"
+    assert r.main([str(path), "--baseline", "A", "--reps", "100", "--out", str(out), "--resolved-after", "2026-10-20",
+                   "--run-kind", "rerun"]) == 0
+    md = out.read_text(encoding="utf-8")
+    assert "only questions resolved after 2026-10-20" in md and "after the first run): 10" in md

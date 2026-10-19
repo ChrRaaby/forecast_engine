@@ -43,6 +43,7 @@ import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, fields, replace
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +51,7 @@ import numpy as np
 
 from . import scoring
 
-REPORT_VERSION = "1.2.0"
+REPORT_VERSION = "1.3.0"
 DEFAULT_SEED = 3101
 DEFAULT_REPS = 10_000
 DEFAULT_BINS = 10
@@ -68,6 +69,8 @@ EXPERIMENTS = ROOT / "docs" / "experiments"
 
 DROP_NO_OUTCOME = "no outcome (unresolved or annulled)"
 DROP_NOT_BINARY = "not binary (only binary questions are scored)"
+DROP_NOT_FRESH = "not resolved after the cut-off (a rerun uses only questions that resolved after the first run)"
+DROP_NO_DATE = "no resolution date (cannot show it resolved after the cut-off)"
 
 
 # --------------------------------------------------------------------------- metrics
@@ -103,6 +106,7 @@ class Row:
     cost_usd: float | None = None
     tokens: float | None = None
     calls: float | None = None  # model calls this row cost; blank = one call per member row
+    resolved_at: date | None = None  # when the question resolved (YYYY-MM-DD); only needed for a rerun's fresh-question cut-off
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -167,6 +171,7 @@ def parse_row(d: dict[str, Any], line: int = 0) -> Row:
             cost_usd=_num(d.get("cost_usd")),
             tokens=tokens,
             calls=_num(d.get("calls")),
+            resolved_at=None if _blank(d.get("resolved_at")) else date.fromisoformat(str(d["resolved_at"]).strip()[:10]),
             extra={k: "" if _blank(v) else str(v) for k, v in d.items() if k not in _KNOWN},
         )
     except (TypeError, ValueError) as e:
@@ -290,11 +295,13 @@ def _median(values: list[float]) -> float:
     return float(statistics.median(values))  # same rule as forecast_engine.parsing.median_binary (live)
 
 
-def prepare(rows: Sequence[Row], aggregation: str = "auto") -> Prepared:
+def prepare(rows: Sequence[Row], aggregation: str = "auto", resolved_after: date | None = None) -> Prepared:
     """Validate, drop unscoreable questions, aggregate members per repeat.
 
     aggregation: "auto" uses an arm's `aggregate` rows where present and the median of members otherwise; "median" always
     recomputes the median of members (ignores given aggregate rows); "given" uses only the given aggregate rows.
+    resolved_after: keep only questions whose `resolved_at` is strictly later than this date (protocol §6.3 rerun); questions
+    resolved on or before it, or without a date, are dropped and counted by reason.
     """
     if aggregation not in ("auto", "median", "given"):
         raise ValueError(f"unknown aggregation {aggregation!r}")
@@ -331,6 +338,15 @@ def prepare(rows: Sequence[Row], aggregation: str = "auto") -> Prepared:
     if no_cluster:
         notes.append(f"{no_cluster} question(s) had no cluster_id; each was treated as its own cluster.")
 
+    resolved: dict[str, date | None] = {}
+    for qid, rs in by_q.items():
+        ds = {r.resolved_at for r in rs if r.resolved_at}
+        if len(ds) > 1:
+            raise ValueError(f"question {qid}: conflicting resolved_at {sorted(map(str, ds))}")
+        resolved[qid] = ds.pop() if ds else None
+    if resolved_after is not None and not any(resolved.values()):
+        raise ValueError("a resolved_after cut-off needs a `resolved_at` column (YYYY-MM-DD) in the input")
+
     dropped: dict[str, str] = {}
     for qid in by_q:
         qtype = attrs[qid].get("question_type", "")
@@ -338,6 +354,10 @@ def prepare(rows: Sequence[Row], aggregation: str = "auto") -> Prepared:
             dropped[qid] = DROP_NOT_BINARY
         elif outcomes[qid] is None:
             dropped[qid] = DROP_NO_OUTCOME
+        elif resolved_after is not None and resolved[qid] is None:
+            dropped[qid] = DROP_NO_DATE
+        elif resolved_after is not None and resolved[qid] <= resolved_after:
+            dropped[qid] = DROP_NOT_FRESH
 
     arms: dict[str, ArmData] = {}
     given: dict[tuple[str, str], dict[int, float | None]] = defaultdict(dict)
@@ -874,6 +894,7 @@ class Analysis:
     run_kind: str = "screen"
     tier: int | None = None
     label: str = ""  # free text from the card, e.g. "rerun of EXP-004"
+    resolved_after: date | None = None
 
     @property
     def arms(self) -> dict[str, ArmData]:
@@ -947,18 +968,20 @@ def analyse(
     run_kind: str = "screen",
     tier: int | None = None,
     label: str = "",
+    resolved_after: date | None = None,
 ) -> Analysis:
     """`decision_arms` are the m candidate arms (default: every arm except the baseline and the control). Each is compared with
     the baseline at CI level 1 − 0.05/m so the family-wide false-win risk stays 5% (protocol §5). `control` names the
     compute-matched control arm: it does not count towards m, and a candidate is adopted only if it also beats it.
-    `run_kind` ("screen" / "rerun" / "confirm") and `tier` (1 / 2) only label the outcome (protocol §6.2, §6.3)."""
+    `run_kind` ("screen" / "rerun" / "confirm") and `tier` (1 / 2) only label the outcome (protocol §6.2, §6.3).
+    `resolved_after` keeps only questions resolved strictly after that date (a rerun on fresh questions, §6.3)."""
     if metric not in METRICS:
         raise ValueError(f"unknown metric {metric!r}; choose from {sorted(METRICS)}")
     if repeat_mode not in REPEAT_MODES:
         raise ValueError(f"unknown repeat mode {repeat_mode!r}; choose from {REPEAT_MODES}")
     if rule is not None and rule.metric != metric:
         raise ValueError(f"the rule's primary metric is {rule.metric!r}, the report's is {metric!r}")
-    prep = prepare(rows, aggregation)
+    prep = prepare(rows, aggregation, resolved_after)
     if baseline not in prep.arms:
         raise ValueError(f"baseline arm {baseline!r} not in the data (arms: {sorted(prep.arms)})")
     out, cl = prep.outcomes, prep.clusters
@@ -978,6 +1001,11 @@ def analyse(
             raise ValueError(f"decision arm {a!r} is the compute-matched control; the control is not a candidate")
     level = family_level(len(candidates))
     warnings: list[str] = list(prep.notes)
+    if run_kind == "rerun" and resolved_after is None:
+        warnings.append(
+            "run kind is rerun but no --resolved-after cut-off was given: nothing here stops old questions from being "
+            "included (protocol §6.3: a rerun uses only questions resolved after the first run)."
+        )
     if len(candidates) > 1:
         warnings.append(
             f"{len(candidates)} candidate arms: each is judged at CI level {_level_words(level)} (1 − 0.05/{len(candidates)}) "
@@ -1145,6 +1173,7 @@ def analyse(
         run_kind=run_kind,
         tier=tier,
         label=label,
+        resolved_after=resolved_after,
     )
 
 
@@ -1240,6 +1269,10 @@ def render_report(analysis: Analysis, extra_sections: Sequence[SectionHook] | No
             ["aggregation", _aggregation_words(an)],
             ["repeats", _REPEAT_WORDS[an.repeat_mode]],
             ["baseline arm", an.baseline],
+            [
+                "question cut-off",
+                f"only questions resolved after {an.resolved_after}" if an.resolved_after else "none (all resolved questions)",
+            ],
             [
                 "run",
                 f"{_RUN_WORDS[an.run_kind]}; tier: {an.tier if an.tier else 'not given'}"
@@ -1543,6 +1576,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--control", help="compute-matched control arm: not counted in m; a candidate must also beat it to be adopted")
     ap.add_argument("--run-kind", default="screen", choices=RUN_KINDS, help="screen (first run), rerun (the one rerun, §6.3) or confirm (§6.2)")
     ap.add_argument("--tier", type=int, choices=(1, 2), help="confirmation tier from the experiment card (§6.2)")
+    ap.add_argument(
+        "--resolved-after", type=date.fromisoformat, metavar="YYYY-MM-DD",
+        help="keep only questions whose resolved_at is later than this date: the rerun's fresh questions (§6.3)",
+    )
     ap.add_argument("--label", default="", help="free text for the report, e.g. 'rerun of EXP-004; questions resolved after 2026-11-20'")
     ap.add_argument("--by", action="append", help="column(s) to break results down by (default: question_type, source)")
     ap.add_argument("--forward-source", default=FORWARD_SOURCE, help="source value of the forward set ('' to skip)")
@@ -1573,6 +1610,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_kind=args.run_kind,
         tier=args.tier,
         label=args.label,
+        resolved_after=args.resolved_after,
         by=args.by or ("question_type", "source"),
         forward_source=args.forward_source,
         meta=provenance(args.input),
