@@ -105,6 +105,7 @@ def tracker_html(sections):
           <td class="id">{html.escape(r["ID"])}<button type="button" class="cbtn" hidden aria-label="Comment on {html.escape(r["ID"])}">Comment</button></td>
           <td class="rec">{inline(r[first])}</td>
           <td>{chip("ev", r.get("Evidence", ""))}</td>
+          <td>{inline(r.get("Whose evidence", ""))}</td>
           <td>{chip("sn", r.get("Stance", ""))}</td>
           <td class="mono">{inline(r.get("Built by", ""))}</td>
           <td>{chip("st", r.get("Status", ""))}</td>
@@ -113,7 +114,7 @@ def tracker_html(sections):
         out.append(f"""
     <h3>{html.escape(heading)} <span class="count">{len(rows)}</span></h3>
     <div class="scroll"><table>
-      <thead><tr><th>ID</th><th>{html.escape(first)}</th><th>Evidence</th><th>Stance</th><th>Built by</th><th>Status</th><th>Assessment / results</th></tr></thead>
+      <thead><tr><th>ID</th><th>{html.escape(first)}</th><th>Evidence</th><th>Whose evidence</th><th>Stance</th><th>Built by</th><th>Status</th><th>Assessment / results</th></tr></thead>
       <tbody>{body}</tbody>
     </table></div>""")
     results = next((rows for h, rows in sections if h == "Results log"), [])

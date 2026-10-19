@@ -1,14 +1,14 @@
 # Playbook tracker
 
 _How forecast_engine measures up against the evidence on what makes forecasting bots good. Maintained by Claude at the end of
-every session that changes the bot or produces results. Last updated: 2026-09-29_
+every session that changes the bot or produces results. Last updated: 2026-10-19_
 
 **Source:** "AI Forecasting in 2026: What 11 Analyses Say" (EA Forum), https://forum.effectivealtruism.org/posts/Spyz3wESZu2eeqhDj/ai-forecasting-in-2026-what-11-analyses-say.
 Supplemented by nostreambot's findings (research/04), flagged where they disagree.
 
 **Columns**
 - **Evidence:** strength as reported by the source: Strong · Moderate · Negative (= evidence it *doesn't* work).
-- **Whose evidence:** ours (from our bot runs, backtests, or experiments) · other teams (from articles, roundups, papers, other bots' tournaments) · mixed (both).
+- **Whose evidence:** ours (from our bot runs, backtests, or experiments) · other teams (from articles, roundups, papers, other bots' tournaments) · mixed (both). Planned tests don't count as ours until they have a result; how strong the evidence is goes in the Evidence column.
 - **Stance:** Adopt · Adopt later · Test (A/B before keeping) · Avoid · Info (shapes how we work, nothing to build).
 - **Built by:** backlog items (B-xx) and, once built, code/ADR references.
 - **Status:** Not started · Planned · Partial · Done · N/A.
@@ -20,14 +20,14 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-01 | Use frontier reasoning models (the biggest single differentiator) | Strong | other teams | Adopt | B-16 | Done | Live on FutureEval + MiniBench from 2026-10-08 (ADR-0010): GPT-6.1 Sol, Claude Sonnet 5.5, Gemini 3.1 Pro, Grok 4.7, Qwen3.8 Max, ~$0.12/q measured, $300 season cap. The cheap M1 ensemble runs as shadow on the same questions, so resolved questions give a paired frontier-vs-cheap comparison. |
 | R-02 | Invest in scaffolding (worth 5–11 peer pts/question, ~9 months of model progress) | Strong | other teams | Adopt | B-04 → B-17 | Planned | M1 uses template-level scaffolding only. Real scaffolding arrives with M3. |
 | R-03 | Agentic / iterative search (removing search degraded Brier 3.6×) | Strong | other teams | Adopt later | B-17 | Planned | Costly in tokens; design it to fit ≤ $0.50/q. |
-| R-04 | Ensemble 3–7 diverse models (86% of winners aggregate) | Strong | other teams | Adopt | B-04, B-18 | Partial | Built 2026-09-30: median of GPT-6 Luna, Gemini 3.5 Flash-Lite, DeepSeek V4.1 Flash (ADR-0006). Not live yet. nostreambot found median > mean/stacking and 3 ≈ 6 members. |
-| R-05 | Post-hoc Platt scaling (−0.016 Brier binary) | Strong (contested) | mixed (contested) | Test | B-19 | Not started | ⚠️ nostreambot rejected all post-hoc calibration: the slope flipped between eras. Needs our own data, likely N > 300. |
+| R-04 | Ensemble 3–7 diverse models (86% of winners aggregate) | Strong | mixed (ours: weak) | Adopt | B-04, B-18 | Partial | Built 2026-09-30: median of GPT-6 Luna, Gemini 3.5 Flash-Lite, DeepSeek V4.1 Flash (ADR-0006). Not live yet. nostreambot found median > mean/stacking and 3 ≈ 6 members. |
+| R-05 | Post-hoc Platt scaling (−0.016 Brier binary) | Strong (contested) | other teams | Test | B-19 | Not started | ⚠️ nostreambot rejected all post-hoc calibration: the slope flipped between eras. Needs our own data, likely N > 300. |
 | R-06 | 2+ distinct research sources (r = 0.42) | Moderate | other teams | Adopt | B-13 | Planned | Prediction-market prices are the cheapest second source. |
-| R-07 | Cap extreme predictions (r = +0.48 within winners) | Moderate | mixed | Adopt | B-11 | Planned | Cheap. Tune bounds after M2. Extremizing (the opposite direction) and cap levels are tested together in EXP-003 (B-48). |
-| R-08 | Explicitly compute base rates (40% of top-15 vs 7%) | Moderate | mixed | Adopt | B-58 (EXP-006), B-56 | Planned | Consistent with Silver/Tetlock. Tested in EXP-006 (was B-12): prompted vs blind vs retrieved base rate, since an LLM's prompted base rate may be invented from the same news (research/10). |
-| R-09 | Reference similar resolved questions (34% of winners vs 0%) | Moderate | mixed | Adopt | B-56, B-58 (EXP-006 arm D) | Planned | ⚠️ Metaculus only shows outcomes for questions we forecast (research/05), so the library (B-56) uses our resolved records + B-39 data and starts small. |
+| R-07 | Cap extreme predictions (r = +0.48 within winners) | Moderate | other teams | Adopt | B-11 | Planned | Cheap. Tune bounds after M2. Extremizing (the opposite direction) and cap levels are tested together in EXP-003 (B-48). |
+| R-08 | Explicitly compute base rates (40% of top-15 vs 7%) | Moderate | other teams | Adopt | B-58 (EXP-006), B-56 | Planned | Consistent with Silver/Tetlock. Tested in EXP-006 (was B-12): prompted vs blind vs retrieved base rate, since an LLM's prompted base rate may be invented from the same news (research/10). |
+| R-09 | Reference similar resolved questions (34% of winners vs 0%) | Moderate | other teams | Adopt | B-56, B-58 (EXP-006 arm D) | Planned | ⚠️ Metaculus only shows outcomes for questions we forecast (research/05), so the library (B-56) uses our resolved records + B-39 data and starts small. |
 | R-10 | Spend a meaningful inference budget (winners ~28 calls/q; top-15 ~$1.40/q vs $0.50) | Moderate | other teams | Info | B-16 | N/A | ⚠️ In tension with our $0.50/q cap. The evidence is correlational (well-funded bots differ in other ways), but it's a warning the cap may limit our ceiling. Revisit at the gate. |
-| R-11 | Use recently deployed models (older training data degrades ~21.5% over 4 years) | Moderate | mixed | Adopt | B-16 | Partial | Tournament roster (2026-10-08, ADR-0010): GPT-6.1 Sol, Claude Sonnet 5.5 and Grok 4.7 are Sep 2026 releases, Qwen3.8 Max early Sep; Gemini 3.1 Pro (Feb 2026) is the outlier, Google's newest Pro tier. Cheap shadow: GPT-6 Luna, DeepSeek V4.1 Flash (Sep), Gemini 3.5 Flash-Lite (Jul). `tools/check_models.py` checks IDs against the live lists. |
+| R-11 | Use recently deployed models (older training data degrades ~21.5% over 4 years) | Moderate | other teams | Adopt | B-16 | Partial | Tournament roster (2026-10-08, ADR-0010): GPT-6.1 Sol, Claude Sonnet 5.5 and Grok 4.7 are Sep 2026 releases, Qwen3.8 Max early Sep; Gemini 3.1 Pro (Feb 2026) is the outlier, Google's newest Pro tier. Cheap shadow: GPT-6 Luna, DeepSeek V4.1 Flash (Sep), Gemini 3.5 Flash-Lite (Jul). `tools/check_models.py` checks IDs against the live lists. |
 | R-12 | Fine-tuned open-weight models can reach prior-gen closed parity | Moderate | other teams | Adopt later | B-21, B-24 | Not started | The 4090 angle. Fine-tuning is a big project, so it's parked. |
 | R-13 | Add Grok as a decorrelating ensemble member | Moderate | other teams | Test | B-18 | Not started | nostreambot later dropped Grok (cost), so test before adopting. |
 | R-14 | Manually review bot logs (66% of winners; catches units and date bugs) | Moderate | other teams | Adopt | B-05, B-08 | Partial | Built: every forecast writes prompts, raw outputs, research, tokens and $ to `data/forecasts/` (workflow artifact). Review itself (B-08) not started. |
@@ -41,15 +41,15 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-18 | Naive open-vs-resolved handling | Negative | other teams | Avoid | B-09 | Planned | Explicit guard. |
 | R-19 | The template's default numeric pipeline | Negative | other teams | Avoid | B-15 | Planned | Accept it for M1; replace before M3. |
 | R-20 | Multi-persona aggregation | Negative | other teams | Avoid | none | N/A | Don't build. Diversity of information and method, not personas, is tested in EXP-004 (arm C is the closest to personas). |
-| R-21 | Prompts built around "Bayesian updating" (underperformed twice) | Negative | other teams (suggestive) | Avoid | B-12 | N/A | ⚠️ Relevant to I-01: keep Silver's *principles* (base rates, updating) in the design, but don't put "Bayesian" framing in prompts. |
-| R-22 | Porous-cutoff backtesting (models can't "pretend not to know") | Negative | ours | Avoid | B-27, B-28, B-32 | Partial | As-of research layer built and validated (B-28, B-45; ADR-0008, research/07): archive date bound held on 50/50 dates; dual leakage screen caught 100/100 planted leaks. Eligibility filter and harness validation (B-27, B-32) still to do. |
-| R-23 | Optimising prompts toward the community prediction | Negative (weak) | mixed (weak) | Avoid | B-31 | N/A | The gate *compares* to the community forecast; never tune toward it. |
+| R-21 | Prompts built around "Bayesian updating" (underperformed twice) | Negative (suggestive, no effect size) | other teams | Avoid | B-12 | N/A | ⚠️ Relevant to I-01: keep Silver's *principles* (base rates, updating) in the design, but don't put "Bayesian" framing in prompts. |
+| R-22 | Porous-cutoff backtesting (models can't "pretend not to know") | Negative | other teams | Avoid | B-27, B-28, B-32 | Partial | As-of research layer built and validated (B-28, B-45; ADR-0008, research/07): archive date bound held on 50/50 dates; dual leakage screen caught 100/100 planted leaks. Eligibility filter and harness validation (B-27, B-32) still to do. |
+| R-23 | Optimising prompts toward the community prediction | Negative (weak) | other teams | Avoid | B-31 | N/A | The gate *compares* to the community forecast; never tune toward it. |
 
 ## How to evaluate and build
 | ID | Finding | Evidence | Whose evidence | Stance | Built by | Status | Assessment / results |
 |---|---|---|---|---|---|---|---|
 | R-24 | Hobbyist-level effort is competitive (dev time vs score r = 0.08) | Strong | other teams | Info | none | N/A | Encouraging for 10 h/week. Focus beats volume. |
-| R-25 | Strict-cutoff backtesting predicts live performance | Strong | mixed | Adopt | B-27…B-33, B-34 | Planned | Evaluation-first is now the project's governing rule (protocol §0). We verify the claim for our own harness via backtest ↔ live agreement (B-34). |
+| R-25 | Strict-cutoff backtesting predicts live performance | Strong | other teams | Adopt | B-27…B-33, B-34 | Planned | Evaluation-first is now the project's governing rule (protocol §0). We verify the claim for our own harness via backtest ↔ live agreement (B-34). |
 
 ## Results log
 | Date | Config version | Question set | N | Metric | Result | Note |
