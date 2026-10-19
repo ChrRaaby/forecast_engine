@@ -21,7 +21,7 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-02 | Invest in scaffolding (worth 5–11 peer pts/question, ~9 months of model progress) | Strong | other teams | Adopt | B-04 → B-17 | Planned | M1 uses template-level scaffolding only. Real scaffolding arrives with M3. |
 | R-03 | Agentic / iterative search (removing search degraded Brier 3.6×) | Strong | other teams | Adopt later | B-17 | Planned | Costly in tokens; design it to fit ≤ $0.50/q. |
 | R-04 | Ensemble 3–7 diverse models (86% of winners aggregate) | Strong | other teams | Adopt | B-04, B-18 | Partial | Built 2026-09-30: median of GPT-6 Luna, Gemini 3.5 Flash-Lite, DeepSeek V4.1 Flash (ADR-0006). Not live yet. nostreambot found median > mean/stacking and 3 ≈ 6 members. |
-| R-05 | Post-hoc Platt scaling (−0.016 Brier binary) | Strong (contested) | mixed | Test | B-19 | Not started | ⚠️ nostreambot rejected all post-hoc calibration: the slope flipped between eras. Needs our own data, likely N > 300. |
+| R-05 | Post-hoc Platt scaling (−0.016 Brier binary) | Strong (contested) | mixed (contested) | Test | B-19 | Not started | ⚠️ nostreambot rejected all post-hoc calibration: the slope flipped between eras. Needs our own data, likely N > 300. |
 | R-06 | 2+ distinct research sources (r = 0.42) | Moderate | other teams | Adopt | B-13 | Planned | Prediction-market prices are the cheapest second source. |
 | R-07 | Cap extreme predictions (r = +0.48 within winners) | Moderate | mixed | Adopt | B-11 | Planned | Cheap. Tune bounds after M2. Extremizing (the opposite direction) and cap levels are tested together in EXP-003 (B-48). |
 | R-08 | Explicitly compute base rates (40% of top-15 vs 7%) | Moderate | mixed | Adopt | B-58 (EXP-006), B-56 | Planned | Consistent with Silver/Tetlock. Tested in EXP-006 (was B-12): prompted vs blind vs retrieved base rate, since an LLM's prompted base rate may be invented from the same news (research/10). |
@@ -43,7 +43,7 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 | R-20 | Multi-persona aggregation | Negative | other teams | Avoid | none | N/A | Don't build. Diversity of information and method, not personas, is tested in EXP-004 (arm C is the closest to personas). |
 | R-21 | Prompts built around "Bayesian updating" (underperformed twice) | Negative | other teams (suggestive) | Avoid | B-12 | N/A | ⚠️ Relevant to I-01: keep Silver's *principles* (base rates, updating) in the design, but don't put "Bayesian" framing in prompts. |
 | R-22 | Porous-cutoff backtesting (models can't "pretend not to know") | Negative | ours | Avoid | B-27, B-28, B-32 | Partial | As-of research layer built and validated (B-28, B-45; ADR-0008, research/07): archive date bound held on 50/50 dates; dual leakage screen caught 100/100 planted leaks. Eligibility filter and harness validation (B-27, B-32) still to do. |
-| R-23 | Optimising prompts toward the community prediction | Negative (weak) | mixed | Avoid | B-31 | N/A | The gate *compares* to the community forecast; never tune toward it. |
+| R-23 | Optimising prompts toward the community prediction | Negative (weak) | mixed (weak) | Avoid | B-31 | N/A | The gate *compares* to the community forecast; never tune toward it. |
 
 ## How to evaluate and build
 | ID | Finding | Evidence | Whose evidence | Stance | Built by | Status | Assessment / results |
