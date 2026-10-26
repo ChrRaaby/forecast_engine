@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 from evals import report  # noqa: E402
 from evals.asof import LeakageError  # noqa: E402
 from evals.model_release import IneligiblePair, check_eligible  # noqa: E402
-from evals.outcomes import load_outcomes  # noqa: E402
+from evals.outcomes import load_outcomes, resolved_binary  # noqa: E402
 from evals.replay import TamperedRecord, assert_record_as_of, assert_record_intact, live_records, replay_record  # noqa: E402
 from forecast_engine.config import DEFAULT_CONFIG, TOURNAMENT_CONFIG, BotConfig  # noqa: E402
 from forecast_engine.core import ForecastFailed  # noqa: E402
@@ -60,16 +60,6 @@ COLUMNS = ("question_id", "cluster_id", "arm", "member", "repeat", "p", "outcome
 
 def aa_config(name: str) -> BotConfig:
     return replace(CONFIGS[name], polarity_check_model=None)
-
-
-def resolved_binary(outcomes: dict[int, dict[str, Any]]) -> dict[int, tuple[int, str]]:
-    """question_id -> (1/0, resolved date) for binary questions that resolved yes or no."""
-    out = {}
-    for qid, row in outcomes.items():
-        res = str(row.get("resolution") or "").lower()
-        if row.get("status") == "resolved" and res in ("yes", "no"):
-            out[qid] = (1 if res == "yes" else 0, str(row.get("actual_resolve_time") or "")[:10])
-    return out
 
 
 def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], cfg: BotConfig, n: int):

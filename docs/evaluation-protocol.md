@@ -116,7 +116,9 @@ Each threat has a control and an **automated check**. A control without a check 
    resolved. A narrow win is a CI that excludes 0 but whose lower end is below the card's smallest effect of interest. The first run
    then counts as a screen and the rerun decides:
    - The rerun uses **only questions that resolved after the first run**, never the first set plus a few more (topping up and
-     re-checking until it looks good lets luck win, like testing many arms).
+     re-checking until it looks good lets luck win, like testing many arms). "Resolved" means Metaculus's actual resolve time,
+     never the scheduled one: the table's `resolved_at` column comes from `evals.outcomes.resolved_date` and the report applies
+     the cut-off with `--resolved-after <first run's date>`.
    - The rerun card is written before it runs, with the same arms, metric and decision rule; it states the N it waits for.
    - Still inconclusive after the rerun → dropped. A changed version is a new variant with its own card.
    - An arm that hits its kill threshold (§5) is dropped, not rerun.

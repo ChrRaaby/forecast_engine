@@ -145,3 +145,22 @@ def test_update_backfills_scores_for_rows_resolved_before_scores_were_collected(
     s.calls.clear()
     oc.update(s, FixedClock(AS_OF), tmp_path / "runs", out)
     assert s.calls == []  # scored now, so settled
+
+
+def test_resolved_date_is_the_actual_resolve_time_only():
+    row = {"status": "resolved", "resolution": "yes", "actual_resolve_time": "2026-10-21T14:29:00Z",
+           "scheduled_resolve_time": "2026-12-31T00:00:00Z"}
+    assert oc.resolved_date(row) == "2026-10-21"
+    assert oc.resolved_date({**row, "actual_resolve_time": None}) is None  # never falls back to the scheduled time
+    assert oc.resolved_date({**row, "status": "closed", "resolution": None}) is None
+    assert oc.resolved_date({**row, "status": "open", "resolution": None,
+                             "actual_resolve_time": None}) is None
+
+
+def test_resolved_binary_feeds_the_report_cut_off():
+    outcomes = {1: {"status": "resolved", "resolution": "Yes", "actual_resolve_time": "2026-10-06T16:11:00Z"},
+                2: {"status": "resolved", "resolution": "no", "actual_resolve_time": "2026-10-09T11:37:00Z"},
+                3: {"status": "resolved", "resolution": "annulled", "actual_resolve_time": "2026-10-09T11:37:00Z"},
+                4: {"status": "resolved", "resolution": "Labour Party", "actual_resolve_time": "2026-10-09T11:47:00Z"},
+                5: {"status": "open", "resolution": None, "actual_resolve_time": None}}
+    assert oc.resolved_binary(outcomes) == {1: (1, "2026-10-06"), 2: (0, "2026-10-09")}

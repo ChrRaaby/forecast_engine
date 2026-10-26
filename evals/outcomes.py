@@ -96,6 +96,25 @@ def is_settled(row: dict[str, Any]) -> bool:
     return bool(row.get("scores")) or row["resolution"] in NO_SCORE_RESOLUTIONS
 
 
+def resolved_date(row: dict[str, Any]) -> str | None:
+    """YYYY-MM-DD the question actually resolved, or None if it hasn't (or the time is missing). This is the `resolved_at` column
+    of evals.report's input table (rerun cut-off, protocol §6.3); every table builder takes it from here. Never the scheduled
+    resolve time: a question can resolve before or after its schedule, and only the actual time says whether it is fresh."""
+    if row.get("status") not in SETTLED or row.get("resolution") is None:
+        return None
+    return str(row.get("actual_resolve_time") or "")[:10] or None
+
+
+def resolved_binary(outcomes: dict[int, dict[str, Any]]) -> dict[int, tuple[int, str | None]]:
+    """question_id -> (1/0, resolved date) for binary questions that resolved yes or no."""
+    out = {}
+    for qid, row in outcomes.items():
+        res = str(row.get("resolution") or "").lower()
+        if row.get("status") in SETTLED and res in ("yes", "no"):
+            out[qid] = (1 if res == "yes" else 0, resolved_date(row))
+    return out
+
+
 def update(session: requests.Session, clock: Clock, runs_dir: Path = RUNS, out_path: Path = OUT) -> dict[str, int]:
     known = load_outcomes(out_path)
     todo = {qid: m for qid, m in forecast_questions(runs_dir).items()
