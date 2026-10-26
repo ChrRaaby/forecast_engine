@@ -282,12 +282,14 @@ class EngineBot(ForecastBot):
                 shadow_research = research
                 if scfg.research.followup is not None:
                     shadow_research = await research_followup.followup(snapshot, research, self.clock, scfg.research, self.llm)
+                # the live research was paid for by the live forecast; the follow-up step's calls are charged now, so they
+                # count even if the forecast below raises something other than ForecastFailed
+                self.spent_usd += shadow_research.cost_usd - research.cost_usd
                 rec = await forecast(snapshot, self.clock, shadow_research, scfg, self.llm)
-                # the live research was paid for by the live forecast; a follow-up step's calls are in rec and count here
-                self.spent_usd += rec.cost_usd - research.cost_usd
+                self.spent_usd += rec.cost_usd - shadow_research.cost_usd
                 writer.write(rec, published=False, status="shadow")
             except ForecastFailed as e:
-                self.spent_usd += e.record.cost_usd - research.cost_usd
+                self.spent_usd += e.record.cost_usd - shadow_research.cost_usd
                 writer.write(e.record, published=False, status="shadow_failed")
             except Exception as e:  # a shadow must never take the live forecast down
                 logger.warning(f"shadow {name} failed on {snapshot.page_url}: {type(e).__name__}: {e}")

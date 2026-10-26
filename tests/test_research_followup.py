@@ -345,6 +345,20 @@ def test_shadow_arm_follow_up_failure_still_forecasts(tmp_path, monkeypatch):
     assert bot.spent_usd == pytest.approx(rec["cost_usd"] - _bundle().cost_usd)  # the failed critic call is still charged
 
 
+def test_follow_up_spend_is_charged_even_if_the_shadow_forecast_crashes(tmp_path, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "not-a-real-key")
+    monkeypatch.setattr(rf, "_gemini_search", FakeSearch())
+
+    async def crash(*args, **kwargs):
+        raise RuntimeError("synthetic crash outside ForecastFailed")
+
+    monkeypatch.setattr(main, "forecast", crash)
+    arm = "exp008-b-gaps"
+    bot = _bot(tmp_path, monkeypatch, None, {arm: EXP008_ARMS[arm]}, FakeLlm([_gaps("one gap")]))
+    asyncio.run(bot._run_shadows(Q, _bundle(), TOURNAMENT_CONFIG))  # must not raise
+    assert bot.spent_usd > 0.02  # the critic call and the paid search still count to the run cap
+
+
 # --- replay ---------------------------------------------------------------------------------------------------------------
 
 def test_existing_records_keep_byte_identical_prompts_and_format():
