@@ -585,3 +585,13 @@ def test_cli_resolved_after(tmp_path):
                    "--run-kind", "rerun"]) == 0
     md = out.read_text(encoding="utf-8")
     assert "only questions resolved after 2026-10-20" in md and "after the first run): 10" in md
+
+
+def test_report_does_not_depend_on_row_order():
+    """B-32 reproducibility: the same rows in another order give the same report bytes. Before v1.3.1 the arms kept the order
+    they first appeared in, so the aggregation line and 'Failures by kind' changed with row order (the numbers did not)."""
+    rows = synthetic_rows(n_questions=30, n_clusters=15, arm_noise={"A": 0.8, "B": 0.5}, arm_failure={"A": 0.05, "B": 0.1},
+                          k=1, seed=11)
+    forward = r.render_report(r.analyse([r.parse_row(d) for d in rows], "A", reps=200))
+    backward = r.render_report(r.analyse([r.parse_row(d) for d in rows[::-1]], "A", reps=200))
+    assert forward == backward

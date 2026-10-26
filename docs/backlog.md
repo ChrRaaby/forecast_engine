@@ -1,6 +1,6 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-19_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-10-26_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
@@ -38,7 +38,7 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 12 | B-55 | Scorecard + ensemble health tab in the bot monitor, on B-38's outcomes: resolved N, Brier/log score vs community with CIs, calibration curve once N ≥ 30, each model alone (skill board), frontier vs cheap shadow (ADR-0009). Owned by the B-46/EXP-005 thread since 2026-10-07; starts after the EXP-005 work settles. The per-question model spread chart moves into the Question X-ray (B-46). Uses B-29's scorer; shares metrics with B-47 | I-17; B-38 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 13 | B-30 | Experiment runner: immutable run records, config hashing, clean-git check, cost guard, holdout guard, repeats k | Protocol §7, T8, T11 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 15 | B-47 | Diversity metrics in every experiment report: member error correlation, member spread, diversity bonus (ensemble vs mean member); on top of B-31 | I-16; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
-| 16 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines | Protocol §7, T13 | Claude Code | M | Todo | Opus 5.5 · cloud |
+| 16 | B-32 | Harness validation: reproducibility, A/A test, leakage-injection test, trivial baselines. Built 2026-10-26 for the replay + report path (B-30 doesn't exist yet; hook left in the module docstring): `python -m evals.validate_harness` (offline, synthetic, 15/15 PASS, in CI via its tests) and `--real runs.csv` for the PC; `tools/run_aa_replay.py` replays N resolved records twice for a real A/A (cheap config, `--dry-run`, $5 cap). New replay guard in `evals/replay.py` refuses research dated after a record's as_of; report generator v1.3.1 (row order no longer changes the report). PR awaiting Christian, then on the PC: `--dry-run`, the A/A replay, `--real` on its table | Protocol §7, T13 | Claude Code | M | Review | Opus 5.5 · cloud |
 | 17 | B-33 | EXP-001: single-call baseline vs. M1 config on DEV. Measure the real SD → MDE; set the PoC gate margin | Protocol §5; I-08 | Claude Code + Christian | M | Todo | Opus 5.5 · cloud |
 | 18 | B-48 | EXP-003: extremize / cap / Platt sweep on resolved binary records (post-processing, $0; covers the B-11 and B-19 evaluations). Needs N ≥ ~150 resolved binary, B-38, B-31. First scored evaluation (2026-10-19, our data, weak: 35 MiniBench yes/no, cheap roster) found forecasts clustered near 50% (16/35 between 30% and 70%), a mild hint of hedging; see B-67 | I-16, R-05, R-07; research/08 | Claude Code | S | Todo | Sonnet 5.5 · PC |
 | 19 | B-49 | EXP-004: diversity of perspective, 4 arms (baseline / structured method / lens per member / research per member) on frozen research. Needs B-38, B-31, B-47 | I-16, R-04, R-20; research/08 | Claude Code | M | Todo | Opus 5.5 · PC |

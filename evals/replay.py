@@ -7,14 +7,15 @@ question text are exactly what was available when the live forecast was made (AD
     poetry run python -m evals.replay --check     # offline: every live record's prompts are reproduced exactly from its inputs
 
 `replay_record(record, cfg, llm)` is the API the experiment runner (B-30) will call. Replaying needs the same research text, so it
-works on records from the private data repo only.
+works on records from the private data repo only. Before any model call it runs `assert_record_as_of` (B-32, threat T2): a record
+whose frozen research holds an item dated after the record's as_of, or a bundle made after it, is refused.
 """
 from __future__ import annotations
 
 import argparse
 import json
 from dataclasses import fields
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from forecast_engine.llm import LlmClient
 from forecast_engine.prompts import forecast_prompt
 from forecast_engine.schema import ForecastRecord, QuestionSnapshot, ResearchBundle
 
+from .asof import LeakageError
 from .research_cache import bundle_from_dict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,8 +68,35 @@ def check_record(record: dict[str, Any]) -> bool:
     return bool(stored) and all(p == prompt for p in stored)
 
 
+def _utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def assert_record_as_of(record: dict[str, Any]) -> None:
+    """Raise LeakageError if the record's frozen research could not all have existed at the record's as_of (T2; B-32).
+
+    Refused: a research item dated after as_of, and a bundle whose own as_of is after the record's. Unlike the backtest guard
+    (`evals.asof.assert_bundle_as_of`), undated items are allowed: live research was captured at as_of by construction (the
+    record's as_of is stamped after research), and Gemini-grounded items carry no date at all. A date without a time zone is read
+    as UTC. The error names counts and dates only, never research text."""
+    as_of = datetime.fromisoformat(record["as_of"])
+    if as_of.tzinfo is None:
+        raise LeakageError("record as_of has no time zone; can't check its research")
+    research = record["research"]
+    if research.get("as_of") and _utc(datetime.fromisoformat(research["as_of"])) > as_of:
+        raise LeakageError(f"research bundle is as of {research['as_of']}, after the record's as_of {record['as_of']}")
+    late = sorted(
+        i["published_at"] for i in research.get("items", [])
+        if i.get("published_at") and _utc(datetime.fromisoformat(i["published_at"])) > as_of
+    )
+    if late:
+        raise LeakageError(f"{len(late)} research item(s) dated after the record's as_of {record['as_of']}: {', '.join(late[:5])}")
+
+
 async def replay_record(record: dict[str, Any], cfg: BotConfig, llm: LlmClient) -> ForecastRecord:
-    """Re-forecast a stored question on its frozen research, as of its own time, with `cfg`."""
+    """Re-forecast a stored question on its frozen research, as of its own time, with `cfg`. Refuses (LeakageError, no model
+    call) a record whose research is dated after its as_of."""
+    assert_record_as_of(record)
     q, clock, bundle = inputs_from_record(record)
     return await forecast(q, clock, bundle, cfg, llm)
 
