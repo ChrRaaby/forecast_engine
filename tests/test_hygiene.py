@@ -34,9 +34,10 @@ def test_evals_never_import_the_live_adapter():
 
 
 def test_model_ids_live_only_in_config():
-    from forecast_engine.config import DEFAULT_CONFIG, TOURNAMENT_CONFIG
+    from forecast_engine.config import DEFAULT_CONFIG, TOURNAMENT_CONFIG, FollowupConfig
 
     ids = [f.model for f in DEFAULT_CONFIG.forecasters + TOURNAMENT_CONFIG.forecasters] + [DEFAULT_CONFIG.research.gemini_model]
+    ids.append(FollowupConfig().critic_model)
     for path in list(PKG.glob("*.py")) + [PKG.parent / "main.py"]:
         if path.name == "config.py":
             continue

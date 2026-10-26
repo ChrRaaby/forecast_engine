@@ -40,7 +40,7 @@ from forecasting_tools.data_models.data_organizer import DataOrganizer  # noqa: 
 from forecasting_tools.data_models.forecast_report import ForecastReport  # noqa: E402
 from forecasting_tools.data_models.multiple_choice_report import PredictedOption  # noqa: E402
 
-from forecast_engine import guards, parsing  # noqa: E402
+from forecast_engine import guards, parsing, research_followup  # noqa: E402
 from forecast_engine.clock import Clock, SystemClock  # noqa: E402
 from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
@@ -268,7 +268,10 @@ class EngineBot(ForecastBot):
             self.season.add(usd)
 
     async def _run_shadows(self, snapshot: QuestionSnapshot, research: ResearchBundle, live_cfg: BotConfig) -> None:
-        """B-62: forecast with each shadow config on the live question's research; never publish, never raise."""
+        """B-62: forecast with each shadow config on the live question's research; never publish, never raise.
+
+        A shadow whose research config has a follow-up step (B-17, EXP-008) forecasts on an enlarged copy of the live research; the
+        live bundle is not changed and not paid for twice. The copy is stored in the shadow record, so the forecast replays."""
         for name, scfg in self.shadows.items():
             if scfg.config_hash() == live_cfg.config_hash():
                 continue  # the live forecast already is this config (e.g. after the season fallback)
@@ -276,11 +279,17 @@ class EngineBot(ForecastBot):
             if writer is None:
                 writer = self._shadow_writers[name] = RecordWriter(f"{self.run_id}-shadow-{name}")
             try:
-                rec = await forecast(snapshot, self.clock, research, scfg, self.llm)
-                self.spent_usd += rec.cost_usd - research.cost_usd  # the research was paid for by the live forecast
+                shadow_research = research
+                if scfg.research.followup is not None:
+                    shadow_research = await research_followup.followup(snapshot, research, self.clock, scfg.research, self.llm)
+                # the live research was paid for by the live forecast; the follow-up step's calls are charged now, so they
+                # count even if the forecast below raises something other than ForecastFailed
+                self.spent_usd += shadow_research.cost_usd - research.cost_usd
+                rec = await forecast(snapshot, self.clock, shadow_research, scfg, self.llm)
+                self.spent_usd += rec.cost_usd - shadow_research.cost_usd
                 writer.write(rec, published=False, status="shadow")
             except ForecastFailed as e:
-                self.spent_usd += e.record.cost_usd - research.cost_usd
+                self.spent_usd += e.record.cost_usd - shadow_research.cost_usd
                 writer.write(e.record, published=False, status="shadow_failed")
             except Exception as e:  # a shadow must never take the live forecast down
                 logger.warning(f"shadow {name} failed on {snapshot.page_url}: {type(e).__name__}: {e}")

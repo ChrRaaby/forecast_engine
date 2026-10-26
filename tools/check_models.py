@@ -2,7 +2,7 @@
 
     poetry run python tools/check_models.py
 
-Prints each OpenRouter forecaster and the backtest leakage-screen model (evals/leakage_screen.py) with price and OpenRouter
+Prints each OpenRouter forecaster, the research follow-up critic of every shadow and EXP-008 arm, and the backtest leakage-screen model (evals/leakage_screen.py) with price and OpenRouter
 listing date, and checks the Gemini research and graph-extractor (evals/graph_extract.py) models if GEMINI_API_KEY is set.
 Exits non-zero if any id is unknown. Uses only free list endpoints.
 """
@@ -17,7 +17,7 @@ import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from forecast_engine.config import DEFAULT_CONFIG, SHADOW_CONFIGS, TOURNAMENT_CONFIG  # noqa: E402
+from forecast_engine.config import DEFAULT_CONFIG, EXP008_ARMS, SHADOW_CONFIGS, TOURNAMENT_CONFIG  # noqa: E402
 from evals.graph_extract import ExtractorConfig  # noqa: E402
 from evals.leakage_screen import ScreenConfig  # noqa: E402
 
@@ -31,6 +31,9 @@ def main() -> int:
              + [(s.model, "tournament forecaster") for s in TOURNAMENT_CONFIG.forecasters]
              + [(s.model, f"shadow {name}") for name, c in SHADOW_CONFIGS.items() for s in c.forecasters
                 if c is not DEFAULT_CONFIG]
+             + [(c.research.followup.critic_model, f"follow-up critic {name}")
+                for name, c in {**SHADOW_CONFIGS, **EXP008_ARMS}.items()
+                if c.research.followup is not None and c.research.followup.critic_mode != "control"]
              + [(DEFAULT_CONFIG.polarity_check_model, "polarity check"), (screen.model, "leakage screen")])
     for model_id, role in specs:
         m = models.get(model_id)
@@ -47,6 +50,9 @@ def main() -> int:
                   f"{screen.model_release_date}; verify the release date against the vendor before trusting the screen")
 
     geminis = [(DEFAULT_CONFIG.research.gemini_model, "research"), (ExtractorConfig().model, "graph extractor")]
+    geminis += [(m, "follow-up searches") for m in sorted({c.research.gemini_model for c in {**SHADOW_CONFIGS, **EXP008_ARMS}.values()
+                                                           if c.research.followup is not None})
+                if m not in {g for g, _ in geminis}]
     key = os.getenv("GEMINI_API_KEY")
     if not key or key == "REPLACE_ME":
         print(f"skipped  gemini      {[g for g, _ in geminis]} (GEMINI_API_KEY not set)")
