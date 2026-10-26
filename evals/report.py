@@ -51,7 +51,7 @@ import numpy as np
 
 from . import scoring
 
-REPORT_VERSION = "1.3.0"
+REPORT_VERSION = "1.3.1"
 DEFAULT_SEED = 3101
 DEFAULT_REPS = 10_000
 DEFAULT_BINS = 10
@@ -411,6 +411,7 @@ def prepare(rows: Sequence[Row], aggregation: str = "auto", resolved_after: date
                 a.repeats_by_question[qid] = len(out)
 
     scored_outcomes = {q: o for q, o in outcomes.items() if q not in dropped and o is not None}
+    arms = dict(sorted(arms.items()))  # row order must not change the report (B-32 reproducibility; v1.3.1)
     return Prepared(arms, scored_outcomes, clusters, dict(attrs), dropped, notes)
 
 

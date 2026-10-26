@@ -61,6 +61,21 @@ def test_replay_runs_on_frozen_inputs_as_of_the_record():
     assert llm.prompts[0] == rec["forecasters"][0]["call"]["prompt"]  # same inputs, same prompt
 
 
+def test_replay_refuses_an_edited_record_before_any_model_call():
+    """B-32 integrity check: research edited after the live forecast (no date involved) is never replayed."""
+    from evals.replay import TamperedRecord
+
+    rec = _live_record()
+    rec["research"]["items"][0]["text"] = "Edited later."
+    llm = FakeLlm()
+    with pytest.raises(TamperedRecord):
+        asyncio.run(replay_record(rec, DEFAULT_CONFIG, llm))
+    assert llm.prompts == []
+    del rec["forecasters"]
+    with pytest.raises(TamperedRecord):  # a record that can't be checked is refused too
+        asyncio.run(replay_record(rec, DEFAULT_CONFIG, llm))
+
+
 # --- outcome collector --------------------------------------------------------------------------------------------------
 
 def test_find_question_in_plain_and_group_posts():
