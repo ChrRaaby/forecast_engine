@@ -8,7 +8,8 @@ Live-replay (`evals.replay.replay_record`): each record's frozen research and as
 inputs and differ only by the models' own randomness. A harness that is right finds no difference (the CI contains 0) about 19
 times in 20. Records are picked from data/runs/ (one per question: the earliest non-shadow record), binary questions that resolved
 yes/no in data/outcomes/outcomes.jsonl, oldest as_of first. A record is skipped when any forecaster in the config fails the
-release-date check (`evals.model_release`, protocol T1) or the replay leakage guard refuses it (research dated after as_of).
+release-date check (`evals.model_release`, protocol T1) or a replay guard refuses it (research dated after as_of, or stored inputs
+that no longer rebuild the live prompt).
 
 The config's polarity check is switched off: its model has no verified release date in `evals.model_release`, and an A/A test
 only needs both arms to be the same config. Both arms of a question run at the same time (same provider conditions, T11).
@@ -38,7 +39,7 @@ from evals import report  # noqa: E402
 from evals.asof import LeakageError  # noqa: E402
 from evals.model_release import IneligiblePair, check_eligible  # noqa: E402
 from evals.outcomes import load_outcomes  # noqa: E402
-from evals.replay import assert_record_as_of, live_records, replay_record  # noqa: E402
+from evals.replay import TamperedRecord, assert_record_as_of, assert_record_intact, live_records, replay_record  # noqa: E402
 from forecast_engine.config import DEFAULT_CONFIG, TOURNAMENT_CONFIG, BotConfig  # noqa: E402
 from forecast_engine.core import ForecastFailed  # noqa: E402
 from forecast_engine.schema import ForecastRecord, LlmCall  # noqa: E402
@@ -92,6 +93,10 @@ def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], cfg: BotCo
             continue
         try:
             assert_record_as_of(rec)
+            assert_record_intact(rec)
+        except TamperedRecord:
+            skips["stored inputs don't rebuild the live prompt (integrity check)"] += 1
+            continue
         except LeakageError:
             skips["research dated after as_of (replay guard)"] += 1
             continue

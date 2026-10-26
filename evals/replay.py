@@ -7,8 +7,10 @@ question text are exactly what was available when the live forecast was made (AD
     poetry run python -m evals.replay --check     # offline: every live record's prompts are reproduced exactly from its inputs
 
 `replay_record(record, cfg, llm)` is the API the experiment runner (B-30) will call. Replaying needs the same research text, so it
-works on records from the private data repo only. Before any model call it runs `assert_record_as_of` (B-32, threat T2): a record
-whose frozen research holds an item dated after the record's as_of, or a bundle made after it, is refused.
+works on records from the private data repo only. Before any model call it runs two guards (B-32): `assert_record_as_of` (T2)
+refuses a record whose frozen research holds an item dated after the record's as_of, or a bundle made after it; `assert_record_intact`
+refuses a record whose stored inputs no longer rebuild the prompt the live models received (`check_record`), so the research
+replayed is provably what the live forecaster saw at as_of.
 """
 from __future__ import annotations
 
@@ -93,10 +95,30 @@ def assert_record_as_of(record: dict[str, Any]) -> None:
         raise LeakageError(f"{len(late)} research item(s) dated after the record's as_of {record['as_of']}: {', '.join(late[:5])}")
 
 
+class TamperedRecord(LeakageError):
+    """The record's stored inputs don't rebuild the prompt the live models received: its research or question changed later."""
+
+
+def assert_record_intact(record: dict[str, Any]) -> None:
+    """Raise TamperedRecord unless `check_record` passes (B-32, agreed with Christian 2026-10-26).
+
+    This is the strict part of the replay guard. Live research was captured at as_of, so what has to be proven is that it is
+    unchanged since: every forecaster's stored prompt must equal the prompt rebuilt from the stored question, as_of and research.
+    Publication dates can't prove that (Gemini items have none, and an edit can keep a date)."""
+    try:
+        intact = check_record(record)
+    except (KeyError, TypeError, ValueError) as e:
+        raise TamperedRecord(f"record can't be checked ({type(e).__name__}: {e})") from e
+    if not intact:
+        raise TamperedRecord("stored inputs don't rebuild the prompt the live models received (research or question changed "
+                             "after as_of); not replayable")
+
+
 async def replay_record(record: dict[str, Any], cfg: BotConfig, llm: LlmClient) -> ForecastRecord:
     """Re-forecast a stored question on its frozen research, as of its own time, with `cfg`. Refuses (LeakageError, no model
-    call) a record whose research is dated after its as_of."""
+    call) a record whose research is dated after its as_of, or (TamperedRecord) whose inputs changed since the live forecast."""
     assert_record_as_of(record)
+    assert_record_intact(record)
     q, clock, bundle = inputs_from_record(record)
     return await forecast(q, clock, bundle, cfg, llm)
 

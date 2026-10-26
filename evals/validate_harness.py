@@ -386,7 +386,8 @@ def check_replay_archive(runs_dir: Path) -> list[Result]:
     )
     guard = Result(
         C3, INFO,
-        f"replay guard on the archive: {len(refused)}/{len(recs)} live records would be refused (research dated after as_of)",
+        f"replay date guard on the archive: {len(refused)}/{len(recs)} live records would be refused (research dated after "
+        "as_of; the integrity check is the prompt line above)",
         [f"refused {_rel(p, runs_dir)}" for p in refused[:20]],
     )
     return [res, guard]
@@ -602,19 +603,26 @@ def check_leakage(tmp: Path) -> list[Result]:
         )
         late_bundle = json.loads(json.dumps(rec))
         late_bundle["research"]["as_of"] = (as_of + timedelta(days=1)).isoformat()
-        for bad in (leaky, late_bundle):
+        edited = json.loads(json.dumps(rec))
+        edited["research"]["items"][1]["text"] = "PLANTED: edited after as_of, no date to give it away."
+        # (record, the guard that must refuse it): the date guard for the first two, the integrity check for the third
+        cases = ((leaky, "date"), (late_bundle, "date"), (edited, "integrity"))
+        for bad, guard in cases:
             llm = FakeLlm()
             try:
                 asyncio.run(replay.replay_record(bad, DEFAULT_CONFIG, llm))
-                return False, f"replay_record ran a record with research after as_of ({llm.calls} model call(s))"
-            except LeakageError:
+                return False, f"replay_record ran a record the {guard} guard should refuse ({llm.calls} model call(s))"
+            except LeakageError as e:
                 if llm.calls:
                     return False, f"replay_record refused only after {llm.calls} model call(s)"
+                if (guard == "date") == isinstance(e, replay.TamperedRecord):
+                    return False, f"refused by the wrong guard ({type(e).__name__}): the {guard} guard is missing"
         llm = FakeLlm()
         asyncio.run(replay.replay_record(rec, DEFAULT_CONFIG, llm))
         ok = llm.calls >= len(DEFAULT_CONFIG.forecasters)
-        return ok, ("replay refuses a record with an item dated after its as_of, or a bundle made after it, before any model "
-                    "call (an undated item is allowed; the clean record replays)")
+        return ok, ("replay refuses, before any model call, a record with an item dated after its as_of or a bundle made after "
+                    "it (date guard), and a record whose research was edited later (integrity check: stored prompt must be "
+                    "rebuilt exactly); an undated item is allowed and the clean record replays")
 
     out.append(_sub(C3, "replay guard", replay_guard))
 
