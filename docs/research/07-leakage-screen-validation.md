@@ -44,3 +44,55 @@ platform's aggregate forecast.
   confirmation sample in the next AskNews period (B-45 follow-up). (2) Planted leaks are cleaner than real ones (AskNews summaries,
   edited stories); real-batch flag rates must still be watched (protocol T3, >10% warning). (3) Results vary between reruns of the
   same cases by a few percentage points.
+
+## Fresh confirmation (F-09, 2026-11-01)
+**Written before the run** (approved by Christian, 2026-11-01).
+- **Sample:** 20 new questions, seed 20261101, same eligibility as above, excluding all 50 questions used in October (the dev and
+  confirmation sets). Fresh planted sentences from the same generator.
+- **Screen:** frozen as merged: `DualScreenConfig` (prompt v3, GPT-5 mini low reasoning 16k + Gemini 2.5 Flash, both must flag).
+  Only the dual screen runs. The first run counts: no reruns, no choosing between runs.
+- **Pass bar:** date bound holds on 20/20 bundles; at most 1 missed plant per kind (obvious, subtle); at most 2/20 clean bundles
+  excluded (leak or screen_failed). On a fail: stop and discuss; nothing is tuned on this set.
+- **Power:** 20 questions catch a broken rule, they don't prove ≤10%: 0/20 excluded gives a 95% upper bound of about 15%. The T3
+  >10% warning on the first real batch remains the main safeguard.
+- **Cost:** 100 AskNews credits (of 300 archive credits this period) and under $1 of model calls.
+
+**Result: pass** (run 2026-11-01, `data/qa/screen_validation_20261101T202921Z.json`, private).
+
+| Check | Bar | Result |
+|---|---|---|
+| Date bound | 20/20 | **20/20** (no article after as-of, all dated, guard passed; one bundle had 4 articles, the rest 9–10) |
+| Obvious plants missed | ≤ 1/20 | **0/20** |
+| Subtle plants missed | ≤ 1/20 | **0/20** |
+| Clean bundles excluded | ≤ 2/20 | **0/20** (no screen_failed) |
+
+Cost: 100 AskNews credits; $0.064 for the screen calls, plus the plant generator. Questions covered four types (binary, numeric,
+discrete, multiple choice), with as-of dates from December 2025 to August 2026.
+
+- **The agreement rule earned its keep on this set too.** Two clean bundles were flagged by one screen only, and both flags were
+  wrong (read by hand): a newspaper election forecast from June with projected vote shares (as of 13 Jul), which protocol T7 allows;
+  and a low-quality travel article published 12 Feb that claims a first-quarter 2026 airline load factor before the quarter had
+  ended (as of 15 Feb). That claim can't contain real later information, the same "wrong-date source text" pattern seen in October.
+  A single screen would have excluded 2/20 (at the bar); the dual screen excluded none.
+- **Caveats:** (1) The plants are easy: all name an explicit later date, and 6 of 40 even contain the word "fictional" (a flaw in
+  the generator prompt; it doesn't change the subtle-plant result much, because the screens cite the date, not that word). Real
+  leaks are messier, so this confirms the rule isn't overfitted but doesn't bound real-world recall. (2) N = 20: 0/20 excluded puts
+  the true clean-exclusion rate below about 15% (95%). (3) Across all three samples the dual screen has now excluded 0–13% (dev),
+  0–5% (October confirmation) and 0% (this one) of clean bundles, with 0/140 plants missed.
+- **How certain is this?** (one-sided 95% exact binomial upper bounds; Christian asked for these to be stated explicitly)
+  - *Clean questions wrongly excluded:* 0/20 on this fresh set means the true rate is **probably below 14%**. The 10% bar is
+    therefore *not* proven by this test alone; it rules out a badly overfitted rule (e.g. a true rate of 20–30%, like the single
+    screens) but can't tell 0% from 10%. Pooling the final runs of all three sets (2/70) gives below 9%, but the dev and October
+    sets were used to choose the rule, so that pooled figure is optimistic.
+  - *Planted leaks missed:* 0/20 per kind gives below 14% per kind; 0/40 on this set gives below 7%; 0/140 across all three
+    samples gives below 2%. These numbers apply only to **planted** leaks that name a later date. For real leaks (undated
+    hindsight, AskNews summaries written later, edited stories) we have **no measured recall**: not tested, not bounded.
+  - *Date bound:* 20/20 here and 70/70 across all samples; a server that ignored the bound would have shown up. Below ~4% of
+    dates (0/70) could be affected by an intermittent failure, and the date guard would then still drop or raise on such items.
+  - *Run-to-run noise:* reruns of identical cases in October moved the clean-exclusion rate by a few points (0–13% on dev). This
+    run was a single, pre-committed run, so it carries that noise too.
+  - **Bottom line:** confident the rule isn't overfitted and catches clear, dated hindsight; moderately confident it excludes
+    ≤ ~10% of clean questions; unknown how well it catches messy real leaks. The T3 flag-rate warning and hand-reading flagged
+    items on the first real batch are what close that gap.
+- **Consequence:** the first large archive batch is no longer blocked on the screen. The T3 >10% warning on that batch stays the
+  main safeguard.
