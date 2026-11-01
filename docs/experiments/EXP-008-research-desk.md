@@ -2,6 +2,8 @@
 
 > **DRAFT, not pre-registered: needs Christian's OK.** Nothing runs until Christian approves this card and the one-line switch
 > below. Items marked **[Christian]** are open choices; the card is only final once each one has an answer.
+>
+> Groundwork for the open choices (facts, cost model, options, recommendations; nothing decided): `docs/research/14-exp008-decisions.md` (F-14).
 
 _Card written BEFORE running. Results section filled by the report generator. Backlog B-64; tooling B-17 (built as switched-off
 shadow arms, `forecast_engine/research_followup.py`)._
