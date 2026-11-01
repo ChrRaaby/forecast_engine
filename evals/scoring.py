@@ -12,6 +12,10 @@ Conventions
   Continuous: 100 * ln(pmf[bucket] / baseline) / 2 on the 202-bucket pmf derived from the 201-point CDF, where the
   baseline is 0.05 for the two open-bound buckets and (1 - 0.05 * open_bounds) / 200 for the 200 inner buckets.
 - Numeric CDFs are the 201-point CDFs the Metaculus API uses (`NUM_CDF_POINTS`), values in [0, 1], non-decreasing.
+  Discrete questions have fewer points (inbound_outcome_count + 1); the numeric functions take `cdf_size` for them and use
+  Metaculus's own rule, which counts the inner buckets as len(pmf) - 2 (score_math.py, checked 2026-11-01). The default stays 201.
+- Outcome -> bucket follows Metaculus's utils/the_math/formulas.py (checked 2026-11-01): an outcome exactly on an inner bucket edge
+  belongs to the lower bucket (`int(x * N + 1 - 1e-10)`), the lower bound itself to bucket 1, the upper bound to bucket N.
 """
 from __future__ import annotations
 
@@ -91,10 +95,12 @@ def mc_baseline_score(probs: Sequence[float], outcome_index: int, eps: float = E
 
 
 # --------------------------------------------------------------------------- numeric
-def _check_cdf(cdf: Sequence[float]) -> np.ndarray:
+def _check_cdf(cdf: Sequence[float], size: int = NUM_CDF_POINTS) -> np.ndarray:
     arr = np.asarray(cdf, dtype=float)
-    if arr.shape != (NUM_CDF_POINTS,):
-        raise ValueError(f"CDF must have {NUM_CDF_POINTS} points, got shape {arr.shape}")
+    if size < 3:
+        raise ValueError(f"a CDF needs at least 3 points, got cdf_size {size}")
+    if arr.shape != (size,):
+        raise ValueError(f"CDF must have {size} points, got shape {arr.shape}")
     if np.any(np.isnan(arr)) or arr.min() < -1e-9 or arr.max() > 1 + 1e-9:
         raise ValueError("CDF values must lie in [0, 1]")
     if np.any(np.diff(arr) < -1e-9):
@@ -102,22 +108,29 @@ def _check_cdf(cdf: Sequence[float]) -> np.ndarray:
     return np.clip(arr, 0.0, 1.0)
 
 
-def cdf_to_pmf(cdf: Sequence[float]) -> np.ndarray:
-    """201-point CDF -> 202 buckets: [mass below range, 200 inner bins, mass above range]."""
-    c = _check_cdf(cdf)
+def cdf_to_pmf(cdf: Sequence[float], cdf_size: int = NUM_CDF_POINTS) -> np.ndarray:
+    """CDF of `cdf_size` points -> cdf_size + 1 buckets: [mass below range, inner bins, mass above range].
+
+    201 points (continuous) -> 202 buckets with 200 inner bins; a discrete question with N possible values has N + 1 points."""
+    c = _check_cdf(cdf, cdf_size)
     return np.concatenate([[c[0]], np.diff(c), [1.0 - c[-1]]])
 
 
-def resolution_bucket(outcome_scaled: float) -> int:
-    """Bucket of the 202-bucket pmf for an outcome expressed as a fraction of the range (0 = lower bound, 1 = upper).
+def resolution_bucket(outcome_scaled: float, cdf_size: int = NUM_CDF_POINTS) -> int:
+    """Bucket of the pmf for an outcome expressed as a fraction of the range (0 = lower bound, 1 = upper), as Metaculus does it
+    (formulas.py `unscaled_location_to_bucket_index`).
 
-    < 0 -> bucket 0 (below range), > 1 -> bucket 201 (above range), otherwise inner bin 1..200.
+    < 0 -> bucket 0 (below range), > 1 -> the last bucket (above range), otherwise inner bin 1..N with N = cdf_size - 1. An
+    outcome exactly on an inner edge k/N is in bin k (the lower one); the lower bound is in bin 1 and the upper bound in bin N.
     """
+    n = cdf_size - 1
     if outcome_scaled < 0:
         return 0
     if outcome_scaled > 1:
-        return NUM_CDF_POINTS  # 201
-    return min(int(outcome_scaled * (NUM_CDF_POINTS - 1)) + 1, NUM_CDF_POINTS - 1)
+        return n + 1
+    if outcome_scaled == 1:
+        return n
+    return max(int(outcome_scaled * n + 1 - 1e-10), 1)
 
 
 def numeric_baseline_score(
@@ -126,39 +139,78 @@ def numeric_baseline_score(
     open_lower: bool = False,
     open_upper: bool = False,
     eps: float = EPS,
+    cdf_size: int = NUM_CDF_POINTS,
 ) -> float:
     """Metaculus continuous baseline score: 100 * ln(pmf[bucket] / baseline) / 2.
 
     `outcome_scaled` is the outcome mapped to [0, 1] over the question range (log-scale questions: map with the
-    question's own log transform first). On a question with a closed bound the outcome cannot fall outside it.
+    question's own log transform first, `numeric_unscaled_location`). On a question with a closed bound the outcome cannot fall
+    outside it. The baseline is 0.05 for an open-bound bucket and (1 - 0.05 * open bounds) / (cdf_size - 1) for an inner one.
     """
-    pmf = cdf_to_pmf(cdf)
-    bucket = resolution_bucket(outcome_scaled)
-    if bucket == 0 and not open_lower or bucket == NUM_CDF_POINTS and not open_upper:
+    pmf = cdf_to_pmf(cdf, cdf_size)
+    bucket = resolution_bucket(outcome_scaled, cdf_size)
+    if bucket == 0 and not open_lower or bucket == cdf_size and not open_upper:
         raise ValueError("outcome is outside a closed bound")
-    if bucket in (0, NUM_CDF_POINTS):
+    if bucket in (0, cdf_size):
         baseline = OPEN_BOUND_MASS
     else:
-        baseline = (1.0 - OPEN_BOUND_MASS * (int(open_lower) + int(open_upper))) / (NUM_CDF_POINTS - 1)
+        baseline = (1.0 - OPEN_BOUND_MASS * (int(open_lower) + int(open_upper))) / (cdf_size - 1)
     return 100.0 * math.log(max(float(pmf[bucket]), eps) / baseline) / 2.0
 
 
-def numeric_log_score(cdf: Sequence[float], outcome_scaled: float, eps: float = EPS) -> float:
-    """ln of the pmf mass in the bucket the outcome fell into (the discretised log score on the CDF)."""
-    pmf = cdf_to_pmf(cdf)
-    return math.log(max(float(pmf[resolution_bucket(outcome_scaled)]), eps))
+def numeric_log_score(cdf: Sequence[float], outcome_scaled: float, eps: float = EPS, cdf_size: int = NUM_CDF_POINTS) -> float:
+    """ln of the pmf mass in the bucket the outcome fell into (the discretised log score on the CDF).
+
+    On the same question and outcome, a difference of 1 nat here is a difference of 50 baseline-score points (the baseline
+    cancels): Δ numeric_baseline_score = 50 · Δ numeric_log_score."""
+    pmf = cdf_to_pmf(cdf, cdf_size)
+    return math.log(max(float(pmf[resolution_bucket(outcome_scaled, cdf_size)]), eps))
 
 
-def numeric_crps(cdf: Sequence[float], outcome_scaled: float, x_grid: Sequence[float] | None = None) -> float:
+def numeric_pit(cdf: Sequence[float], outcome_scaled: float, cdf_size: int = NUM_CDF_POINTS) -> float:
+    """Where the outcome sits in the forecast distribution (probability integral transform), in [0, 1]: the midpoint of the
+    cumulative mass of the outcome's bucket. Below 0.1 or above 0.9 = outside the forecast's 10-90% range. Using the bucket
+    midpoint treats discrete questions and the open-bound buckets the same way as the inner bins."""
+    c = _check_cdf(cdf, cdf_size)
+    cum = np.concatenate([[0.0], c, [1.0]])
+    b = resolution_bucket(outcome_scaled, cdf_size)
+    return float((cum[b] + cum[b + 1]) / 2.0)
+
+
+def numeric_unscaled_location(value: float, range_min: float, range_max: float, zero_point: float | None = None) -> float:
+    """A question's real-world value -> its position on the question's axis (0 = range_min, 1 = range_max; can be < 0 or > 1).
+
+    Linear questions: (value - range_min) / (range_max - range_min). Log-scaled questions (a `zero_point` is set): Metaculus's
+    formulas.py `scaled_location_to_unscaled_location`, the same formula forecasting-tools uses to build the CDF."""
+    if zero_point is None:
+        return (value - range_min) / (range_max - range_min)
+    deriv_ratio = (range_max - zero_point) / (range_min - zero_point)
+    return float(
+        (math.log((value - range_min) * (deriv_ratio - 1) + (range_max - range_min)) - math.log(range_max - range_min))
+        / math.log(deriv_ratio)
+    )
+
+
+def numeric_scaled_location(location: float, range_min: float, range_max: float, zero_point: float | None = None) -> float:
+    """Inverse of `numeric_unscaled_location` (formulas.py `unscaled_location_to_scaled_location`)."""
+    if zero_point is None:
+        return range_min + (range_max - range_min) * location
+    deriv_ratio = (range_max - zero_point) / (range_min - zero_point)
+    return range_min + (range_max - range_min) * (deriv_ratio**location - 1) / (deriv_ratio - 1)
+
+
+def numeric_crps(
+    cdf: Sequence[float], outcome_scaled: float, x_grid: Sequence[float] | None = None, cdf_size: int = NUM_CDF_POINTS
+) -> float:
     """Continuous ranked probability score, exact for a piecewise-linear CDF. Lower is better.
 
-    Integral of (F(x) - 1[x >= y])^2 dx over the question range. `x_grid` are the 201 locations of the CDF points in
+    Integral of (F(x) - 1[x >= y])^2 dx over the question range. `x_grid` are the locations of the CDF points (201, or `cdf_size`) in
     the units the caller wants the score in (default: the scaled range [0, 1], so the CRPS is a fraction of the range).
     `outcome_scaled` is on the same axis as `x_grid` (default [0, 1]). Outcomes beyond the range are clipped to it and
     mass in open-bound buckets is not counted, so the score is bounded on the range.
     """
-    f = _check_cdf(cdf)
-    x = np.linspace(0.0, 1.0, NUM_CDF_POINTS) if x_grid is None else np.asarray(x_grid, dtype=float)
+    f = _check_cdf(cdf, cdf_size)
+    x = np.linspace(0.0, 1.0, cdf_size) if x_grid is None else np.asarray(x_grid, dtype=float)
     if x.shape != f.shape or np.any(np.diff(x) <= 0):
         raise ValueError("x_grid must be strictly increasing with one value per CDF point")
     y = float(min(max(outcome_scaled, x[0]), x[-1]))
