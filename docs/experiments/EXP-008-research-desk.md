@@ -2,6 +2,23 @@
 
 > **DRAFT, not pre-registered: needs Christian's OK.** Nothing runs until Christian approves this card and the one-line switch
 > below. Items marked **[Christian]** are open choices; the card is only final once each one has an answer.
+>
+> Groundwork for the open choices (facts, cost model, options, recommendations; nothing decided): `docs/research/14-exp008-decisions.md` (F-14).
+>
+> **Christian's decisions on the open choices (2026-11-01, F-14; walk-through doc https://claude.ai/artifact/Ch89uneiVq28tCfEELRp47):**
+> 1. Cost: option **(e)** from research/14: at most 3 follow-up searches per arm (`max_gaps=3`), grounding fee counted at list price,
+>    cap $0.15/q. (F-02: Google bills grounding per search query; 711 queries in Oct 2026, all inside the free 5,000/month.)
+> 2. Roster: **cheap now**; a winning arm is confirmed as **one frontier arm** paired with the live forecast. Open: whether that is
+>    paid from the $180 frontier budget.
+> 3. Analysis point: one look at **150 resolved binary questions or 2027-01-31**, whichever comes first; switch on as early as possible;
+>    "inconclusive" is the expected result unless the gain is ≥ ~0.04 nats.
+> 4. Kill: **0.015 nats**, with two wording fixes: if "narrow win" and "kill" both hold, kill wins; the $0.20/q cost kill uses cost at
+>    list price (tokens + queries × $0.014), whatever is booked.
+> 5. Budget: a **separate EXP-008 line, $50 from the $100 PoC**, outside the $300 season cap; plus a Google Cloud budget alert.
+> 6. Control arm D: **no code change**; with (e) all arms are capped at 3 searches; report searches/q per arm.
+>
+> Still before switch-on: B-70 (queries per follow-up search, gaps per critic call) and setting (e) in `EXP008_ARMS`. The card is
+> frozen (pre-registered) at switch-on.
 
 _Card written BEFORE running. Results section filled by the report generator. Backlog B-64; tooling B-17 (built as switched-off
 shadow arms, `forecast_engine/research_followup.py`)._
