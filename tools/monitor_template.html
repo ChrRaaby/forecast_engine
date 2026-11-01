@@ -94,7 +94,7 @@ code { font:12px var(--mono); background:var(--idle-soft); padding:1px 4px; bord
     <h2>Forecasts</h2>
     <div class="filters">
       <label class="sub" for="f-mode">Source</label>
-      <select id="f-mode"><option value="tournament">Tournaments</option><option value="wide">Cup &amp; main site</option><option value="test">Bot-testing area</option><option value="">All</option></select>
+      <select id="f-mode"><option value="tournament">Tournaments</option><option value="wide">Cup &amp; main site</option><option value="shadow">Cheap shadow (unpublished)</option><option value="test">Bot-testing area</option><option value="">All</option></select>
       <label class="sub" for="f-type">Type</label>
       <select id="f-type"><option value="">All types</option><option>binary</option><option>multiple_choice</option><option>numeric</option><option>discrete</option></select>
       <label class="sub" for="f-status">Status</label>
@@ -153,9 +153,10 @@ function statusOf(r) {
   if (r.status === "failed") return ["Failed", "bad"];
   if (r.status === "refused_no_research") return ["No research", "warn"];
   if ((r.flags || []).length) return [r.published ? "Published, flagged" : "Flagged", "warn"];
-  const missing = r.members.some((m) => m.pred == null);
-  if (r.published) return [missing ? "Published, 2/3" : "Published", missing ? "warn" : "ok"];
-  return [missing ? "Dry run, 2/3" : "Not published", missing ? "warn" : "acc"];
+  const ok = r.members.filter((m) => m.pred != null).length, missing = ok < r.members.length, frac = `${ok}/${r.members.length}`;
+  if (r.status === "shadow") return [missing ? `Cheap shadow, ${frac}` : "Cheap shadow", missing ? "warn" : "acc"];
+  if (r.published) return [missing ? `Published, ${frac}` : "Published", missing ? "warn" : "ok"];
+  return [missing ? `Dry run, ${frac}` : "Not published", missing ? "warn" : "acc"];
 }
 
 function renderHeader() {
@@ -166,7 +167,7 @@ function renderHeader() {
 function renderTiles(rows) {
   const live = rows.filter((r) => r.mode === "tournament");
   const pub = live.filter((r) => r.published).length;
-  const failed = live.filter((r) => r.status !== "ok").length;
+  const failed = live.filter((r) => r.status !== "ok" && r.status !== "shadow").length;
   const spend = rows.reduce((s, r) => s + (r.cost || 0), 0);
   const liveSpend = live.reduce((s, r) => s + (r.cost || 0), 0);
   const members = rows.flatMap((r) => r.members);
@@ -219,7 +220,7 @@ function renderModels(rows) {
 function detailHtml(r) {
   const members = r.members.map((m) => `<div class="box"><h4>${esc(short(m.model))} <span class="chip ${m.pred == null ? "bad" : "acc"}">${esc(m.pred == null ? (m.error || "no forecast") : predText(r.type, m.pred))}</span><span class="sub">${usd(m.cost, 4)} · ${m.tin ?? "?"} in / ${m.tout ?? "?"} out</span></h4><pre>${esc(m.output || "(no output)")}</pre></div>`).join("");
   const research = `<div class="box"><h4>Research <span class="sub">${esc(r.providers.join(", ") || "none")} · ${usd(r.research_cost, 4)}</span></h4><pre>${esc(r.research || "(no research)")}</pre>${r.research_errors.length ? `<div class="sub">${esc(r.research_errors.join(" | "))}</div>` : ""}</div>`;
-  const facts = `<div class="sub">Question ${r.qid} · ${esc(r.tournaments.join(", ") || r.mode)} · config <code>${esc(r.config)}</code> · <a href="${esc(r.run_url)}" target="_blank" rel="noopener">run ${esc(r.run)}</a>${r.errors.length ? ` · errors: ${esc(r.errors.join(" | "))}` : ""}${r.cost_complete ? "" : " · cost incomplete"}${(r.flags || []).length ? ` · <b>flags:</b> ${esc(r.flags.join(" | "))}` : ""}</div>`;
+  const facts = `<div class="sub">Question ${r.qid} · ${esc(r.tournaments.join(", ") || r.mode)} · ${r.mode === "shadow" ? "unpublished cheap shadow, run config" : "config"} <code>${esc(r.config)}</code> · <a href="${esc(r.run_url)}" target="_blank" rel="noopener">run ${esc(r.run)}</a>${r.errors.length ? ` · errors: ${esc(r.errors.join(" | "))}` : ""}${r.cost_complete ? "" : " · cost incomplete"}${(r.flags || []).length ? ` · <b>flags:</b> ${esc(r.flags.join(" | "))}` : ""}</div>`;
   return `<tr class="detail"><td colspan="7"><div style="display:grid;gap:12px">${facts}<div class="detail-grid">${research}${members}</div></div></td></tr>`;
 }
 
@@ -228,7 +229,7 @@ const open = new Set();
 function filtered() {
   const mode = $("f-mode").value, type = $("f-type").value, st = $("f-status").value, q = $("f-q").value.trim().toLowerCase();
   return DATA.rows.filter((r) => (!mode || r.mode === mode) && (!type || r.type === type)
-    && (!st || (st === "ok" && r.status === "ok") || (st === "problem" && r.status !== "ok") || (st === "partial" && r.members.some((m) => m.pred == null)) || (st === "flagged" && (r.flags || []).length > 0))
+    && (!st || (st === "ok" && r.status === "ok") || (st === "problem" && r.status !== "ok" && r.status !== "shadow") || (st === "partial" && r.members.some((m) => m.pred == null)) || (st === "flagged" && (r.flags || []).length > 0))
     && (!q || r.title.toLowerCase().includes(q)));
 }
 function renderRows() {
