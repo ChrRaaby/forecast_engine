@@ -1,7 +1,8 @@
 # EXP-010: Numeric range sharpening
 
-> **DRAFT v2: needs Christian's OK before the first scored run.** Open choices are listed at the end. Until he approves, the tool
-> may only be run with `--count`, `--fetch-scaling`, `--validate`, `--demo` and `--power` (no scores of real forecasts).
+> **v2: choices decided by Christian on 2026-11-02** (see "Decisions" below the open choices). **Not ready for the first scored run
+> yet:** arm B and the changed kill rule (decisions 1 and 2) must be built and this card brought up to date first. Until then the
+> tool may only be run with `--count`, `--fetch-scaling`, `--validate`, `--demo` and `--power` (no scores of real forecasts).
 
 _Card written BEFORE running. Results section filled by the report generator (`tools/exp010.py --card`). Not run yet: waits for
 N ≥ 40 resolved numeric/discrete questions._
@@ -123,6 +124,23 @@ N ≥ 40 resolved numeric/discrete questions._
    or add it to the daily archive task. Related: live records don't store the question's `zero_point`, bucket count or the
    submitted CDF; storing them would make this kind of check exact without a fetch (a live-code change, its own item).
 7. **Folds and seed:** 5 outer folds by Metaculus post, seed 1010, ties → the s closest to 1.0.
+
+### Decisions (Christian, 2026-11-02; walk-through doc "EXP-010 card choices")
+1. **Kill threshold 0.75 points** (= 0.015 nats). **The "mean Δ ≤ 0 → kill" rule is switched off for this experiment:** a
+   non-positive mean counts as inconclusive and goes to the one rerun. The kill on "CI upper bound < 0.75 points" stays, and so does
+   "adopt and kill both hold → kill". Reason: SD(Δ) ≈ 20–30 points, so at N = 40 a real +3-point gain shows a negative mean about one
+   time in four; the change is free and undoable. To build: `kill_if_point_at_most=None` in `RULE` (`evals/exp010.py`) and the
+   decision-rule text above, with a test.
+2. **Option (b): add arm B, "sharpen + normal-shaped P1/P99 tails"**, m = 2, so 97.5% CIs (Bonferroni, protocol §5). Not built yet;
+   both arms run on the same questions, $0.
+3. **N counts distinct questions** (a question with live + shadow forecasts counts once), as written.
+4. **ADR-0005:** keep `tools/exp010.py` as the one file that imports the live CDF step; the exception is noted in ADR-0005.
+5. **Eras:** pooled primary result, with "frontier era must gain" as an adopt condition, as written.
+6. **Scaling data:** `--fetch-scaling` by hand before each scored run. Storing `zero_point`, bucket count and the submitted CDF in
+   live records is a separate live-code item (B-71).
+7. **Folds and seed:** as written (5 outer folds by Metaculus post, seed 1010, ties → s closest to 1.0). Purpose: s is chosen on
+   questions it is then not scored on, so picking the best of six values can't inflate the gain.
+- **Extra:** the one cheap-roster forecast made in wide mode (Gemini-only research) counts as cheap; the report lists it.
 
 ## Results (generated)
 ## Decision

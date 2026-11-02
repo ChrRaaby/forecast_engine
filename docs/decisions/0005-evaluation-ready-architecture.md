@@ -30,3 +30,9 @@ Option 2. Specifically:
 - M1 forecasts are replayable by the M2 harness, so M1 becomes a genuine baseline.
 - Slightly more M1 work and earlier divergence from upstream template changes.
 - The "no system clock" rule needs a test from M1 onward (cheap: grep prompts rendered with a fixture date).
+
+## Exception (2026-11-02, Christian)
+- `tools/exp010.py` (EXP-010) imports the live numeric submission step (`main.to_prediction` + forecasting-tools `get_cdf`) so the
+  tested CDF is exactly what live submits. It lives in `tools/`, not `evals/`; `evals/` still never imports the adapter
+  (`tests/test_hygiene.py` unchanged). A golden test in `tests/test_exp010.py` fails if the CDFs drift from live. Moving the
+  submission step into `forecast_engine/` would remove the exception; not planned.
