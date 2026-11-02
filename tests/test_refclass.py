@@ -358,3 +358,26 @@ def test_harness_refclass_check_fails_when_sub_questions_leak(monkeypatch, tmp_p
     real = rc.available
     monkeypatch.setattr(rc, "available", lambda rows, as_of, exclude=None: real(rows, as_of))
     assert [r.status for r in vh.check_refclass(tmp_path)] == [vh.FAIL]
+
+
+# ---------------------------------------------------------------- real-data self-check (--check)
+def test_self_check_passes_on_a_clean_table_and_fails_on_a_leaky_filter(tmp_path, monkeypatch, capsys):
+    ok = {"status": "resolved"}
+    _write_live(tmp_path, {
+        1: {**ok, "resolution": "yes", "actual_resolve_time": "2025-03-01T00:00:00Z"},
+        2: {**ok, "resolution": "no", "actual_resolve_time": "2025-04-01T00:00:00Z"},
+        3: {**ok, "resolution": "yes", "actual_resolve_time": "2025-06-01T00:00:00Z"},
+    }, snapshots={2: {"open_time": "2025-03-15T00:00:00Z"}, 3: {"open_time": "2025-05-01T00:00:00Z"},
+                  1: {"open_time": "2025-01-01T00:00:00Z"}})
+    assert rc.main(["--check", "--data-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("PASS") and "3 questions looked up" in out and "0 violations" in out
+    real = rc.available
+    monkeypatch.setattr(rc, "available", lambda rows, as_of, exclude=None: real(rows, as_of + timedelta(days=365)))
+    assert rc.main(["--check", "--data-dir", str(tmp_path)]) == 1
+    assert capsys.readouterr().out.startswith("FAIL")
+
+
+def test_self_check_skips_without_data(tmp_path, capsys):
+    assert rc.main(["--check", "--data-dir", str(tmp_path / "missing")]) == 2
+    assert "SKIP" in capsys.readouterr().out

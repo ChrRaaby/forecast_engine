@@ -25,6 +25,7 @@ PC use (counts only; no titles are printed):
     poetry run python -m evals.refclass --summary                       # data/ in this checkout
     poetry run python -m evals.refclass --summary --data-dir <path>     # or FE_DATA=<path>: a data folder elsewhere
     poetry run python -m evals.refclass --summary --as-of 2026-10-01T00:00:00Z
+    poetry run python -m evals.refclass --check        # leakage check on the real table: one PASS/FAIL line, counts only
 
 Data location: `--data-dir`, else the environment variable `FE_DATA`, else `data/` next to this checkout. Under it the loader reads
 `runs/`, `outcomes/outcomes.jsonl` and `benchmark/`; `--runs-dir`, `--outcomes` and `--benchmark-dir` override each one.
@@ -534,6 +535,29 @@ def summary(table: RefTable, as_of: datetime | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def self_check(table: RefTable, k: int = DEFAULT_K) -> tuple[bool, str]:
+    """Leakage check on a real table (counts only): for every question with an open time, look it up as of that open time and
+    verify every similar question resolved strictly before it, is not the question itself nor from its post, and that the
+    Yes-rate counts no more questions than resolved before it."""
+    checked = skipped = returned = bad = 0
+    for r in table.rows:
+        t = r.open_time
+        if t is None or t.tzinfo is None or t.utcoffset() is None:
+            skipped += 1
+            continue
+        checked += 1
+        hits = similar(table, r, t, k)
+        returned += len(hits)
+        bad += sum(1 for h in hits if not h.question.resolved_at < t or h.question.question_id == r.question_id
+                   or (r.post_id is not None and h.question.post_id == r.post_id))
+        rate = yes_rate(table, t, exclude=r)
+        bad += rate.n > sum(1 for x in table.rows if x.resolved_at < t)
+    ok = bad == 0 and checked > 0
+    words = (f"{checked} questions looked up as of their open time ({skipped} skipped: no open time with a time zone), "
+             f"{returned} similar questions returned, {bad} violations")
+    return ok, f"{'PASS' if ok else 'FAIL'}  refclass real-data check: {words}"
+
+
 def _parse_as_of(s: str) -> datetime:
     t = _parse_time(s)
     if t is None:
@@ -550,8 +574,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--outcomes", help="override: outcomes.jsonl")
     ap.add_argument("--benchmark-dir", help="override: B-39 benchmark folder")
     ap.add_argument("--as-of", help="only count questions resolved strictly before this time (ISO, with a time zone)")
+    ap.add_argument("--check", action="store_true",
+                    help="leakage check on the real table: one PASS/FAIL line with counts (exit 1 on FAIL)")
     args = ap.parse_args(argv)
-    if not args.summary:
+    if not (args.summary or args.check):
         ap.print_help()
         return 0
     try:
@@ -562,7 +588,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     table = load_table(data_dir(args.data_dir), runs_dir=Path(args.runs_dir) if args.runs_dir else None,
                        outcomes_path=Path(args.outcomes) if args.outcomes else None,
                        benchmark_dir=Path(args.benchmark_dir) if args.benchmark_dir else None)
-    sys.stdout.write(summary(table, as_of))
+    if args.summary:
+        sys.stdout.write(summary(table, as_of))
+    if args.check:
+        if table.no_data:
+            print("SKIP  refclass real-data check: no data")
+            return 2
+        ok, line = self_check(table)
+        print(line)
+        return 0 if ok else 1
     return 0
 
 
