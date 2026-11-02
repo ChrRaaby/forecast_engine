@@ -30,7 +30,7 @@ def failed(results):
 # ---------------------------------------------------------------- the four checks pass on the real code
 def test_reproducibility_check(tmp_path):
     res = vh.check_reproducibility_offline(tmp_path)
-    assert not failed(res) and statuses(res) == [vh.PASS] * 4
+    assert not failed(res) and statuses(res) == [vh.PASS] * 5
 
 
 def test_aa_check():

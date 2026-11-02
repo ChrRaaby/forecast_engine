@@ -39,7 +39,9 @@ from evals import report  # noqa: E402
 from evals.asof import LeakageError  # noqa: E402
 from evals.model_release import IneligiblePair, check_eligible  # noqa: E402
 from evals.outcomes import load_outcomes, resolved_binary  # noqa: E402
-from evals.replay import TamperedRecord, assert_record_as_of, assert_record_intact, live_records, replay_record  # noqa: E402
+from evals.replay import (  # noqa: E402
+    TamperedRecord, UnknownPromptVersion, assert_record_as_of, assert_record_intact, live_records, replay_record,
+)
 from forecast_engine.config import DEFAULT_CONFIG, TOURNAMENT_CONFIG, BotConfig  # noqa: E402
 from forecast_engine.core import ForecastFailed  # noqa: E402
 from forecast_engine.schema import ForecastRecord, LlmCall  # noqa: E402
@@ -84,6 +86,9 @@ def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], cfg: BotCo
         try:
             assert_record_as_of(rec)
             assert_record_intact(rec)
+        except UnknownPromptVersion:
+            skips["prompt version not in evals/prompt_archive.py (integrity can't be checked)"] += 1
+            continue
         except TamperedRecord:
             skips["stored inputs don't rebuild the live prompt (integrity check)"] += 1
             continue
