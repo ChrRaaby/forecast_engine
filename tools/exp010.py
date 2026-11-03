@@ -8,7 +8,7 @@ nothing in main.py or forecast_engine/ is changed: what is scored is exactly wha
     poetry run python tools/exp010.py --count                     # resolved numeric/discrete forecasts so far (gate: 40 questions)
     poetry run python tools/exp010.py --fetch-scaling             # store each new question's Metaculus axis (needs METACULUS_TOKEN)
     poetry run python tools/exp010.py --card docs/experiments/EXP-010-numeric-range-sharpening.md     # the scored run
-    poetry run python tools/exp010.py --validate                  # offline self-check on synthetic data (~10 s)
+    poetry run python tools/exp010.py --validate                  # offline self-check on synthetic data (~15 s)
     poetry run python tools/exp010.py --power                     # synthetic power check (~15 s)
 
 Every other flag is evals/exp010.py's (`--help`).
@@ -80,9 +80,33 @@ def validation_questions(seed: int = 11) -> list[tuple[str, exp010.Axis, list[tu
     return out
 
 
+def tail_edge_questions() -> list[tuple[str, exp010.Axis, list[tuple[float, float]]]]:
+    """Made-up questions whose arm B tails land beyond a bound: a closed lower bound (P1 below it, clamped by the live code), open
+    bounds with a wide forecast (P1/P99 past the 1.9x clamp), a log-scaled open upper bound and a discrete count near 0."""
+    lin = {"question_id": 71_000, "post_id": 71_000, "question_type": "numeric", "lower_bound": 0.0, "upper_bound": 100.0,
+           "open_lower_bound": False, "open_upper_bound": False}
+    sc = {"zero_point": None, "inbound_outcome_count": 200}
+    near_lo = [(0.1, 3.0), (0.2, 6.0), (0.4, 10.0), (0.6, 14.0), (0.8, 20.0), (0.9, 26.0)]
+    wide = [(0.1, -100.0), (0.2, 0.0), (0.4, 40.0), (0.6, 60.0), (0.8, 100.0), (0.9, 200.0)]
+    log = {"question_id": 71_002, "post_id": 71_002, "question_type": "numeric", "lower_bound": 1.0, "upper_bound": 10_000.0,
+           "open_lower_bound": False, "open_upper_bound": True}
+    log_pts = [(0.1, 30.0), (0.2, 100.0), (0.4, 400.0), (0.6, 900.0), (0.8, 3000.0), (0.9, 8000.0)]
+    disc = {"question_id": 71_003, "post_id": 71_003, "question_type": "discrete", "lower_bound": -0.5, "upper_bound": 10.5,
+            "open_lower_bound": False, "open_upper_bound": False, "nominal_lower_bound": 0.0, "nominal_upper_bound": 10.0}
+    disc_pts = [(0.1, 0.0), (0.2, 1.0), (0.4, 2.0), (0.6, 2.0), (0.8, 4.0), (0.9, 6.0)]
+    return [
+        ("numeric, closed bounds, P1 below the lower bound", exp010.axis_from(lin, sc), near_lo),
+        ("numeric, open bounds, P1/P99 past the 1.9x clamp",
+         exp010.axis_from(lin | {"question_id": 71_001, "open_lower_bound": True, "open_upper_bound": True}, sc), wide),
+        ("log-scaled, open upper bound", exp010.axis_from(log, {"zero_point": 0.0, "inbound_outcome_count": 200}), log_pts),
+        ("discrete count near 0", exp010.axis_from(disc, {"zero_point": None, "inbound_outcome_count": 11}), disc_pts),
+    ]
+
+
 def check_offline(tmp: Path, n_questions: int = 80, reps: int = 2000, builder: exp010.CdfBuilder = LIVE) -> list[vh.Result]:
-    """Four checks, in the harness's format: s = 1.0 reproduces live exactly; sharpened CDFs are valid; a too-wide forecaster is
-    detected; a calibrated one is not sharpened."""
+    """Five checks, in the harness's format: s = 1.0 reproduces live exactly; sharpened CDFs are valid; arm B without its tails at
+    s = 1.0 reproduces live and arm B's CDFs are valid; a too-wide forecaster is detected; a calibrated one is not sharpened by
+    either arm."""
     out: list[vh.Result] = []
     questions = validation_questions()
 
@@ -106,6 +130,30 @@ def check_offline(tmp: Path, n_questions: int = 80, reps: int = 2000, builder: e
 
     out.append(vh._sub(C5, "valid CDFs", valid))
 
+    def arm_b():
+        qs = questions + tail_edge_questions()
+        same = [kind for kind, q, pts in questions
+                if exp010.arm_points(pts, 1.0, q, "B", tails=False) != [tuple(x) for x in pts]
+                or exp010.submitted_cdf(builder, q, pts, 1.0, "B", tails=False)
+                != [p.percentile for p in live.to_prediction(LIVE.question(q), pts).get_cdf()]]
+        bad = []
+        for kind, q, pts in qs:
+            for s in exp010.GRID:
+                try:
+                    c = exp010.submitted_cdf(builder, q, pts, s, "B")
+                except Exception as ex:  # noqa: BLE001
+                    bad.append(f"{kind} s={s:g}: conversion failed ({type(ex).__name__})")
+                    continue
+                if pr := exp010.cdf_problems(c, q, builder.max_step(q.cdf_size)):
+                    bad.append(f"{kind} s={s:g}: {'; '.join(pr)}")
+        ok = not same and not bad
+        return ok, (f"arm B at s = 1.0 without its tails gives back the live CDF on {len(questions) - len(same)}/{len(questions)} "
+                    f"questions; every arm B CDF within Metaculus's limits ({len(qs) * len(exp010.GRID)} CDFs, incl. "
+                    f"{len(qs) - len(questions)} with tails beyond a bound)"
+                    + (f"; DIFFERS: {', '.join(same)}" if same else "") + (f"; INVALID: {bad[:3]}" if bad else ""))
+
+    out.append(vh._sub(C5, "arm B reproduces live and stays valid", arm_b))
+
     def too_wide():
         an, _ = exp010.synthetic_analysis(builder, tmp / "wide", n_questions, true_s=0.6, seed=21, reps=reps)
         c, chosen = an.comparison, [f.chosen_s for f in an.folds]
@@ -117,10 +165,10 @@ def check_offline(tmp: Path, n_questions: int = 80, reps: int = 2000, builder: e
 
     def calibrated():
         an, _ = exp010.synthetic_analysis(builder, tmp / "cal", n_questions, true_s=1.0, seed=22, reps=reps)
-        c = an.comparison
-        ok = an.decision.verdict != "adopt" and not c.ci_low > 0
-        return ok, (f"calibrated forecaster not sharpened: verdict {an.decision.verdict}, chosen s per fold "
-                    f"{', '.join(f'{f.chosen_s:g}' for f in an.folds)}, CI [{c.ci_low:.2f}, {c.ci_high:.2f}]")
+        ok = all(r.decision.verdict != "adopt" and not r.comparison.ci_low > 0 for r in an.arms.values())
+        return ok, ("calibrated forecaster kept by both arms: " + "; ".join(
+            f"arm {a} verdict {r.decision.verdict}, chosen s per fold {', '.join(f'{f.chosen_s:g}' for f in r.folds)}, "
+            f"{r.comparison.level:.1%} CI [{r.comparison.ci_low:.2f}, {r.comparison.ci_high:.2f}]" for a, r in an.arms.items()))
 
     out.append(vh._sub(C5, "calibrated kept", calibrated))
     return out

@@ -6,6 +6,12 @@ CDF with the live code (`main.to_prediction` -> forecasting-tools' `NumericDistr
 it against what happened. s is chosen by nested cross-validation over question clusters, so the reported gain is measured on
 questions that were not used to pick s.
 
+Two arms (Christian's decision 2, 2026-11-02), m = 2, so every arm's CI is at 97.5% (Bonferroni, protocol §5):
+  A  sharpen by s;
+  B  sharpen by s, then add P1 and P99 where a normal through the median and the sharpened P10 (or P90) would put them, on the
+     question's own axis. At s = 1.0 arm B still adds the tails, so it is never today's forecast.
+Both arms are compared with the same baseline, arm A at s = 1.0 (today's forecast, unchanged), on the same questions, folds and seed.
+
 Where the live code comes in (ADR-0005): the CDF the bot submits is built in the live adapter (`main.to_prediction` and
 forecasting-tools), and the harness in evals/ never imports the adapter (tests/test_hygiene.py). So this module takes the CDF builder
 as a parameter (`CdfBuilder`) and holds everything else; `tools/exp010.py` is the one file that imports `main.to_prediction`
@@ -15,7 +21,7 @@ unchanged and passes it in. Counting and fetching need no CDF, so they also run 
     poetry run python -m evals.exp010 --fetch-scaling    # once per new question: store each question's Metaculus axis (needs METACULUS_TOKEN)
     poetry run python tools/exp010.py --card docs/experiments/EXP-010-numeric-range-sharpening.md     # the scored run
     poetry run python tools/exp010.py --run-kind rerun --resolved-after 2026-12-01 --card ...       # the one rerun (§6.3)
-    poetry run python tools/exp010.py --confirm-s 0.8 --resolved-after 2027-01-15                   # Tier 1 confirmation (§6.2)
+    poetry run python tools/exp010.py --confirm-s 0.8 --confirm-arm A --resolved-after 2027-01-15   # Tier 1 confirmation (§6.2)
     poetry run python tools/exp010.py --validate         # offline self-check of the tool (synthetic, ~10 s)
     poetry run python tools/exp010.py --demo <dir>       # writes a synthetic data set (made-up questions) to try the tool on
     poetry run python tools/exp010.py --power            # synthetic power check: what the procedure can detect at N = 40 / 80
@@ -38,6 +44,7 @@ import hashlib
 import json
 import math
 import os
+import statistics
 import sys
 import time
 from collections import Counter, defaultdict
@@ -64,9 +71,13 @@ CARD = ROOT / "docs" / "experiments" / "EXP-010-numeric-range-sharpening.md"
 DEFAULT_OUT = ROOT / "docs" / "experiments" / "EXP-010-report.md"
 
 # ---- pre-registered on the card (v2); change only with a card amendment written before a scored run
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"  # 1.1.0: arm B + kill rule without "mean Δ ≤ 0" (Christian's decisions 1 and 2, 2026-11-02)
 GRID = (0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
 BASELINE_S = 1.0
+ARMS = ("A", "B")  # m = 2 candidate arms -> CI level 1 - 0.05/2 = 97.5% for each (protocol §5)
+ARM_LABELS = {"A": "sharpen", "B": "sharpen + normal-shaped P1/P99 tails"}
+BASELINE_ARM = "A"  # the baseline is arm A at s = 1.0: today's forecast, bit for bit
+TAIL_LEVELS = (0.01, 0.99)  # arm B's added percentiles
 MIN_QUESTIONS = 40  # screen and rerun: distinct resolved numeric/discrete questions after drops
 MIN_CONFIRM_QUESTIONS = 30  # Tier 1 confirmation on questions resolved after the go-live date
 OUTER_FOLDS = 5
@@ -78,17 +89,17 @@ USABLE_STATUSES = ("ok", "shadow")
 PRIMARY = report.Metric("numeric_baseline", "Metaculus numeric baseline score (points)", True, lambda p, o: float("nan"))
 
 RULE = report.DecisionRule(
-    name="EXP-010 decision rule (card v2)",
+    name="EXP-010 decision rule (card v3: no kill on mean Δ ≤ 0; 97.5% CIs with two arms)",
     metric=PRIMARY.key,
     adopt_requires_ci_excluding_zero=True,
     max_reliability_increase=None,  # binary-only check; the numeric calibration line (share outside 10-90%) is descriptive
     max_failure_rate_increase=None,  # post-processing on stored forecasts: no new failures possible
-    kill_if_point_at_most=0.0,
-    kill_if_ci_upper_below=KILL_THRESHOLD_POINTS,
+    kill_if_point_at_most=None,  # decision 1 (Christian, 2026-11-02): a mean Δ ≤ 0 is not a kill; it goes to the one rerun
+    kill_if_ci_upper_below=KILL_THRESHOLD_POINTS,  # judged at the arm's own CI level (97.5% with two arms)
     on_conflict="kill",  # as F-12 (3): a real effect smaller than the kill threshold is dropped
 )
 CONFIRM_RULE = report.DecisionRule(
-    name="EXP-010 Tier 1 confirmation rule (card v2): one-sided 95% lower bound > 0 on fresh questions",
+    name="EXP-010 Tier 1 confirmation rule (card v3): the arm that went live, one-sided 95% lower bound > 0 on fresh questions",
     metric=PRIMARY.key,
     max_reliability_increase=None,
     max_failure_rate_increase=None,
@@ -112,6 +123,10 @@ DROP_BAD_RESOLUTION = "resolution is not a number or a bound"
 DROP_OUTSIDE_CLOSED = "resolution outside a closed bound (inconsistent with the question)"
 DROP_CONVERSION = "live CDF conversion failed at some s (the live bot would not have submitted)"
 DROP_INVALID_CDF = "the live CDF at some s breaks Metaculus's limits (it would have been refused)"
+DROP_CONVERSION_B = ("arm B only: live CDF conversion failed at some s with the P1/P99 tails (dropped from both arms: they run on "
+                     "the same questions)")
+DROP_INVALID_CDF_B = ("arm B only: the live CDF with the P1/P99 tails breaks the limits at some s (dropped from both arms: they "
+                      "run on the same questions)")
 
 
 # --------------------------------------------------------------------------- the transform and the live CDF path
@@ -187,11 +202,48 @@ def sharpen(points: Sequence[Sequence[float]], s: float, question: Any | None = 
     return [(p, float(from_axis(m + s * (x - m)))) for (p, _), x in zip(pts, xs)]
 
 
-def submitted_cdf(builder: CdfBuilder, axis: Axis, points: Sequence[Sequence[float]], s: float = BASELINE_S) -> list[float]:
-    """The CDF the live bot would submit for this aggregate after sharpening by s. With tools/exp010.py's builder that is
+def with_normal_tails(points: Sequence[Sequence[float]], s: float, question: Any, tails: bool = True) -> list[tuple[float, float]]:
+    """Arm B: sharpen by s, then add P1 and P99 where a normal would put them, on the question's own axis (log axis for a
+    log-scaled question). On each side the normal goes through the median m and that side's outermost sharpened percentile
+    (P10 below, P90 above): P1 = m + (P10 - m) * z(0.01) / z(0.1), P99 likewise with P90; for a symmetric forecast that is the one
+    normal through P10 and P90, and a skewed forecast keeps its skew.
+
+    Nothing is clamped here. A tail beyond a bound goes to the live builder as is, and `main.to_prediction` handles it exactly as
+    it handles any percentile beyond a bound: clamped to a closed bound (no mass beyond it), to 1.9x the range beyond an open one
+    (`parsing.fit_to_bounds`), and the open-bound mass comes from the standardisation, as live. `tails=False` returns the
+    sharpened points only (the --validate check that arm B without its tails is arm A). At s = 1.0 the tails are still added."""
+    sp = sharpen(points, s, question)
+    if not tails:
+        return sp
+    to_axis, from_axis = _axis(question)
+    ps, xs = [p for p, _ in sp], [to_axis(v) for _, v in sp]
+    m = float(np.interp(0.5, ps, xs))
+    z = statistics.NormalDist().inv_cdf
+    out = list(sp)
+    lo_p, hi_p = TAIL_LEVELS
+    if ps[0] > lo_p and ps[0] < 0.5:
+        out.insert(0, (lo_p, float(from_axis(m + (xs[0] - m) * z(lo_p) / z(ps[0])))))
+    if ps[-1] < hi_p and ps[-1] > 0.5:
+        out.append((hi_p, float(from_axis(m + (xs[-1] - m) * z(hi_p) / z(ps[-1])))))
+    return out
+
+
+def arm_points(points: Sequence[Sequence[float]], s: float, question: Any | None = None, arm: str = "A", tails: bool = True
+               ) -> list[tuple[float, float]]:
+    """The declared percentiles an arm hands to the live CDF builder: arm A sharpens, arm B sharpens and adds P1/P99."""
+    if arm == "A":
+        return sharpen(points, s, question)
+    if arm == "B":
+        return with_normal_tails(points, s, question, tails)
+    raise ValueError(f"unknown arm {arm!r}; arms are {ARMS}")
+
+
+def submitted_cdf(builder: CdfBuilder, axis: Axis, points: Sequence[Sequence[float]], s: float = BASELINE_S, arm: str = "A",
+                  tails: bool = True) -> list[float]:
+    """The CDF the live bot would submit for this aggregate under an arm at s. With tools/exp010.py's builder that is
     `main.to_prediction` (fit to the accepted range, break ties, NumericDistribution.from_question) and `get_cdf()`, exactly as
-    `NumericReport.publish_report_to_metaculus` does."""
-    return builder.build(axis, sharpen(points, s, axis))
+    `NumericReport.publish_report_to_metaculus` does. Arm A at s = 1.0 is today's forecast."""
+    return builder.build(axis, arm_points(points, s, axis, arm, tails))
 
 
 def cdf_problems(cdf: Sequence[float], question: Axis, max_step: float) -> list[str]:
@@ -424,31 +476,43 @@ def load_cases(runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES, scaling_pa
 
 
 # --------------------------------------------------------------------------- scoring and nested cross-validation
-def build_cdfs(cases: Sequence[Case], builder: CdfBuilder, grid: Sequence[float] = GRID, dropped: Counter | None = None
-               ) -> tuple[list[Case], dict[str, dict[float, list[float]]]]:
-    """Every case's live CDF at every s. A case whose CDF can't be built at some s is dropped (counted): the live bot would have
-    failed to submit it, so it can't be paired."""
+Cdfs = dict[str, dict[str, dict[float, list[float]]]]  # case key -> arm -> s -> CDF
+Scores = dict[str, dict[str, dict[float, dict[str, float]]]]  # case key -> arm -> s -> metric -> value
+
+
+def build_cdfs(cases: Sequence[Case], builder: CdfBuilder, grid: Sequence[float] = GRID, dropped: Counter | None = None,
+               arms: Sequence[str] = ARMS) -> tuple[list[Case], Cdfs]:
+    """Every case's live CDF for every arm at every s. A case whose CDF can't be built, or breaks Metaculus's limits, for some arm
+    at some s is dropped from every arm (counted, arm A's reasons first): the live bot would have failed to submit it, and the
+    arms are compared on the same questions. Arm A always comes along: its s = 1.0 is the baseline."""
+    arms = tuple(dict.fromkeys((BASELINE_ARM, *arms)))
+    reasons = {"A": (DROP_CONVERSION, DROP_INVALID_CDF), "B": (DROP_CONVERSION_B, DROP_INVALID_CDF_B)}
     kept, cdfs = [], {}
     for c in cases:
-        try:
-            built = {s: submitted_cdf(builder, c.question, c.points, s) for s in grid}
-        except Exception:  # noqa: BLE001 - the live path raises ValueError/ValidationError/AssertionError
-            if dropped is not None:
-                dropped[DROP_CONVERSION] += 1
-            continue
         cap = builder.max_step(c.question.cdf_size)
-        if any(cdf_problems(cdf, c.question, cap) for cdf in built.values()):
+        built: dict[str, dict[float, list[float]]] = {}
+        why = ""
+        for arm in arms:
+            try:
+                built[arm] = {s: submitted_cdf(builder, c.question, c.points, s, arm) for s in grid}
+            except Exception:  # noqa: BLE001 - the live path raises ValueError/ValidationError/AssertionError/ZeroDivisionError
+                why = reasons[arm][0]
+                break
+            if any(cdf_problems(cdf, c.question, cap) for cdf in built[arm].values()):
+                why = reasons[arm][1]
+                break
+        if why:
             if dropped is not None:
-                dropped[DROP_INVALID_CDF] += 1
+                dropped[why] += 1
             continue
         cdfs[c.key] = built
         kept.append(c)
     return kept, cdfs
 
 
-def score_all(cases: Sequence[Case], cdfs: dict[str, dict[float, list[float]]],
-              metrics: Sequence[str] = ("baseline", "log", "crps", "pit")) -> dict[str, dict[float, dict[str, float]]]:
-    return {c.key: {s: score_cdf(cdf, c.location, c.question, metrics) for s, cdf in cdfs[c.key].items()} for c in cases}
+def score_all(cases: Sequence[Case], cdfs: Cdfs, metrics: Sequence[str] = ("baseline", "log", "crps", "pit")) -> Scores:
+    return {c.key: {arm: {s: score_cdf(cdf, c.location, c.question, metrics) for s, cdf in by_s.items()}
+                    for arm, by_s in cdfs[c.key].items()} for c in cases}
 
 
 def outer_folds(clusters: Iterable[str], k: int = OUTER_FOLDS, seed: int = SEED) -> dict[str, int]:
@@ -517,6 +581,22 @@ class Group:
 
 
 @dataclass
+class ArmResult:
+    """One arm against the baseline (arm A at s = 1.0)."""
+
+    arm: str
+    label: str
+    folds: list[Fold]
+    s_all: float  # chosen on all the data: what would go live
+    means_by_s: dict[float, dict[str, float]]  # in-sample, descriptive
+    comparison: report.Comparison
+    secondary: dict[str, tuple[float, float]]  # metric -> (baseline, out-of-fold s of this arm)
+    decision: report.Decision
+    breakdowns: dict[str, list[Group]]
+    fold_beats_today: list[bool] = field(default_factory=list)  # descriptive: training mean at the chosen s > today's, per fold
+
+
+@dataclass
 class Analysis:
     run_kind: str
     n_questions: int
@@ -528,20 +608,40 @@ class Analysis:
     k: int
     grid: tuple[float, ...]
     resolved_after: date | None
-    folds: list[Fold]
-    s_all: float  # chosen on all the data: what would go live
-    means_by_s: dict[float, dict[str, float]]  # in-sample, descriptive
-    comparison: report.Comparison
-    secondary: dict[str, tuple[float, float]]  # metric -> (s = 1.0, out-of-fold s)
-    decision: report.Decision
-    breakdowns: dict[str, list[Group]]
+    level: float  # the CI level of every arm: 1 - 0.05/m (0.975 with two arms), 0.90 in confirm mode
+    arms: dict[str, ArmResult]
+    goes_live: str | None  # the arm that would go live now (None: none does)
+    goes_live_words: str
     fixed_s: float | None = None  # confirm mode
+
+    # arm A's result under the names the single-arm tool used (tests and --validate read them)
+    @property
+    def folds(self) -> list[Fold]:
+        return self.arms["A"].folds if "A" in self.arms else next(iter(self.arms.values())).folds
+
+    @property
+    def comparison(self) -> report.Comparison:
+        return self._first().comparison
+
+    @property
+    def decision(self) -> report.Decision:
+        return self._first().decision
+
+    @property
+    def s_all(self) -> float:
+        return self._first().s_all
+
+    def _first(self) -> ArmResult:
+        return self.arms.get("A") or next(iter(self.arms.values()))
 
 
 def _comparison(primary: dict[str, dict[float, float]], arm_s: dict[str, float], clusters: dict[str, str], *, arm: str,
-                reps: int, seed: int, level: float = 0.95, restrict: set[str] | None = None) -> report.Comparison:
+                reps: int, seed: int, level: float = 0.95, restrict: set[str] | None = None,
+                base: dict[str, float] | None = None) -> report.Comparison:
+    """Arm (each forecast at its out-of-fold s) against the baseline: `base` per forecast, or this arm's own s = 1.0 when not given
+    (arm A, whose s = 1.0 is the baseline)."""
     arm_scores = {q: primary[q][arm_s[q]] for q in primary}
-    base_scores = {q: primary[q][BASELINE_S] for q in primary}
+    base_scores = dict(base) if base is not None else {q: primary[q][BASELINE_S] for q in primary}
     return report.paired_compare(arm_scores, base_scores, clusters, PRIMARY, arm=arm, baseline="s = 1.0", reps=reps, seed=seed,
                                  restrict=restrict, level=level)
 
@@ -555,9 +655,22 @@ def _verdict(checks: Sequence[report.Check], on_conflict: str) -> tuple[str, str
     return ("adopt" if adopt else "kill" if kill else "inconclusive"), ""
 
 
-def decide(comparison: report.Comparison, folds: Sequence[Fold], era_groups: Sequence[Group], run_kind: str) -> report.Decision:
-    """The card's rule as code: report.apply_decision_rule (CI excludes 0, kill threshold, conflict -> kill) plus EXP-010's own
-    adopt conditions: every outer fold chose s < 1 (stable), and the frontier era (the live config) also gains out of fold."""
+def _stability_check(arm: str, folds: Sequence[Fold]) -> report.Check:
+    chosen = [f.chosen_s for f in folds]
+    detail = "chosen s per fold: " + ", ".join(f"{s:g}" for s in chosen)
+    if arm == "A":
+        return report.Check("adopt", "stable across folds: every outer fold chose s < 1", all(s < BASELINE_S for s in chosen), detail)
+    # arm B's lever is the tails, so its s may stay at 1.0 [Christian]: stable = every fold chose an s (had training data)
+    return report.Check("adopt", "stable across folds: every outer fold chose an s (1.0 allowed: arm B's lever is the tails)",
+                        bool(folds) and all(f.n_train > 0 for f in folds), detail)
+
+
+def decide(comparison: report.Comparison, folds: Sequence[Fold], era_groups: Sequence[Group], run_kind: str, arm: str = "A"
+           ) -> report.Decision:
+    """The card's rule as code, for one arm: report.apply_decision_rule (CI excludes 0 at the arm's level, the 0.75-point kill
+    threshold on the CI upper bound, conflict -> kill; no kill on a mean Δ ≤ 0, decision 1) plus EXP-010's own adopt conditions:
+    stable across folds (arm A: every fold chose s < 1; arm B: every fold chose an s), and the frontier era (the live config) also
+    gains out of fold."""
     if run_kind == "confirm":
         return report.apply_decision_rule(CONFIRM_RULE, comparison, reliability_arm=0.0, reliability_base=0.0,
                                           failure_rate_arm=0.0, failure_rate_base=0.0, run_kind="confirm", tier=TIER)
@@ -565,10 +678,7 @@ def decide(comparison: report.Comparison, folds: Sequence[Fold], era_groups: Seq
                                    failure_rate_base=0.0, run_kind=run_kind, tier=TIER)
     if comparison.n == 0:
         return d
-    chosen = [f.chosen_s for f in folds]
-    own: list[report.Check] = []
-    own.append(report.Check("adopt", "stable across folds: every outer fold chose s < 1", all(s < BASELINE_S for s in chosen),
-                            "chosen s per fold: " + ", ".join(f"{s:g}" for s in chosen)))
+    own: list[report.Check] = [_stability_check(arm, folds)]
     fr = next((g for g in era_groups if g.name == "frontier"), None)
     if fr is None or fr.comparison is None or fr.comparison.n == 0:
         own.append(report.Check("adopt", "frontier era (live config) gains out of fold (point > 0)", False,
@@ -583,55 +693,102 @@ def decide(comparison: report.Comparison, folds: Sequence[Fold], era_groups: Seq
                    next_step=report.next_step_words(verdict, comparison, RULE, run_kind, TIER))
 
 
-def analyse(cases: Sequence[Case], scores: dict[str, dict[float, dict[str, float]]], *, run_kind: str = "screen",
-            dropped: Counter | None = None, seed: int = SEED, reps: int = report.DEFAULT_REPS, k: int = OUTER_FOLDS,
-            grid: Sequence[float] = GRID, resolved_after: date | None = None, fixed_s: float | None = None) -> Analysis:
-    """Nested CV (or, in confirm mode, a fixed s) and the paired comparison against s = 1.0 with report's cluster bootstrap."""
-    grid = tuple(grid)
-    if BASELINE_S not in grid:
-        raise ValueError("the grid must contain the baseline s = 1.0")
-    primary = {c.key: {s: scores[c.key][s]["baseline"] for s in grid} for c in cases}
-    clusters = {c.key: c.cluster for c in cases}
+def narrow_win(result: ArmResult) -> bool:
+    """An adopt whose CI lower end is below the smallest effect worth having (§6.3): it counts as a screen, nothing goes live."""
+    lo = result.comparison.improvement_ci[0]
+    return result.decision.verdict == "adopt" and RULE.kill_if_ci_upper_below is not None and lo < RULE.kill_if_ci_upper_below
+
+
+def which_goes_live(results: dict[str, ArmResult], run_kind: str) -> tuple[str | None, str]:
+    """Which arm goes live now. Only a clean win goes live (a narrow win is a screen). If both arms win, the one with the larger
+    out-of-fold mean Δ goes live [Christian]; an exact tie goes to arm A (no tails: the smaller change)."""
     if run_kind == "confirm":
-        if fixed_s is None or fixed_s not in grid:
-            raise ValueError(f"confirm mode needs the adopted s, one of {grid}")
+        return None, ""
+    wins = [r for r in results.values() if r.decision.verdict == "adopt" and not narrow_win(r)]
+    if not wins:
+        return None, "No arm goes live: live keeps s = 1.0 (today's forecast). Each arm's own `next:` line says what follows."
+    best = max(wins, key=lambda r: (r.comparison.improvement, r.arm == "A"))
+    if len(wins) == 1:
+        return best.arm, (f"Arm {best.arm} ({best.label}) goes live at s = {best.s_all:g} (the s chosen on all the data); "
+                          "the other arm does not.")
+    others = ", ".join(f"arm {r.arm} {report._f(r.comparison.improvement, 2)}" for r in wins)
+    return best.arm, (f"Both arms win; the card's rule [Christian] sends the one with the larger out-of-fold mean Δ live: arm "
+                      f"{best.arm} ({best.label}) at s = {best.s_all:g} (mean Δ: {others}).")
+
+
+def _analyse_arm(arm: str, cases: Sequence[Case], scores: Scores, clusters: dict[str, str], base: dict[str, float], *,
+                 run_kind: str, grid: tuple[float, ...], k: int, seed: int, reps: int, level: float, fixed_s: float | None,
+                 sec_metrics: Sequence[str], has_pit: bool) -> ArmResult:
+    """One arm: its out-of-fold s per forecast (or the fixed s in confirm mode), compared with the baseline per forecast."""
+    primary = {c.key: {s: scores[c.key][arm][s]["baseline"] for s in grid} for c in cases}
+    beats: list[bool] = []
+    if run_kind == "confirm":
         folds, oof = [], {q: fixed_s for q in primary}
-        level, arm = CONFIRM_LEVEL, f"s = {fixed_s:g} (fixed, adopted)"
+        name = f"{arm} ({ARM_LABELS[arm]}) at s = {fixed_s:g} (fixed, adopted)"
     else:
         cv = nested_cv(primary, clusters, grid, k, seed)
         folds, oof = cv.folds, cv.oof_s
-        level, arm = 0.95, "s chosen out of fold"
+        name = f"{arm} ({ARM_LABELS[arm]}), s chosen out of fold"
+        for f in folds:
+            train = [q for q in primary if cv.fold_of_cluster[clusters[q]] != f.fold - 1]
+            beats.append(bool(train) and float(np.mean([primary[q][f.chosen_s] for q in train]))
+                         > float(np.mean([base[q] for q in train])) + 1e-9)
     s_all, _ = choose_s(primary, primary, grid) if primary else (BASELINE_S, {})
-    comparison = _comparison(primary, oof, clusters, arm=arm, reps=reps, seed=seed, level=level)
+    comparison = _comparison(primary, oof, clusters, arm=name, reps=reps, seed=seed, level=level, base=base)
 
-    def mean_of(metric: str, pick: dict[str, float], keys: Iterable[str] | None = None) -> float:
-        ks = list(primary if keys is None else keys)
-        vals = [float(outside(scores[q][pick[q]]["pit"])) if metric == "outside" else scores[q][pick[q]][metric] for q in ks]
+    def mean_of(metric: str, pick: dict[str, float] | None, keys: Iterable[str] | None = None) -> float:
+        """pick None = the baseline (arm A at s = 1.0); else this arm at pick[q]."""
+        vals = []
+        for q in (primary if keys is None else keys):
+            sc = scores[q][BASELINE_ARM][BASELINE_S] if pick is None else scores[q][arm][pick[q]]
+            vals.append(float(outside(sc["pit"])) if metric == "outside" else sc[metric])
         return float(np.mean(vals)) if vals else float("nan")
 
-    base = {q: BASELINE_S for q in primary}
-    have = set(next(iter(scores.values()))[BASELINE_S]) if scores else set()
-    sec_metrics = [m for m in ("log", "crps") if m in have] + (["outside"] if "pit" in have else [])
-    secondary = {m: (mean_of(m, base), mean_of(m, oof)) for m in sec_metrics}
+    secondary = {m: (mean_of(m, None), mean_of(m, oof)) for m in sec_metrics}
     means_by_s = {s: {m: mean_of(m, {q: s for q in primary}) for m in ["baseline", *sec_metrics]} for s in grid}
 
     def groups(attr: str) -> list[Group]:
         out = []
-        for name in sorted({getattr(c, attr) for c in cases}):
-            ks = [c.key for c in cases if getattr(c, attr) == name]
-            cmp_ = _comparison(primary, oof, clusters, arm=arm, reps=reps, seed=seed, level=level, restrict=set(ks))
+        for gname in sorted({getattr(c, attr) for c in cases}):
+            ks = [c.key for c in cases if getattr(c, attr) == gname]
+            cmp_ = _comparison(primary, oof, clusters, arm=name, reps=reps, seed=seed, level=level, restrict=set(ks), base=base)
             best, _ = choose_s(ks, primary, grid)
-            has_pit = "pit" in have
-            out.append(Group(name, len(ks), len({c.question_id for c in cases if getattr(c, attr) == name}), cmp_, best,
-                             mean_of("outside", base, ks) if has_pit else float("nan"),
+            out.append(Group(gname, len(ks), len({c.question_id for c in cases if getattr(c, attr) == gname}), cmp_, best,
+                             mean_of("outside", None, ks) if has_pit else float("nan"),
                              mean_of("outside", oof, ks) if has_pit else float("nan")))
         return out
 
     breakdowns = {"era": groups("era"), "type": groups("qtype"), "tournament": groups("tournament"), "source": groups("source")}
-    decision = decide(comparison, folds, breakdowns["era"], run_kind)
+    decision = decide(comparison, folds, breakdowns["era"], run_kind, arm)
+    return ArmResult(arm, ARM_LABELS[arm], folds, s_all, means_by_s, comparison, secondary, decision, breakdowns, beats)
+
+
+def analyse(cases: Sequence[Case], scores: Scores, *, run_kind: str = "screen", dropped: Counter | None = None, seed: int = SEED,
+            reps: int = report.DEFAULT_REPS, k: int = OUTER_FOLDS, grid: Sequence[float] = GRID, resolved_after: date | None = None,
+            fixed_s: float | None = None, arms: Sequence[str] = ARMS, confirm_arm: str = "A") -> Analysis:
+    """Per arm: nested CV (or, in confirm mode, the adopted arm at a fixed s) and the paired comparison against the baseline (arm A
+    at s = 1.0) with report's cluster bootstrap, at CI level 1 - 0.05/m for m arms (protocol §5)."""
+    grid = tuple(grid)
+    if BASELINE_S not in grid:
+        raise ValueError("the grid must contain the baseline s = 1.0")
+    if run_kind == "confirm":
+        if fixed_s is None or fixed_s not in grid:
+            raise ValueError(f"confirm mode needs the adopted s, one of {grid}")
+        arms = (confirm_arm,)
+    arms = tuple(arms)
+    if not arms or any(a not in ARMS for a in arms) or len(set(arms)) != len(arms):
+        raise ValueError(f"arms must be distinct, from {ARMS}; got {arms}")
+    level = CONFIRM_LEVEL if run_kind == "confirm" else report.family_level(len(arms))
+    clusters = {c.key: c.cluster for c in cases}
+    base = {c.key: scores[c.key][BASELINE_ARM][BASELINE_S]["baseline"] for c in cases}
+    first = next(iter(scores.values()), {})
+    have = set(first[BASELINE_ARM][BASELINE_S]) if first else set()
+    sec_metrics = [m for m in ("log", "crps") if m in have] + (["outside"] if "pit" in have else [])
+    results = {arm: _analyse_arm(arm, cases, scores, clusters, base, run_kind=run_kind, grid=grid, k=k, seed=seed, reps=reps,
+                                 level=level, fixed_s=fixed_s, sec_metrics=sec_metrics, has_pit="pit" in have) for arm in arms}
+    live_arm, live_words = which_goes_live(results, run_kind)
     return Analysis(run_kind, len({c.question_id for c in cases}), len(cases), len(set(clusters.values())), dropped or Counter(),
-                    seed, reps, k, grid, resolved_after, folds, s_all, means_by_s, comparison, secondary, decision, breakdowns,
-                    fixed_s)
+                    seed, reps, k, grid, resolved_after, level, results, live_arm, live_words, fixed_s)
 
 
 # --------------------------------------------------------------------------- report
@@ -691,6 +848,14 @@ def render(an: Analysis, prov: dict[str, str]) -> str:
     design = (f"fixed s = {an.fixed_s:g} vs s = 1.0" if an.run_kind == "confirm"
               else f"outer folds {an.k}; grid " + ", ".join(f"{s:g}" for s in an.grid))
     L += [f"- seed {an.seed}{seed_note}; bootstrap {an.reps:,} reps over clusters; {design}"]
+    m = len(an.arms)
+    if an.run_kind == "confirm":
+        L += [f"- arm confirmed: {', '.join(an.arms)}; one-sided 95% bound (two-sided {report._level_words(an.level)} CI)"]
+    else:
+        L += [f"- arms: {', '.join(f'{a} = {r.label}' for a, r in an.arms.items())}; m = {m}, so each arm's CI is at "
+              f"{report._level_words(an.level)} (1 − 0.05/{m}, protocol §5), for the adopt condition and the kill rule alike"]
+        L += ["- baseline for every arm: arm A at s = 1.0 (today's forecast, unchanged); arm B adds its tails at every s, s = 1.0 "
+              "included"]
     L += [f"- resolved after: {an.resolved_after.isoformat() if an.resolved_after else 'no cut-off (first run)'}"]
     L += [f"- N: {an.n_questions} questions, {an.n_cases} forecasts (live + shadow), {an.n_clusters} clusters (Metaculus posts)", ""]
     L += ["### Dropped records", ""]
@@ -699,55 +864,76 @@ def render(an: Analysis, prov: dict[str, str]) -> str:
     else:
         L += ["none"]
     L += ["", "## Primary result", ""]
-    c = an.comparison
     if an.run_kind == "confirm":
-        L += [f"Fixed s = {an.fixed_s:g} against s = 1.0 on questions resolved after the go-live date. Confirmed if the one-sided "
-              "95% lower bound (the lower end of the two-sided 90% CI) is above 0.", ""]
+        L += [f"Fixed s = {an.fixed_s:g} of the arm that went live, against s = 1.0 (today) on questions resolved after the go-live "
+              "date. Confirmed if the one-sided 95% lower bound (the lower end of the two-sided 90% CI) is above 0.", ""]
     else:
-        L += ["s chosen on the other folds and applied to each held-out fold (nested cross-validation, folds by cluster). "
-              "Δ = Metaculus numeric baseline score at that s minus at s = 1.0, per forecast, in points; positive = sharpening helps.", ""]
-        L += report._table(["outer fold", "train forecasts", "test forecasts", "test clusters", "chosen s"],
-                           [[f.fold, f.n_train, f.n_test, f.clusters_test, f"{f.chosen_s:g}"] for f in an.folds])
-        L += ["", f"s chosen on all the data (what would go live on adoption): **{an.s_all:g}**", ""]
-    L += report._table(["comparison", "N", "clusters", "mean Δ", "CI", "median Δ", "win rate (W/T/L)", "SD(Δ)", "MDE", "cluster MDE"],
-                       [_cmp_row(c.arm + " vs s = 1.0", c, [report._f(c.sd_diff, 2), report._f(c.mde, 2),
-                                                            report._f(c.mde_cluster, 2)])])
-    if 0 < c.n_clusters < report.FEW_CLUSTERS:
-        L += ["", f"Warning: only {c.n_clusters} clusters; the percentile bootstrap is known to give too-narrow intervals below "
-              f"{report.FEW_CLUSTERS}."]
-    L += ["", "### Decision", ""]
+        L += ["Per arm: s chosen on the other folds and applied to each held-out fold (nested cross-validation, folds by cluster; "
+              "the same folds and seed for both arms). Δ = Metaculus numeric baseline score of the arm at that s minus today's "
+              "forecast (arm A at s = 1.0), per forecast, in points; positive = the arm helps.", ""]
+    for a, r in an.arms.items():
+        c = r.comparison
+        L += [f"### Arm {a}: {r.label}", ""]
+        if an.run_kind != "confirm":
+            L += report._table(["outer fold", "train forecasts", "test forecasts", "test clusters", "chosen s",
+                                "beats today on its training part"],
+                               [[f.fold, f.n_train, f.n_test, f.clusters_test, f"{f.chosen_s:g}", "yes" if b else "no"]
+                                for f, b in zip(r.folds, r.fold_beats_today)])
+            L += ["", f"s chosen on all the data (what would go live on adoption): **{r.s_all:g}**", ""]
+        L += report._table(["comparison", "N", "clusters", "mean Δ", "CI", "median Δ", "win rate (W/T/L)", "SD(Δ)", "MDE",
+                            "cluster MDE"],
+                           [_cmp_row(c.arm + " vs s = 1.0", c, [report._f(c.sd_diff, 2), report._f(c.mde, 2),
+                                                                report._f(c.mde_cluster, 2)])])
+        if 0 < c.n_clusters < report.FEW_CLUSTERS:
+            L += ["", f"Warning: only {c.n_clusters} clusters; the percentile bootstrap is known to give too-narrow intervals "
+                  f"below {report.FEW_CLUSTERS}."]
+        L += [""]
+    L += ["### Decision", ""]
     if an.run_kind == "confirm":
         L += [f"**{'CONFIRMED' if an.decision.verdict == 'adopt' else 'NOT CONFIRMED'}**", ""]
-    L += ["```", *an.decision.lines(), "```", ""]
+    L += ["```"]
+    for r in an.arms.values():
+        L += r.decision.lines()
+    L += ["```", ""]
+    if an.goes_live_words:
+        L += [f"**Which arm goes live:** {an.goes_live_words}", ""]
     L += ["## Secondary metrics (descriptive)", ""]
     names = {"log": "numeric log score (nats, higher better)", "crps": "CRPS (fraction of range, lower better)",
              "outside": "share of outcomes outside the 10-90% range (≈20% if calibrated)"}
-    rows = []
-    for m, (b, o) in an.secondary.items():
-        fmt = (lambda x: f"{x:.1%}") if m == "outside" else (lambda x: report._f(x, 4))
-        rows.append([names[m], fmt(b), fmt(o)])
-    L += report._table(["metric", "s = 1.0", "confirmed s" if an.run_kind == "confirm" else "out-of-fold s"], rows)
-    L += ["", "### Every s on all the data (in-sample, descriptive: not the test)", ""]
-    hdr = ["s", "baseline score"] + [names[m].split(" (")[0] for m in an.secondary]
-    L += report._table(hdr, [[f"{s:g}", report._f(v["baseline"], 2)] + [
-        (f"{v[m]:.1%}" if m == "outside" else report._f(v[m], 4)) for m in an.secondary] for s, v in an.means_by_s.items()])
+    first = an._first()
+
+    def fmt(metric: str, x: float) -> str:
+        return f"{x:.1%}" if metric == "outside" else report._f(x, 4)
+
+    col = "confirmed s" if an.run_kind == "confirm" else "out-of-fold s"
+    L += report._table(["metric", "s = 1.0 (today)", *[f"arm {a}, {col}" for a in an.arms]],
+                       [[names[mk], fmt(mk, b), *[fmt(mk, r.secondary[mk][1]) for r in an.arms.values()]]
+                        for mk, (b, _) in first.secondary.items()])
+    for a, r in an.arms.items():
+        L += ["", f"### Arm {a}: every s on all the data (in-sample, descriptive: not the test)", ""]
+        hdr = ["s", "baseline score"] + [names[mk].split(" (")[0] for mk in r.secondary]
+        L += report._table(hdr, [[f"{s:g}", report._f(v["baseline"], 2)] + [fmt(mk, v[mk]) for mk in r.secondary]
+                                 for s, v in r.means_by_s.items()])
     L += ["", "## Breakdowns (descriptive, not decisions)", "",
-          "Same out-of-fold choice of s as the primary result, restricted to a subset; the in-sample best s is that subset's own "
-          "best on all its forecasts. Small groups have wide intervals.", ""]
-    for name, gs in an.breakdowns.items():
-        L += [f"### By {name}", ""]
-        L += report._table([name, "N", "clusters", "mean Δ", "CI", "median Δ", "win rate (W/T/L)", "questions", "in-sample best s",
-                            "outside 10-90% at s = 1.0", "at chosen s"],
-                           [_cmp_row(g.name, g.comparison, [str(g.n_questions), f"{g.best_s_in_sample:g}",
-                                                             "n/a" if math.isnan(g.outside_base) else f"{g.outside_base:.0%}",
-                                                             "n/a" if math.isnan(g.outside_oof) else f"{g.outside_oof:.0%}"])
-                            for g in gs])
-        L += [""]
+          "Per arm: the same out-of-fold choice of s as the primary result, restricted to a subset, against today's forecast; the "
+          "in-sample best s is that subset's own best on all its forecasts. Small groups have wide intervals.", ""]
+    for a, r in an.arms.items():
+        for name, gs in r.breakdowns.items():
+            L += [f"### By {name} (arm {a})", ""]
+            L += report._table([name, "N", "clusters", "mean Δ", "CI", "median Δ", "win rate (W/T/L)", "questions",
+                                "in-sample best s", "outside 10-90% at s = 1.0", "at chosen s"],
+                               [_cmp_row(g.name, g.comparison, [str(g.n_questions), f"{g.best_s_in_sample:g}",
+                                                                 "n/a" if math.isnan(g.outside_base) else f"{g.outside_base:.0%}",
+                                                                 "n/a" if math.isnan(g.outside_oof) else f"{g.outside_oof:.0%}"])
+                                for g in gs])
+            L += [""]
     L += ["## Notes", "",
           "- The CI resamples clusters of forecasts with the out-of-fold choices held fixed; it does not include the extra spread "
-          "from which s each fold happened to pick. The fold table shows that spread.",
+          "from which s each fold happened to pick. The fold tables show that spread.",
           "- Live and shadow forecasts of the same question share its outcome; they sit in one cluster, so they enter and leave the "
           "bootstrap together.",
+          "- Both arms are scored on the same forecasts: a forecast whose live CDF fails for either arm at any s is dropped from both "
+          "(see Dropped records).",
           "- N gate: the verdict is printed only at ≥ "
           f"{MIN_CONFIRM_QUESTIONS if an.run_kind == 'confirm' else MIN_QUESTIONS} resolved questions."]
     return "\n".join(L).rstrip() + "\n"
@@ -781,6 +967,18 @@ def count_lines(loaded: Loaded, min_n: int = MIN_QUESTIONS) -> list[str]:
     lines += ["", f"numeric/discrete record files seen: {loaded.seen_records}"]
     for reason, k in sorted(loaded.dropped.items(), key=lambda kv: (-kv[1], kv[0])):
         lines.append(f"  not counted: {k:4d}  {reason}")
+    return lines
+
+
+def build_count_lines(loaded: Loaded, builder: CdfBuilder) -> list[str]:
+    """Count mode with the live builder: how many ready forecasts build a valid live CDF for both arms at every s, and why the
+    others would be dropped. Builds CDFs only: no outcome is compared with anything, no score is computed."""
+    dropped: Counter = Counter()
+    kept, _ = build_cdfs(loaded.cases, builder, GRID, dropped)
+    lines = ["", f"live CDF build check (no scores): {len(kept)} of {len(loaded.cases)} ready forecasts build a valid CDF for "
+             f"both arms at every s ({len({c.question_id for c in kept})} questions)"]
+    for reason, k in sorted(dropped.items(), key=lambda kv: (-kv[1], kv[0])):
+        lines.append(f"  would be dropped: {k:4d}  {reason}")
     return lines
 
 
@@ -840,6 +1038,8 @@ def run(args: argparse.Namespace, builder: CdfBuilder | None = None) -> int:
     if args.count:
         loaded = load_cases(runs_dir, outcomes_path, scaling_path, resolved_after=cutoff, need_scaling=False)
         print("\n".join(count_lines(loaded)))
+        if builder is not None:
+            print("\n".join(build_count_lines(loaded, builder)))
         return 0
     run_kind = "confirm" if args.confirm_s is not None else args.run_kind
     if run_kind in ("rerun", "confirm") and cutoff is None:
@@ -860,12 +1060,15 @@ def run(args: argparse.Namespace, builder: CdfBuilder | None = None) -> int:
         print(not_enough(n_q, min_n))
         return 3
     an = analyse(cases, score_all(cases, cdfs), run_kind=run_kind, dropped=dropped, seed=args.seed, reps=args.reps,
-                 resolved_after=cutoff, fixed_s=args.confirm_s)
+                 resolved_after=cutoff, fixed_s=args.confirm_s, arms=tuple(args.arms), confirm_arm=args.confirm_arm)
     md = render(an, provenance(loaded.record_files, outcomes_path, scaling_path))
     out = Path(args.out) if args.out else DEFAULT_OUT
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8", newline="\n")
-    print("\n".join(an.decision.lines()))
+    for r in an.arms.values():
+        print("\n".join(r.decision.lines()))
+    if an.goes_live_words:
+        print(f"which arm goes live: {an.goes_live_words}")
     print(f"wrote {out}")
     if args.card:
         card = Path(args.card)
@@ -1016,91 +1219,88 @@ def write_synthetic(root: Path, triples: Sequence[tuple[dict[str, Any], dict[str
 
 
 def synthetic_analysis(builder: CdfBuilder, tmp: Path, n_questions: int, *, true_s: float, seed: int, reps: int = 2000,
-                       truth: str = "cdf", shadow_share: float = 0.0, metrics: Sequence[str] = ("baseline",)
-                       ) -> tuple[Analysis, Loaded]:
+                       truth: str = "cdf", shadow_share: float = 0.0, metrics: Sequence[str] = ("baseline",),
+                       arms: Sequence[str] = ARMS) -> tuple[Analysis, Loaded]:
     """The whole path on made-up data written to `tmp`: records -> load_cases -> live CDFs -> scores -> nested CV -> decision."""
     paths = write_synthetic(tmp, synthetic_cases(builder, n_questions, true_s=true_s, seed=seed, truth=truth,
                                                  shadow_share=shadow_share))
     loaded = load_cases(paths["runs"], paths["outcomes"], paths["scaling"])
     dropped = Counter(loaded.dropped)
-    cases, cdfs = build_cdfs(loaded.cases, builder, GRID, dropped)
-    return analyse(cases, score_all(cases, cdfs, metrics), dropped=dropped, reps=reps), loaded
+    cases, cdfs = build_cdfs(loaded.cases, builder, GRID, dropped, arms)
+    return analyse(cases, score_all(cases, cdfs, metrics), dropped=dropped, reps=reps, arms=arms), loaded
 
 
 # --------------------------------------------------------------------------- synthetic power check (card v2, "what the tool can see")
-def with_normal_tails(points: Sequence[Sequence[float]], s: float, question: Any) -> list[tuple[float, float]]:
-    """WHAT-IF ONLY (not on the card, never used by the decision): sharpen by s, then add P1 and P99 where a normal through P10/P90
-    and the median would put them. The live CDF builder otherwise runs the outer 10% linearly out to the bounds."""
-    sp = sharpen(points, s, question)
-    to_axis, from_axis = _axis(question)
-    xs = [to_axis(v) for _, v in sp]
-    m = float(np.interp(0.5, [p for p, _ in sp], xs))
-    k = 2.3263479 / 1.2815516  # z(0.99) / z(0.9)
-    return [(0.01, float(from_axis(m + (xs[0] - m) * k)))] + sp + [(0.99, float(from_axis(m + (xs[-1] - m) * k)))]
+POWER_TRUTHS = (("cdf", 1.0), ("cdf", 0.7), ("cdf", 0.6), ("normal", 1.0), ("normal", 0.7), ("normal", 0.6))
 
 
-def power_simulation(builder: CdfBuilder, n_values: Sequence[int] = (40, 80), trials: int = 60, pool_size: int = 160, reps: int = 1000, seed: int = 5
-                     ) -> list[str]:
-    """How often the card's procedure finds a gain on made-up data, at the card's N. Two kinds of truth, each with the outcome's
-    spread at `true_s` times the forecast's: "cdf" draws the outcome from the live CDF of the forecast sharpened by true_s (truth
-    keeps the live CDF's linear tails); "normal" draws it from the normal the percentiles came from (truth narrower everywhere).
-    Also a what-if line for `with_normal_tails`. Synthetic, so it says what the tool can detect, not what our data will show."""
+def power_simulation(builder: CdfBuilder, n_values: Sequence[int] = (40, 80), trials: int = 60, pool_size: int = 160,
+                     reps: int = 2000, seed: int = 5) -> list[str]:
+    """How often the card's procedure finds a gain on made-up data, at the card's N, for both arms at the card's level (97.5%,
+    m = 2). Two kinds of truth, each with the outcome's spread at `true_s` times the forecast's: "cdf" draws the outcome from the
+    live CDF of the forecast sharpened by true_s (truth keeps the live CDF's linear tails); "normal" draws it from the normal the
+    percentiles came from (true_s = 1.0: the middle is right but the live CDF's tails are too fat; < 1: narrower everywhere).
+    Synthetic, so it says what the tool can detect, not what our data will show."""
     rng = np.random.default_rng(seed)
     kinds = ("numeric", "numeric", "log", "discrete")
+    level = report.family_level(len(ARMS))
     pool = []
     for i in range(pool_size):
         snap, sc = synthetic_question(kinds[i % len(kinds)], i, i, rng)
         q = axis_from(snap, sc)
         pts, mu, sd = synthetic_points(snap, sc, rng)
-        tails = {}
-        for s in GRID:
-            try:
-                tails[s] = builder.build(q, with_normal_tails(pts, s, q))
-            except Exception:  # noqa: BLE001
-                tails[s] = None
-        pool.append((q, mu, sd, {s: submitted_cdf(builder, q, pts, s) for s in GRID}, tails))
+        try:
+            cdfs = {arm: {s: submitted_cdf(builder, q, pts, s, arm) for s in GRID} for arm in ARMS}
+        except Exception:  # noqa: BLE001 - as build_cdfs: a question the live code can't convert for some arm is left out
+            continue
+        cap = builder.max_step(q.cdf_size)
+        if any(cdf_problems(c, q, cap) for by_s in cdfs.values() for c in by_s.values()):
+            continue
+        pool.append((q, mu, sd, cdfs))
 
-    def resolution(q: Any, mu: float, sd: float, cdfs: dict[float, list[float]], truth: str, true_s: float,
+    def resolution(q: Any, mu: float, sd: float, cdfs: dict[str, dict[float, list[float]]], truth: str, true_s: float,
                    r: np.random.Generator) -> float:
-        res = draw_resolution(cdfs[true_s], q, r) if truth == "cdf" else draw_normal_resolution(q, mu, sd * true_s, r)
+        res = draw_resolution(cdfs["A"][true_s], q, r) if truth == "cdf" else draw_normal_resolution(q, mu, sd * true_s, r)
         return outcome_location(res, q)
 
     def score(c: list[float], q: Any, loc: float) -> float:
         return scoring.numeric_baseline_score(c, loc, q.open_lower_bound, q.open_upper_bound, cdf_size=len(c))
 
     lines = ["Synthetic power check of the EXP-010 procedure (made-up questions; numeric, log-scaled and discrete; 2 per cluster)",
-             f"pool {pool_size} questions, {trials} trials per row, bootstrap {reps} reps, seed {seed}", "",
-             "truth   true spread  N   CI>0 (gain found)  CI<0  mean Δ  SD(Δ)  cluster MDE  every fold s<1"]
-    for truth, true_s in (("cdf", 1.0), ("cdf", 0.7), ("cdf", 0.6), ("normal", 1.0), ("normal", 0.7), ("normal", 0.6)):
+             f"pool {len(pool)} questions, {trials} trials per row, bootstrap {reps} reps, seed {seed}; arms A (sharpen) and B "
+             f"(sharpen + normal P1/P99), each vs today (A at s = 1.0) at the card's {report._level_words(level)} CI (m = {len(ARMS)})",
+             "", "truth   true spread  N   arm     CI>0 (gain found)  CI<0  mean Δ  SD(Δ)  cluster MDE  stable"]
+    for truth, true_s in POWER_TRUTHS:
         for n in n_values:
-            res = []
+            res: dict[str, list[tuple[report.Comparison, list[Fold]]]] = {arm: [] for arm in ARMS}
             for t in range(trials):
                 r = np.random.default_rng(seed * 1000 + t)
-                idx = r.choice(pool_size, n, replace=False)
-                primary, clusters = {}, {}
+                idx = r.choice(len(pool), n, replace=False)
+                primary: dict[str, dict[str, dict[float, float]]] = {arm: {} for arm in ARMS}
+                clusters = {}
                 for j, i in enumerate(idx):
-                    q, mu, sd, cdfs, _ = pool[i]
+                    q, mu, sd, cdfs = pool[i]
                     loc = resolution(q, mu, sd, cdfs, truth, true_s, r)
-                    primary[str(j)] = {s: score(c, q, loc) for s, c in cdfs.items()}
+                    for arm in ARMS:
+                        primary[arm][str(j)] = {s: score(c, q, loc) for s, c in cdfs[arm].items()}
                     clusters[str(j)] = str(j // 2)
-                cv = nested_cv(primary, clusters)
-                res.append((_comparison(primary, cv.oof_s, clusters, arm="x", reps=reps, seed=t), cv.folds))
-            lines.append(f"{truth:7s} x{true_s:<11g} {n:<3d} {np.mean([c.ci_low > 0 for c, _ in res]):>17.0%} "
-                         f"{np.mean([c.ci_high < 0 for c, _ in res]):>5.0%} {np.mean([c.mean_diff for c, _ in res]):>7.2f} "
-                         f"{np.mean([c.sd_diff for c, _ in res]):>6.1f} {np.mean([c.mde_cluster for c, _ in res]):>12.1f} "
-                         f"{np.mean([all(f.chosen_s < 1 for f in fs) for _, fs in res]):>15.0%}")
-    lines += ["", "What-if (not on the card): normal-shaped P1/P99 added, minus today's CDF, mean Δ per forecast by s (normal truth)"]
-    r = np.random.default_rng(seed + 1)
-    usable = [x for x in pool if all(v is not None for v in x[4].values())]
-    for true_s in (1.0, 0.8, 0.6):
-        d: dict[float, list[float]] = {s: [] for s in GRID}
-        for _ in range(10):
-            for q, mu, sd, cdfs, tails in usable:
-                loc = resolution(q, mu, sd, cdfs, "normal", true_s, r)
-                base = score(cdfs[BASELINE_S], q, loc)
-                for s in GRID:
-                    d[s].append(score(tails[s], q, loc) - base)
-        lines.append(f"  truth spread x{true_s:g}: " + ", ".join(f"s {s:g}: {np.mean(v):+.1f}" for s, v in d.items()))
+                base = {q: primary["A"][q][BASELINE_S] for q in clusters}
+                for arm in ARMS:
+                    cv = nested_cv(primary[arm], clusters)
+                    res[arm].append((_comparison(primary[arm], cv.oof_s, clusters, arm=arm, reps=reps, seed=t, level=level,
+                                                 base=base), cv.folds))
+            for arm in ARMS:
+                rows = res[arm]
+                stable = np.mean([_stability_check(arm, fs).met for _, fs in rows])
+                lines.append(f"{truth:7s} x{true_s:<11g} {n:<3d} {arm:7s} {np.mean([c.ci_low > 0 for c, _ in rows]):>17.0%} "
+                             f"{np.mean([c.ci_high < 0 for c, _ in rows]):>5.0%} {np.mean([c.mean_diff for c, _ in rows]):>7.2f} "
+                             f"{np.mean([c.sd_diff for c, _ in rows]):>6.1f} {np.mean([c.mde_cluster for c, _ in rows]):>12.1f} "
+                             f"{stable:>7.0%}")
+            either = np.mean([res["A"][t][0].ci_low > 0 or res["B"][t][0].ci_low > 0 for t in range(trials)])
+            lines.append(f"{truth:7s} x{true_s:<11g} {n:<3d} {'A or B':7s} {either:>17.0%}")
+    lines += ["", "stable: arm A = every outer fold chose s < 1; arm B = every outer fold chose an s (1.0 allowed).",
+              "CI>0 / CI<0: share of trials whose CI lies wholly above / below 0. 'A or B': at least one arm found a gain (on the "
+              "calibrated rows that is the family-wide false alarm, ≈ ≤ 5% by design)."]
     return lines
 
 
@@ -1111,6 +1311,9 @@ def parser() -> argparse.ArgumentParser:
     mode.add_argument("--count", action="store_true", help="only count resolved numeric/discrete forecasts per type and era")
     mode.add_argument("--fetch-scaling", action="store_true", help="store each question's Metaculus axis (needs METACULUS_TOKEN)")
     mode.add_argument("--confirm-s", type=float, metavar="S", help="Tier 1 confirmation of the adopted S on fresh questions")
+    ap.add_argument("--confirm-arm", choices=ARMS, default="A", help="--confirm-s: the arm that went live (default A)")
+    ap.add_argument("--arms", nargs="+", choices=ARMS, default=list(ARMS),
+                    help="candidate arms (default A B: m = 2, 97.5%% CIs); a rerun leaves out an arm the first run killed")
     mode.add_argument("--demo", metavar="DIR", help="write a synthetic data set (made-up questions) to DIR and exit")
     mode.add_argument("--power", action="store_true", help="synthetic power check of the procedure at the card's N (~15 s)")
     ap.add_argument("--run-kind", choices=("screen", "rerun"), default="screen", help="screen = first run; rerun = the one rerun")
