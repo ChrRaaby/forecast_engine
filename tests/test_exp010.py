@@ -383,7 +383,10 @@ def test_decision_rule_as_code():
     assert e.decide(_cmp(3.0, 1.0, 5.0), stable, disagree, "screen").verdict == "inconclusive"  # live era doesn't gain
     assert e.decide(_cmp(3.0, 1.0, 5.0), stable, [_era("cheap", 4.0)], "screen").verdict == "inconclusive"  # no frontier data
     assert e.decide(_cmp(1.0, -2.0, 4.0), stable, eras, "screen").verdict == "inconclusive"
-    assert e.decide(_cmp(-0.5, -2.0, 1.0), stable, eras, "screen").verdict == "kill"  # point ≤ 0
+    # decision 1 (Christian, 2026-11-02) replaced the old assertion that a mean Δ ≤ 0 is a kill: it is now inconclusive (one
+    # rerun) unless the CI upper bound is below the 0.75-point threshold
+    assert e.decide(_cmp(-0.5, -2.0, 1.0), stable, eras, "screen").verdict == "inconclusive"  # point ≤ 0, CI upper ≥ 0.75
+    assert e.decide(_cmp(-0.5, -2.0, 0.5), stable, eras, "screen").verdict == "kill"  # CI upper < 0.75
     small = e.decide(_cmp(0.4, 0.1, 0.7), stable, eras, "screen")  # real but below the 0.75-point threshold: conflict -> kill
     assert small.verdict == "kill" and "on_conflict" in small.note
     narrow = e.decide(_cmp(2.0, 0.3, 3.7), stable, eras, "screen")
@@ -475,8 +478,8 @@ def test_evals_module_runs_without_the_adapter_and_points_to_the_tool(tmp_path, 
 def test_tool_validation_cli(capsys):
     assert T.main(["--validate"]) == 0
     out = capsys.readouterr().out
-    assert "EXP-010 tool validation" in out and "4 passed, 0 failed" in out and "TOOL VALIDATED" in out
-    for name in ("reproduces live", "valid CDFs", "too wide detected", "calibrated kept"):
+    assert "EXP-010 tool validation" in out and "5 passed, 0 failed" in out and "TOOL VALIDATED" in out
+    for name in ("reproduces live", "valid CDFs", "arm B reproduces live and stays valid", "too wide detected", "calibrated kept"):
         assert f"PASS  EXP-010 tool: {name}" in out
 
 
