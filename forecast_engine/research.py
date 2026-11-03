@@ -131,6 +131,9 @@ async def _gemini_grounded(q: QuestionSnapshot, clock: Clock, cfg: ResearchConfi
         call.extra["cost_note"] = "estimated from tokens at list price; grounding fee not included"
         call.extra["search_queries"] = meta.get("webSearchQueries", [])
         call.extra["sources"] = [{"title": s.get("title"), "uri": s.get("uri")} for s in sources]
+        for key, field in (("modelVersion", "model_version"), ("responseId", "response_id")):  # provenance; only when returned
+            if data.get(key):
+                call.extra[field] = data[key]
         if not text.strip():
             raise RuntimeError(f"empty Gemini response (finishReason={cand.get('finishReason')})")
         source_list = "\n".join(f"- {s.get('title')}" for s in sources if s.get("title"))

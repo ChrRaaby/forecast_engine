@@ -76,9 +76,13 @@ class UnknownPromptVersion(TamperedRecord):
 
 
 def record_prompt_version(record: dict[str, Any]) -> str:
-    """INTEGRITY CHECK ONLY: the prompt version the live code built this record's prompt with. Records don't store
-    BotConfig.prompt_version; it follows from the stored config_version (`evals.prompt_archive`). Raises UnknownPromptVersion."""
+    """INTEGRITY CHECK ONLY: the prompt version the live code built this record's prompt with. Records from 2026-11 on store it
+    (`prompt_version`, B-75(1)); older ones don't, and it follows from their config_version (`evals.prompt_archive`). Raises
+    UnknownPromptVersion."""
     try:
+        stored = record.get("prompt_version")
+        if stored is not None:
+            return prompt_archive.template_for(stored).version
         return prompt_archive.prompt_version_for(record.get("config_version"))
     except KeyError as e:
         raise UnknownPromptVersion(f"{e.args[0]}; not checkable, so not replayable") from None

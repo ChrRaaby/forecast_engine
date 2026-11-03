@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from .schema import ForecastRecord
 
@@ -16,10 +17,25 @@ class RecordWriter:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = self.run_dir / "forecasts.jsonl"
 
-    def write(self, record: ForecastRecord, *, published: bool, status: str) -> Path:
+    def write(
+        self,
+        record: ForecastRecord,
+        *,
+        published: bool,
+        status: str,
+        provenance: dict[str, Any] | None = None,
+        submitted: dict[str, Any] | None = None,
+    ) -> Path:
+        """provenance: forecast_engine.provenance.record_provenance() (which code, prompts, settings made it). submitted: B-71,
+        exactly what was sent to Metaculus (live records only). Both are additive; older records simply lack them."""
         full = record.to_dict()
         full["published"] = published
         full["status"] = status
+        if provenance is not None:
+            full["prompt_version"] = provenance["prompts"]["forecast"]  # B-75(1); evals.replay prefers it to the mapping
+            full["provenance"] = provenance
+        if submitted is not None:
+            full["submitted"] = submitted
         path = self.run_dir / f"q{record.question.question_id}.json"
         path.write_text(json.dumps(full, indent=2, ensure_ascii=False), encoding="utf-8")
         summary = {
@@ -50,6 +66,9 @@ class RecordWriter:
             "errors": record.errors + record.research.errors,
             "flags": record.flags,
         }
+        if provenance is not None:
+            summary.update(version_id=provenance["version_id"], role=provenance["role"], roster=provenance["roster"],
+                           git_commit=provenance["code"]["git_commit"])
         with self.log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(summary, ensure_ascii=False) + "\n")
         return path

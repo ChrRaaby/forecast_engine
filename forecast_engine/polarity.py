@@ -15,6 +15,9 @@ import re
 from .llm import LlmClient
 from .schema import LlmCall, QuestionSnapshot
 
+# Recorded in each record's provenance. Any edit to PROMPT needs a new version (pinned by tests/test_provenance.py).
+POLARITY_PROMPT_VERSION = "polarity-2026-10-05"
+
 PROMPT = """A forecaster was asked a yes/no question and ended with a final line "Probability: ZZ%".
 Decide what that final number refers to, judging from the rationale.
 
