@@ -54,6 +54,7 @@ Supplemented by nostreambot's findings (research/04), flagged where they disagre
 ## Results log
 | Date | Config version | Question set | N | Metric | Result | Note |
 |---|---|---|---|---|---|---|
+| 2026-11-03 | frontier-2026-10-08 + cheap shadow + M1 live (replay of stored forecasts, $0) | EXP-010 first run: resolved numeric/discrete records | 59 questions, 91 forecasts | Metaculus baseline, out-of-fold vs today | Arm A (sharpen): kill. Arm B (sharpen + normal tails): inconclusive. Nothing goes live | Numbers in the card's generated Results and `docs/experiments/EXP-010-report.md`. Arm B gets one rerun (F-15) |
 | 2026-09-30 | m1-baseline-2026-09-30b | bot-testing-area (dry run, no research) | 8 | $/question | mean $0.0069, max $0.0098 | 23/24 forecaster outputs parsed after the parser fixes; not a skill measure |
 | 2026-09-30 | m1-baseline-2026-09-30c | bot-testing-area (dry run, Gemini research) | 8 | $/question | mean $0.0080, max $0.0155 | 24/24 parsed. Excludes Google's grounding fee (unknown) |
 | 2026-11-01 | ADR-0008 dual screen (leak-screen-v3), frozen | 20 fresh archive bundles (F-09, seed 20261101) + 40 planted leaks | 20 | screen misses / clean excluded | 0/40 missed; 0/20 clean excluded; date bound 20/20 | Pass bar fixed before the run. A single screen would have excluded 2/20, both wrongly (an election forecast; a wrong-date claim). 95% upper bounds: clean exclusion < 14%, plant misses < 7% (< 2% over all 140 plants). Plants are easier than real leaks; real-leak recall unmeasured |
