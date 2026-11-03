@@ -58,6 +58,13 @@ class OpenRouterClient:
         call.latency_s = time.monotonic() - start
         call.output = (resp.choices[0].message.content or "") if resp.choices else ""
         call.extra["served_model"] = resp.model
+        # Provenance: which host OpenRouter routed this call to (hosts can run different builds of one model) and the call's id.
+        # Set only when the response carries them; never guessed.
+        upstream = (getattr(resp, "model_extra", None) or {}).get("provider")
+        if upstream:
+            call.extra["upstream_provider"] = upstream
+        if getattr(resp, "id", None):
+            call.extra["generation_id"] = resp.id
         call.extra["finish_reason"] = resp.choices[0].finish_reason if resp.choices else None
         if resp.usage is not None:
             call.tokens_in = resp.usage.prompt_tokens

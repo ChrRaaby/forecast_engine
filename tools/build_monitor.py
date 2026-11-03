@@ -99,7 +99,7 @@ def sync(repo: str) -> list[str]:
         dest.mkdir(parents=True, exist_ok=True)
         subprocess.run([gh_exe(), "run", "download", run_id, "-R", repo, "-n", a["name"], "-D", str(dest)], check=True)
         decrypt_records(dest)
-        run = gh_json(["run", "view", run_id, "-R", repo, "--json", "workflowName,createdAt,event,conclusion,url"])
+        run = gh_json(["run", "view", run_id, "-R", repo, "--json", "workflowName,createdAt,event,conclusion,url,headSha"])
         # Run logs expire with the artifact, so keep them too.
         log = subprocess.run([gh_exe(), "run", "view", run_id, "-R", repo, "--log"], capture_output=True, text=True, encoding="utf-8", errors="replace")
         (dest / "_run.log").write_text(log.stdout, encoding="utf-8")
@@ -167,6 +167,7 @@ def load_rows() -> tuple[list[dict], list[dict]]:
                 "asknews_calls": sum((c.get("extra") or {}).get("asknews_calls", 0) for c in research_calls),
                 "cost": r["cost_usd"], "cost_complete": r.get("cost_complete", True),
                 "config": r["config_version"], "errors": r.get("errors", []), "flags": r.get("flags", []),
+                "version": (r.get("provenance") or {}).get("version_id"),
             })
             n += 1
             cost += r["cost_usd"]
@@ -223,6 +224,10 @@ def main() -> int:
             print(f"WARNING: {w}")
         return 0
     rows, runs = load_rows()
+    unregistered = sorted({r["run"] for r in rows if "version_unregistered" in r["flags"]})
+    if unregistered:  # provenance decision 1: such runs still publish, so the monitor is where they must stand out
+        warnings.append(f"{len(unregistered)} run(s) ran code that is not registered in forecast_engine/code_versions.json "
+                        f"(records flagged version_unregistered), latest {unregistered[-1]}: register the fingerprint")
     data = {
         "built_at": datetime.now(timezone.utc).isoformat(timespec="minutes"),
         "repo": args.repo,

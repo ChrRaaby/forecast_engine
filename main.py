@@ -27,6 +27,7 @@ silence_noisy_dependencies()
 from forecasting_tools import (  # noqa: E402
     ApiFilter,
     BinaryQuestion,
+    DiscreteQuestion,
     ForecastBot,
     MetaculusClient,
     MetaculusQuestion,
@@ -40,7 +41,7 @@ from forecasting_tools.data_models.data_organizer import DataOrganizer  # noqa: 
 from forecasting_tools.data_models.forecast_report import ForecastReport  # noqa: E402
 from forecasting_tools.data_models.multiple_choice_report import PredictedOption  # noqa: E402
 
-from forecast_engine import guards, parsing, research_followup  # noqa: E402
+from forecast_engine import guards, parsing, provenance, research_followup  # noqa: E402
 from forecast_engine.clock import Clock, SystemClock  # noqa: E402
 from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
@@ -121,12 +122,32 @@ def to_prediction(q: MetaculusQuestion, aggregate):
     return NumericDistribution.from_question(percentiles, q)
 
 
-def build_comment(q: MetaculusQuestion, record: ForecastRecord, readable: str) -> str:
+def submitted_block(q: MetaculusQuestion, prediction) -> dict:
+    """B-71: exactly what goes to Metaculus for this question, with the axis needed to score or check it without a fetch."""
+    if isinstance(q, BinaryQuestion):
+        return {"type": "binary", "probability_yes": float(prediction)}
+    if isinstance(q, MultipleChoiceQuestion):
+        return {"type": "multiple_choice",
+                "probabilities": {o.option_name: o.probability for o in prediction.predicted_options}}
+    dist = prediction if prediction.cdf_size is not None else NumericDistribution.from_question(prediction.declared_percentiles, q)
+    return {
+        "type": "discrete" if isinstance(q, DiscreteQuestion) else "numeric",
+        "continuous_cdf": [p.percentile for p in dist.get_cdf()],  # the list publish_report_to_metaculus posts
+        "declared_percentiles": [[p.percentile, p.value] for p in prediction.declared_percentiles],
+        "axis": {"lower_bound": q.lower_bound, "upper_bound": q.upper_bound, "open_lower_bound": q.open_lower_bound,
+                 "open_upper_bound": q.open_upper_bound, "zero_point": q.zero_point, "cdf_size": q.cdf_size,
+                 "nominal_lower_bound": getattr(q, "nominal_lower_bound", None),
+                 "nominal_upper_bound": getattr(q, "nominal_upper_bound", None)},
+    }
+
+
+def build_comment(q: MetaculusQuestion, record: ForecastRecord, readable: str, version_id: str | None = None) -> str:
+    version = f", version `{version_id}`" if version_id else ""
     lines = [
         "# SUMMARY",
         f"*Question*: {q.question_text}",
         f"*Final Prediction*: {readable}",
-        f"*Config*: `{record.config_version}` (hash `{record.config_hash}`), {record.aggregation} of "
+        f"*Config*: `{record.config_version}` (hash `{record.config_hash}`{version}), {record.aggregation} of "
         f"{record.n_ok}/{len(record.forecasters)} forecasters",
         f"*Cost*: ${record.cost_usd:.4f}",
         "",
@@ -176,6 +197,7 @@ class EngineBot(ForecastBot):
         fallback_cfg: BotConfig | None = None,
         shadows: dict[str, BotConfig] | None = None,
         run_id: str = "",
+        run_info: provenance.RunInfo | None = None,
         max_concurrent: int = 3,
     ) -> None:
         super().__init__(
@@ -192,6 +214,7 @@ class EngineBot(ForecastBot):
         self.shadows = shadows or {}  # B-62: unpublished configs run on the same question and research
         self._shadow_writers: dict[str, RecordWriter] = {}
         self.run_id = run_id
+        self.run_info = run_info  # provenance (design doc 2026-11-03): None only in tests that don't care
         self.spent_usd = 0.0
         self._sem = asyncio.Semaphore(max_concurrent)
 
@@ -202,19 +225,20 @@ class EngineBot(ForecastBot):
             start = time.monotonic()
             snapshot = to_snapshot(question)
             cfg = self._live_cfg()
+            prov = self._provenance(cfg, role="live" if cfg is self.cfg else "live-fallback", roster=provenance.roster_name(cfg))
             research = await gather_research(snapshot, self.clock, cfg.research)
             try:
                 record = await forecast(snapshot, self.clock, research, cfg, self.llm)
             except ForecastFailed as e:
                 self._charge(cfg, e.record.cost_usd)
-                self.writer.write(e.record, published=False, status="failed")
+                self._write(self.writer, e.record, prov, published=False, status="failed")
                 self._count_failure(question)
                 raise
             finally:
                 await self._run_shadows(snapshot, research, cfg)
             self._charge(cfg, record.cost_usd)
             if self.publish_reports_to_metaculus and research.is_empty:
-                self.writer.write(record, published=False, status="refused_no_research")
+                self._write(self.writer, record, prov, published=False, status="refused_no_research")
                 raise RuntimeError(f"refusing to publish without research: {research.errors}")
 
             if isinstance(question, NumericQuestion):
@@ -225,15 +249,17 @@ class EngineBot(ForecastBot):
             report_type = DataOrganizer.get_report_type_for_question_type(type(question))
             try:
                 prediction = to_prediction(question, record.aggregate)
+                submitted = submitted_block(question, prediction)
             except Exception as e:
                 record.errors.append(f"could not convert forecast for Metaculus: {type(e).__name__}: {e}")
-                self.writer.write(record, published=False, status="failed")
+                self._write(self.writer, record, prov, published=False, status="failed")
                 self._count_failure(question)
                 raise
             report = report_type(
                 question=question,
                 prediction=prediction,
-                explanation=build_comment(question, record, report_type.make_readable_prediction(prediction)),
+                explanation=build_comment(question, record, report_type.make_readable_prediction(prediction),
+                                          prov["version_id"] if prov else None),
                 price_estimate=record.cost_usd,
                 minutes_taken=(time.monotonic() - start) / 60,
                 errors=record.errors + research.errors,
@@ -243,19 +269,29 @@ class EngineBot(ForecastBot):
                 ok, why = question_forecastable(question, self.clock)
                 if not ok:  # the run can take minutes; re-check right before publishing (B-09)
                     record.errors.append(f"not published: {why}")
-                    self.writer.write(record, published=False, status="failed")
+                    self._write(self.writer, record, prov, published=False, status="failed", submitted=submitted)
                     raise RuntimeError(f"not published: {why}")
                 try:
                     await report.publish_report_to_metaculus(metaculus_client=self.metaculus_client)
                 except Exception as e:
                     record.errors.append(f"publishing failed: {type(e).__name__}: {e}")
-                    self.writer.write(record, published=False, status="failed")
+                    self._write(self.writer, record, prov, published=False, status="failed", submitted=submitted)
                     raise
                 published = True
-            self.writer.write(record, published=published, status="ok")
+            self._write(self.writer, record, prov, published=published, status="ok", submitted=submitted)
             if self.retries:
                 self.retries.succeeded(question.id_of_question)
             return report
+
+    def _provenance(self, cfg: BotConfig, *, role: str, roster: str) -> dict | None:
+        return provenance.record_provenance(self.run_info, cfg, role=role, roster=roster) if self.run_info else None
+
+    def _write(self, writer: RecordWriter, record: ForecastRecord, prov: dict | None, **kw) -> None:
+        """Every record of the run goes through here, so each carries its provenance; an unregistered code fingerprint is
+        flagged on every record (decision 1: still published, never blocked)."""
+        if self.run_info is not None and not self.run_info.registered and provenance.UNREGISTERED_FLAG not in record.flags:
+            record.flags.append(provenance.UNREGISTERED_FLAG)
+        writer.write(record, provenance=prov, **kw)
 
     def _live_cfg(self) -> BotConfig:
         if self.season and self.fallback_cfg and self.season.exhausted:
@@ -278,6 +314,7 @@ class EngineBot(ForecastBot):
             writer = self._shadow_writers.get(name)
             if writer is None:
                 writer = self._shadow_writers[name] = RecordWriter(f"{self.run_id}-shadow-{name}")
+            prov = self._provenance(scfg, role="shadow", roster=name)
             try:
                 shadow_research = research
                 if scfg.research.followup is not None:
@@ -287,10 +324,10 @@ class EngineBot(ForecastBot):
                 self.spent_usd += shadow_research.cost_usd - research.cost_usd
                 rec = await forecast(snapshot, self.clock, shadow_research, scfg, self.llm)
                 self.spent_usd += rec.cost_usd - shadow_research.cost_usd
-                writer.write(rec, published=False, status="shadow")
+                self._write(writer, rec, prov, published=False, status="shadow")
             except ForecastFailed as e:
                 self.spent_usd += e.record.cost_usd - shadow_research.cost_usd
-                writer.write(e.record, published=False, status="shadow_failed")
+                self._write(writer, e.record, prov, published=False, status="shadow_failed")
             except Exception as e:  # a shadow must never take the live forecast down
                 logger.warning(f"shadow {name} failed on {snapshot.page_url}: {type(e).__name__}: {e}")
 
@@ -402,7 +439,12 @@ def main() -> int:
     season = SeasonSpend(TOURNAMENT_SEASON, TOURNAMENT_SEASON_CAP_USD) if tournament_live else None
     if season and season.exhausted:
         logger.warning(f"Season budget used (${season.spent_usd:.2f} of ${season.cap_usd:.0f}): cheap config takes over")
-    print(f"🤖  forecast_engine {CONFIG_VERSION} (config {run_cfg.config_hash()}) mode={args.mode} "
+    run_info = provenance.gather_run_info(run_id, args.mode, args.publish)
+    if not run_info.registered:
+        logger.warning(f"Code fingerprint {run_info.code_fingerprint} is not registered in forecast_engine/code_versions.json: "
+                       f"forecasting anyway, every record is flagged {provenance.UNREGISTERED_FLAG!r}")
+    print(f"🤖  forecast_engine {CONFIG_VERSION} (config {run_cfg.config_hash()}, code {run_info.code_fingerprint} "
+          f"{run_info.code_version or 'UNREGISTERED'}, commit {(run_info.git_commit or 'unknown')[:12]}) mode={args.mode} "
           f"publish={'yes' if args.publish else 'no (dry run)'} max_questions={args.max_questions} max_cost=${args.max_cost}")
 
     retries = RetryLedger(CONFIG_VERSION) if args.publish else None  # dry runs neither use nor change the ledger
@@ -411,6 +453,7 @@ def main() -> int:
         cfg=run_cfg,
         llm=OpenRouterClient(clock),
         writer=RecordWriter(run_id),
+        run_info=run_info,
         publish=args.publish,
         max_run_cost_usd=args.max_cost,
         retries=retries,
@@ -419,6 +462,7 @@ def main() -> int:
         shadows=SHADOW_CONFIGS if args.mode == "tournament" else None,
         run_id=run_id,
     )
+    run_info.write(bot.writer.run_dir)
     check_clock(clock)
     questions = fetch_questions(bot.metaculus_client, args.mode, clock, args.main_site_max)
     open_qs = []

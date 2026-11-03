@@ -73,6 +73,10 @@
   - live (what GitHub Actions runs): `poetry run python main.py --mode tournament --publish` (FutureEval + MiniBench, frontier
     ensemble with $300 season cap and the cheap config as unpublished shadow, ADR-0009/0010). Wide mode stopped 2026-10-08 (ADR-0010)
 
+- Record provenance (ADR-0011): any change to `forecast_engine/*.py`, `main.py`, `bot_helpers.py` or `poetry.lock` changes the code
+  fingerprint; `tests/test_provenance.py` then fails and prints the line to append to `forecast_engine/code_versions.json`
+  (append only). Forecast-altering changes also bump `CONFIG_VERSION`. A polarity-prompt edit needs a new `POLARITY_PROMPT_VERSION`.
+
 ## Don'ts
 - Don't commit secrets, credentials, or real/sensitive data. Use synthetic or public sample data.
 - Don't add dependencies without noting why (ADR for anything significant).
