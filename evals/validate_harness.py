@@ -10,7 +10,8 @@ Before any experiment result is trusted, the measuring tool itself must be shown
    the Bonferroni level, protocol §5).
 3. Leakage injection: a planted document dated after as_of is blocked by the bundle guard, the AskNews archive date filter, the
    research cache's read-time recheck, and the replay path (refused before any model call); prompts rendered for an as-of
-   fixture contain no date after as_of (T5).
+   fixture contain no date after as_of (T5); the reference-class library (B-56, `evals.refclass`) returns only questions that
+   actually resolved strictly before as_of, never one of the question's own post (T1/T6).
 4. Trivial baselines: always-50% scores exactly 0 on the Metaculus baseline score, the base-rate forecaster's Brier equals
    base·(1−base), and a forecaster that knows the true probability beats both with a CI excluding 0.
 
@@ -665,6 +666,54 @@ def check_leakage(tmp: Path) -> list[Result]:
     return out
 
 
+def check_refclass(tmp: Path) -> list[Result]:
+    """B-56: the reference-class lookups use only questions that actually resolved strictly before as_of (T1/T6). Synthetic
+    records and outcomes are written to `tmp` and read back through the real loader, so the actual-vs-scheduled rule is covered."""
+    from . import refclass as rc
+
+    as_of = FIXTURE_AS_OF
+    sec = timedelta(seconds=1)
+    # qid: (post, title, actual resolve time, scheduled resolve time, resolution)
+    plan = {
+        801: (81, "Will the synthetic widget launch?", as_of - sec, as_of - sec, "yes"),  # usable
+        802: (82, "Will the synthetic widget launch PLANTED-AT?", as_of, as_of - timedelta(days=9), "yes"),  # exactly at as_of
+        803: (83, "Will the synthetic widget launch PLANTED-LATE?", as_of + sec, as_of - timedelta(days=9), "no"),  # 1 s late
+        804: (90, "Will the synthetic widget launch PLANTED-SIBLING?", as_of - timedelta(days=5), as_of, "no"),  # own post
+    }
+    runs = tmp / "refclass" / "runs" / "synthetic"
+    runs.mkdir(parents=True)
+    lines = []
+    for qid, (post, title, actual, scheduled, res) in plan.items():
+        snap = QuestionSnapshot(question_id=qid, post_id=post, question_type="binary", question_text=title,
+                                open_time=as_of - timedelta(days=30)).to_dict()
+        (runs / f"q{qid}.json").write_text(json.dumps({"question": snap, "as_of": (as_of - timedelta(days=20)).isoformat()}),
+                                           encoding="utf-8")
+        lines.append(json.dumps({"question_id": qid, "post_id": post, "type": "binary", "status": "resolved", "resolution": res,
+                                 "actual_resolve_time": actual.isoformat(), "scheduled_resolve_time": scheduled.isoformat()}))
+    outcomes = tmp / "refclass" / "outcomes.jsonl"
+    outcomes.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    table = rc.load_table(tmp / "refclass", runs_dir=runs.parent, outcomes_path=outcomes, benchmark_dir=tmp / "refclass" / "none")
+    target = QuestionSnapshot(question_id=805, post_id=90, question_type="binary",
+                              question_text="Will the synthetic widget launch again?")
+    bad: list[str] = []
+    got = [s.question.question_id for s in rc.similar(table, target, as_of, k=5)]
+    if got != [801]:
+        bad.append(f"similar returned {got}, expected only [801]")
+    rate = rc.yes_rate(table, as_of, exclude=target)
+    if (rate.n, rate.yes) != (1, 1):
+        bad.append(f"yes_rate counted n={rate.n}, yes={rate.yes}; expected n=1, yes=1")
+    if "PLANTED" in rc.prompt_block([rate], rc.similar(table, target, as_of)):
+        bad.append("prompt block shows a question resolved at or after as_of, or one of the question's own post")
+    try:
+        rc.yes_rate(table, as_of.replace(tzinfo=None))
+        bad.append("an as_of without a time zone was accepted")
+    except ValueError:
+        pass
+    return [Result(C3, PASS if not bad else FAIL,
+                   "reference-class filter (B-56): a question resolved 1 s after as_of or exactly at as_of (scheduled earlier), "
+                   "or of the question's own post, is never returned; a time-zone-less as_of is refused", bad)]
+
+
 # --------------------------------------------------------------------------- 4. trivial baselines
 C4 = "4 trivial baselines"
 
@@ -813,6 +862,7 @@ def run_checks(mode: str = "offline", real_path: Path | None = None, *, baseline
             results += _safe(C1, check_reproducibility_offline, tmp)
             results += _safe(C2, check_aa_offline, aa_trials_n, aa_family_n)
             results += _safe(C3, check_leakage, tmp)
+            results += _safe(C3, check_refclass, tmp)
             results += _safe(C4, check_trivial_offline)
         elif mode == "real":
             if real_path is None:
@@ -827,7 +877,7 @@ def run_checks(mode: str = "offline", real_path: Path | None = None, *, baseline
             archive = _safe(C1, check_replay_archive, runs_dir)
             results += [r for r in archive if r.check == C1]
             results += _safe(C2, check_aa_real, rows, aa_arms)
-            results += _safe(C3, check_leakage, tmp) + [r for r in archive if r.check != C1]
+            results += _safe(C3, check_leakage, tmp) + _safe(C3, check_refclass, tmp) + [r for r in archive if r.check != C1]
             results += _safe(C4, check_trivial_real, rows)
         else:
             raise ValueError(f"unknown mode {mode!r}")
