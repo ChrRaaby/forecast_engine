@@ -1,8 +1,8 @@
 # EXP-010: Numeric range sharpening
 
 > **v3: ready for the first scored run** (2026-11-02). Christian's decisions 1 and 2 (changed kill rule, arm B) are built and this
-> card is up to date; tests and `tools/exp010.py --validate` pass. Two points below are marked [Christian] ("Open points (v3)"):
-> they only matter if both arms win, or for how arm B's stability is read; neither changes the code path of a run. The scored run
+> card is up to date; tests and `tools/exp010.py --validate` pass. The two v3 points ("Open points (v3)") were decided by
+> Christian on 2026-11-03 as proposed; neither changes the code path of a run. The scored run
 > waits for N ≥ 40 (`--count`) and Christian's OK to run it.
 
 _Card written BEFORE running. Results section filled by the report generator (`tools/exp010.py --card`). Not run yet: waits for
@@ -187,11 +187,11 @@ N ≥ 40 resolved numeric/discrete questions._
    questions it is then not scored on, so picking the best of six values can't inflate the gain.
 - **Extra:** the one cheap-roster forecast made in wide mode (Gemini-only research) counts as cheap; the report lists it.
 
-### Open points (v3, arm B build; Claude's proposals, marked [Christian] above)
-1. **If both arms win, which goes live:** proposed, the one with the larger out-of-fold mean Δ (tie → arm A). Alternative: always
+### Open points (v3, arm B build): both decided by Christian 2026-11-03, as proposed
+1. **If both arms win, which goes live:** **decided 2026-11-03:** the one with the larger out-of-fold mean Δ (tie → arm A). Alternative: always
    arm A unless B's lower CI bound beats A's, which prefers the smaller change. Mine: the larger mean Δ, because both are free and
    undoable and the Tier 1 confirmation checks the one that went live.
-2. **Arm B's stability condition:** proposed, every outer fold chose an s (1.0 allowed). Honest note: with ≥ 40 questions every fold
+2. **Arm B's stability condition:** **decided 2026-11-03:** every outer fold chose an s (1.0 allowed). Honest note: with ≥ 40 questions every fold
    has training data, so this condition is always met; it is a formality, and B's real tests are the 97.5% CI and the frontier
    era. A stricter alternative, the exact analogue of arm A's: every fold's training part has arm B at its chosen s scoring above
    today's forecast. The report shows that per fold ("beats today on its training part") either way, so you can switch to it
