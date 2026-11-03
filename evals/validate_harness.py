@@ -52,7 +52,7 @@ from forecast_engine.config import DEFAULT_CONFIG
 from forecast_engine.core import ForecastFailed, forecast
 from forecast_engine.schema import LlmCall, QuestionSnapshot, ResearchBundle, ResearchItem
 
-from . import replay, report, scoring
+from . import prompt_archive, replay, report, scoring
 from .report_demo import synthetic_rows, write_csv
 
 PASS, FAIL, SKIP, INFO = "PASS", "FAIL", "SKIP", "INFO"
@@ -362,6 +362,19 @@ def check_reproducibility_offline(tmp: Path) -> list[Result]:
         return ok, "replay prompt check (`evals.replay --check`) reproduces a synthetic live record and catches a tampered copy"
 
     out.append(_sub(C1, "replay prompts", prompts))
+
+    def archive():
+        problems = prompt_archive.drift_problems()
+        n = len(prompt_archive.fixture_cases())
+        live = DEFAULT_CONFIG.prompt_version
+        return Result(C1, PASS if not problems else FAIL, (
+            f"prompt archive: the frozen template for the live prompt version {live!r} renders exactly what the live code renders "
+            f"on {n} synthetic questions, the live prompt code matches its archived fingerprint, and "
+            f"{len(prompt_archive.PROMPT_VERSION_BY_CONFIG_VERSION)} config versions map to archived templates (F-13)"
+            if not problems else f"prompt archive: {len(problems)} drift problem(s); old records may stop being checkable"),
+            problems[:10])
+
+    out.append(_sub(C1, "prompt archive", archive))
     return out
 
 
@@ -373,18 +386,14 @@ def check_replay_archive(runs_dir: Path) -> list[Result]:
     recs = replay.live_records(runs_dir)
     if not recs:
         return [Result(C1, SKIP, f"replay prompts: no live records under {runs_dir}")]
-    bad = [p for p, r in recs if not replay.check_record(r)]
+    lines, problems = replay.check_archive(recs, runs_dir)
     refused: list[Path] = []
     for p, r in recs:
         try:
             replay.assert_record_as_of(r)
         except Exception:  # noqa: BLE001 - LeakageError or a malformed date: either way not replayable
             refused.append(p)
-    res = Result(
-        C1, PASS if not bad else FAIL,
-        f"replay prompts: {len(recs) - len(bad)}/{len(recs)} archived live records reproduce their prompts exactly",
-        [f"MISMATCH {_rel(p, runs_dir)}" for p in bad[:20]],
-    )
+    res = Result(C1, PASS if not problems else FAIL, f"replay prompts: {lines[0]}", lines[1:41])
     guard = Result(
         C3, INFO,
         f"replay date guard on the archive: {len(refused)}/{len(recs)} live records would be refused (research dated after "
