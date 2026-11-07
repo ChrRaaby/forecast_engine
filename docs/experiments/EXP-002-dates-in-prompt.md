@@ -109,5 +109,8 @@ Cheap roster, polarity check off in both arms, 88 resolved binary questions (all
 
 ## Decision
 
-2026-11-07: the pre-registered no-harm rule says GO LIVE (Tier 1). Going live (prompts.py, LIVE, CONFIG_VERSION, the cheap
-old-prompt shadow) is a separate PR that needs Christian's explicit OK. Not live yet.
+2026-11-07: the pre-registered no-harm rule says GO LIVE (Tier 1). **Live from 2026-11-07 (Christian's OK)**: prompts.py renders
+the variant's text as live version `dates-yes-live-2026-11-07`, CONFIG_VERSION `frontier-2026-11-07`. Tier 1 shadow: `cheap-old-prompt`
+(cheap roster, previous prompt as variant `template-2026-09-26-old`) runs next to the `cheap` shadow (new prompt) on every
+tournament question. Review at ~150 resolved questions: if the new prompt is clearly worse on that pair (same no-harm test),
+live switches back. The EXP-008 arms and the `cheap` shadow switch to the new prompt with live, so EXP-008 stays paired.

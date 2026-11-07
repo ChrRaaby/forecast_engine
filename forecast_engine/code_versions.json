@@ -18,5 +18,9 @@
   "32b6fe92ca271cca": {
     "label": "code-2026-11-07d",
     "note": "EXP-008 switched on: three research-desk arms added to SHADOW_CONFIGS (unpublished), max 2 follow-up searches per arm, cap $0.15/q (live configs and prompts unchanged)"
+  },
+  "7ca7b7a51efb0530": {
+    "label": "code-2026-11-07e",
+    "note": "EXP-002 LIVE: prompt dates-yes-live-2026-11-07 (CONFIG_VERSION frontier-2026-11-07); old prompt kept as variant template-2026-09-26-old for the cheap-old-prompt shadow"
   }
 }

@@ -19,6 +19,11 @@ V = variant.VERSION
 CASES = {name: (q, items, as_of) for name, q, items, as_of in pa.fixture_cases()}
 
 
+def OLD(q, items, as_of):
+    """The pre-EXP-002 live prompt (archived template-2026-09-26)."""
+    return pa.ARCHIVE["template-2026-09-26"].build(q, items, as_of)
+
+
 # ---------------------------------------------------------------- the variant prompt
 def test_variant_is_registered_archived_and_not_live():
     assert V in prompt_versions.VARIANTS and V in pa.ARCHIVE and V != prompt_versions.LIVE
@@ -28,7 +33,7 @@ def test_variant_is_registered_archived_and_not_live():
 
 def test_dated_binary_prompt_adds_exactly_the_date_line_and_the_yes_wording():
     q, items, as_of = CASES["binary, dated"]
-    live = pa.live_prompt(q, items, as_of)
+    live = OLD(q, items, as_of)
     new = pa.variant_prompt(V, q, items, as_of)
     assert "Today is 2025-03-14.\n        This question is still open. It is scheduled to resolve on 2025-06-30.\n" in new
     assert new.rstrip().endswith('"Probability: ZZ%", 0-100, where ZZ is the probability that this question resolves YES')
@@ -43,7 +48,7 @@ def test_undated_question_gets_no_date_line():
     assert q.scheduled_resolution_time is None
     new = pa.variant_prompt(V, q, items, as_of)
     assert "scheduled to resolve" not in new
-    assert new.replace(", where ZZ is the probability that this question resolves YES", "") == pa.live_prompt(q, items, as_of)
+    assert new.replace(", where ZZ is the probability that this question resolves YES", "") == OLD(q, items, as_of)
 
 
 def test_mc_and_numeric_get_only_the_date_line():
@@ -52,7 +57,7 @@ def test_mc_and_numeric_get_only_the_date_line():
         new = pa.variant_prompt(V, q, items, as_of)
         line = f"\n        This question is still open. It is scheduled to resolve on {q.scheduled_resolution_time:%Y-%m-%d}."
         assert line in new and "resolves YES" not in new
-        assert new.replace(line, "") == pa.live_prompt(q, items, as_of)
+        assert new.replace(line, "") == OLD(q, items, as_of)
 
 
 def test_variant_answers_still_parse():
@@ -63,9 +68,24 @@ def test_variant_answers_still_parse():
         assert abs(parsing.parse_binary(text, DEFAULT_CONFIG.binary_clip) - 0.37) < 1e-9
 
 
-def test_live_prompt_module_is_untouched_by_the_variant():
+def test_go_live_live_prompt_is_the_variant_and_old_prompt_is_kept():
+    """EXP-002 went live 2026-11-07: the live prompt renders the variant's text; the old prompt lives on as a variant."""
+    assert prompt_versions.LIVE == "dates-yes-live-2026-11-07"
+    for name, (q, items, as_of) in CASES.items():
+        assert pa.live_prompt(q, items, as_of) == pa.variant_prompt(V, q, items, as_of), name
+        assert pa.variant_prompt("template-2026-09-26-old", q, items, as_of) == OLD(q, items, as_of), name
     q, items, as_of = CASES["binary, dated"]
-    assert "scheduled to resolve" not in live_prompts.forecast_prompt(q, "r", "2025-03-14")
+    assert "scheduled to resolve" in live_prompts.forecast_prompt(q, "r", "2025-03-14")
+
+
+def test_old_prompt_shadow_pairs_with_cheap():
+    from dataclasses import replace
+
+    from forecast_engine.config import SHADOW_CONFIGS
+
+    old = SHADOW_CONFIGS["cheap-old-prompt"]
+    assert old.prompt_version == "template-2026-09-26-old"
+    assert replace(old, prompt_version=prompt_versions.LIVE) == SHADOW_CONFIGS["cheap"] == DEFAULT_CONFIG
 
 
 # ---------------------------------------------------------------- tools/run_exp002_replay.py with a fake LLM
@@ -97,13 +117,25 @@ class RandomLlm:
 AS_OF = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
 
 
+def _old_record(qid):
+    """A live record as the bot made it before the EXP-002 go-live: old prompt, CONFIG_VERSION frontier-2026-10-08."""
+    import pytest
+
+    from forecast_engine import core
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(core, "forecast_prompt", pa.ARCHIVE["template-2026-09-26"].module.forecast_prompt)
+        mp.setattr(core, "CONFIG_VERSION", "frontier-2026-10-08")
+        return vh.synthetic_record("binary", AS_OF, qid)
+
+
 def _archive(tmp_path, n=10):
     runs, outcomes = tmp_path / "runs" / "1" / "20261005T120000Z-tournament", []
     runs.mkdir(parents=True)
     for i in range(n):
         qid = 60_000 + i
-        rec = vh.synthetic_record("binary", AS_OF, qid)
-        if i % 2 == 0:  # the live prompt ignores this date, so the stored record still passes the integrity check
+        rec = _old_record(qid)
+        if i % 2 == 0:  # the old prompt ignores this date, so the stored record still passes the integrity check
             rec["question"]["scheduled_resolution_time"] = "2026-12-31T23:00:00+00:00"
         if i == 1:  # research dated after as_of: refused by the replay guard
             rec["research"]["items"][0]["published_at"] = (AS_OF + timedelta(days=1)).isoformat()
@@ -128,7 +160,7 @@ def _run(tool, tmp_path, argv, llm):
 
 def test_arms_differ_only_by_prompt_version():
     cfgs = _tool().arm_configs("frontier")
-    assert cfgs["A"].prompt_version == prompt_versions.LIVE and cfgs["B"].prompt_version == V
+    assert cfgs["A"].prompt_version == "template-2026-09-26-old" and cfgs["B"].prompt_version == V
     assert cfgs["A"].polarity_check_model is None and cfgs["B"].polarity_check_model is None
     from dataclasses import replace
 
