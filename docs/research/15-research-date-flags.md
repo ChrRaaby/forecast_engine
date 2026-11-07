@@ -64,3 +64,16 @@ Observational screen, suggestive only (flagged questions differ in topic and new
 
 Disclosure: before this rule was written, I had already run a first draft of the screen on **Brier score** (not peer score) and seen
 n_flagged = 7, CI spanning 0 either way. That draft is discarded; it did not set the gate or the metric.
+
+### Baseline (2026-11-07, run after the rule above)
+
+Official peer score of our forecast, flagged (>= 1 `weekday_mismatch`) minus unflagged, 95% bootstrap CI:
+
+| Set | Scored n | Flagged | Mean peer flagged / unflagged | Difference (95% CI) |
+|---|---|---|---|---|
+| Binary | 88 | 7 | -0.5 / -0.4 | -0.2 (-9.4 to +9.1) |
+| All types | 180 | 17 | +6.5 / +1.0 | +5.5 (-2.1 to +14.4) |
+
+Gate: not reached (88 of 150 scored binary questions). **Inconclusive, as expected**: 7 flagged binary questions cannot detect anything
+short of a huge effect; the all-types point estimate even favours flagged questions. Certainty: low (observational, tiny flagged n,
+one tournament season, flagged questions differ in topic). Nothing here supports or rules out harm.
