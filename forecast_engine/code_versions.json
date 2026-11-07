@@ -14,5 +14,9 @@
   "371393578b7e87a2": {
     "label": "code-2026-11-07c",
     "note": "EXP-002 (B-09b): prompt variant dates-yes-2026-11-07 registered for replay/shadow arms, on top of the B-77 search guard (live prompt and configs unchanged)"
+  },
+  "5e60a9b3ea8c04b4": {
+    "label": "code-2026-11-07d",
+    "note": "B-51a: research date flags stored in records (prompt and forecasts unchanged)"
   }
 }

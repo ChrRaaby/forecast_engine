@@ -23,3 +23,4 @@ One file per research question, named `<topic>.md`. Suggested structure:
 - `14-exp008-decisions.md`: EXP-008 decisions (F-14): cost settings and Google's free tier, roster, analysis point and power,
   kill threshold, season-cap counting, control-arm matching; options and recommendations, decisions still open (2026-11-01).
   Cost model: `tools/exp008_cost.py`
+- `15-research-date-flags.md`: research date flags (B-51a) and the first count on stored records (2026-11-07).
