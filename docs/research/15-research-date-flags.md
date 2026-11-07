@@ -50,3 +50,17 @@ By config_version, flagged records: frontier-2026-10-08 154 of 458; m1-baseline-
 - Big-miss overlap (B-72): the weekly miss-review list lives in the private data repo, which is not in this checkout, so I did not
   scan it. Checking the question ids named in the backlog (46133, 46134, 46382, 46139, 46083, 46076): only 46382 has any flag,
   and those are the historical-fiscal-year false positives above. This covers only the ids quoted in the backlog, not the full list.
+
+## Outcome screen: pre-registered rule (written 2026-11-07 before the peer-score baseline was run)
+
+Tool: `tools/research_flag_outcomes.py` (offline, $0, read-only; last outcome row per question; official Metaculus peer score of our
+forecast; flagged = at least one `weekday_mismatch` in the earliest record's research; bootstrap 95% CI of flagged minus unflagged
+mean peer score; binary alone and all types together).
+
+**Gate:** at >= 150 scored binary questions, the weekly routine runs `tools/research_flag_outcomes.py` once. If the CI upper bound
+for (flagged - unflagged) mean peer score on binary questions is below 0, propose B-51b as one more arm (show the real article
+publish date in the prompt) in the ~150-question multi-arm replay run under the PROTOCOL. Otherwise close B-51b as not worth it.
+Observational screen, suggestive only (flagged questions differ in topic and news volume).
+
+Disclosure: before this rule was written, I had already run a first draft of the screen on **Brier score** (not peer score) and seen
+n_flagged = 7, CI spanning 0 either way. That draft is discarded; it did not set the gate or the metric.
