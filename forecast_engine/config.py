@@ -126,18 +126,20 @@ TOURNAMENT_CONFIG = replace(
 # tournament questions fall back to DEFAULT_CONFIG instead of going silent.
 TOURNAMENT_SEASON = "fall-2026"
 TOURNAMENT_SEASON_CAP_USD = 300.0
-# Shadow-run mode (B-62): configs run unpublished on every tournament question with the live question's research, stored as
-# separate records and scored as they resolve. The cheap ensemble gives the paired live comparison ADR-0009 asks for; experiments
-# (EXP-005, EXP-008) add their arm here. Shadow failures never affect the live forecast.
-SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG}
-# EXP-008 research desk (B-64, card v2 DRAFT): ready-made shadow arms, NOT run until Christian approves the card. Each is the cheap
-# ensemble with a research follow-up step on top of the live question's research; arm A (baseline) is the "cheap" shadow above.
-# Switching the experiment on is this one-line change to SHADOW_CONFIGS above:
-#     SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, **EXP008_ARMS}
+# EXP-008 research desk (B-64, card v2, pre-registered at switch-on): shadow arms, each the cheap ensemble with a research
+# follow-up step on top of the live question's research; arm A (baseline) is the "cheap" shadow below. Cost setting (Christian,
+# 2026-11-07, after the B-70 pilot): at most 2 follow-up searches per arm, grounding fee counted at list price, cap $0.15/q.
+EXP008_FOLLOWUP = {"max_gaps": 2, "max_cost_usd_per_q": 0.15}
 EXP008_ARMS: dict[str, BotConfig] = {
-    f"exp008-{arm}": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, followup=FollowupConfig(critic_mode=mode)))
+    f"exp008-{arm}": replace(DEFAULT_CONFIG, research=replace(
+        DEFAULT_CONFIG.research, followup=FollowupConfig(critic_mode=mode, **EXP008_FOLLOWUP)))
     for arm, mode in (("b-gaps", "gaps"), ("c-against", "against"), ("d-control", "control"))
 }
+# Shadow-run mode (B-62): configs run unpublished on every tournament question with the live question's research, stored as
+# separate records and scored as they resolve. The cheap ensemble gives the paired live comparison ADR-0009 asks for; experiments
+# (EXP-005, EXP-008) add their arm here. Shadow failures never affect the live forecast. EXP-008 switched on here (Christian's
+# OK, 2026-11-07); to stop it, remove **EXP008_ARMS.
+SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, **EXP008_ARMS}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
