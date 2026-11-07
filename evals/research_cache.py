@@ -72,7 +72,8 @@ def bundle_from_dict(d: dict) -> ResearchBundle:
         calls.append(LlmCall(**c))
     items = [ResearchItem(**{**i, "published_at": _dt(i.get("published_at"))}) for i in d["items"]]
     return ResearchBundle(as_of=_dt(d["as_of"]), providers=list(d["providers"]), items=items, calls=calls,
-                          errors=list(d.get("errors", [])))
+                          errors=list(d.get("errors", [])),
+                          quality_flags=list(d.get("quality_flags", [])))
 
 
 def _write_once(path: Path, text: str) -> bool:

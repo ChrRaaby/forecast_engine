@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-from . import guards, parsing, polarity, prompt_versions
+from . import guards, parsing, polarity, prompt_versions, research_checks
 from .clock import Clock, today_str
 from .config import CONFIG_VERSION, BotConfig
 from .llm import LlmClient
@@ -32,6 +32,7 @@ async def forecast(
     # B-75(2): the config's prompt_version picks the prompt. The live version is built by prompts.py (unchanged); any other must be
     # a registered experimental variant, or it is refused here, before any model call.
     build = forecast_prompt if cfg.prompt_version == prompt_versions.LIVE else prompt_versions.variant_builder(cfg.prompt_version)
+    research.quality_flags = research_checks.check_bundle(research)  # B-51a: stored only; the prompt text is unchanged
     prompt = build(q, research.as_prompt_text(), today_str(clock))
     calls = await asyncio.gather(
         *[llm.complete(
