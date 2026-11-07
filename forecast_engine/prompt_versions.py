@@ -19,12 +19,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from types import ModuleType
 
+from .prompt_variants import dates_yes_2026_11_07
 from .schema import QuestionSnapshot
 
 LIVE = "template-2026-09-26"  # what forecast_engine/prompts.py renders; prompts ported from metac-bot-template c16d91f
 
 # prompt version -> module with forecast_prompt(q, research, today). Append only (records name these versions).
-VARIANTS: dict[str, ModuleType] = {}
+VARIANTS: dict[str, ModuleType] = {
+    dates_yes_2026_11_07.VERSION: dates_yes_2026_11_07,  # EXP-002 (B-09b): scheduled resolution date + "resolves YES" wording
+}
 
 PromptBuilder = Callable[[QuestionSnapshot, str, str], str]
 

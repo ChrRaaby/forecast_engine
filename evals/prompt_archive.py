@@ -51,6 +51,7 @@ from forecast_engine import prompt_versions as _versions
 from forecast_engine import prompts as _prompts
 from forecast_engine.schema import QuestionSnapshot, ResearchBundle, ResearchItem
 
+from . import frozen_prompts_dates_yes_2026_11_07 as _dates_yes_2026_11_07
 from . import frozen_prompts_template_2026_09_26 as _t2026_09_26
 
 
@@ -70,6 +71,12 @@ ARCHIVE: dict[str, ArchivedTemplate] = {t.version: t for t in (
         "template-2026-09-26", _t2026_09_26,
         file_sha256="e79eb2be55c1a48772c5f4fd854eda498f43b6bad3981fb62cf16bd7e4443c9c",
         live_sha256="52f6832b910b6662bc4fff9d7eeca5a077630d1eed478e3eb92226bc58e7325e",
+    ),
+    # EXP-002 (B-09b) experimental variant: replay/shadow arms only. live_sha256 is its variant_fingerprint().
+    ArchivedTemplate(
+        "dates-yes-2026-11-07", _dates_yes_2026_11_07,
+        file_sha256="1dc5076f25285b60d00fa3564ba930bd77d0effeb88d6aae77f66950c311aa7b",
+        live_sha256="aac8a01a76a0cf126297fa202653ae49e5182dcbe09656279373e074d3839467",
     ),
 )}
 
@@ -200,6 +207,19 @@ def fixture_cases() -> list[tuple[str, QuestionSnapshot, list[ResearchItem], dat
         ("discrete", QuestionSnapshot(question_id=7, question_type="discrete", question_text="How many times?",
                                       unit_of_measure="events", lower_bound=0, upper_bound=20, open_upper_bound=True,
                                       **base), items[1:], as_of),
+        # dated questions (EXP-002's variant renders the scheduled resolution date; the live prompt ignores it)
+        ("binary, dated", QuestionSnapshot(question_id=8, question_type="binary", question_text="Will the dated event happen?",
+                                           open_time=datetime(2025, 3, 1, tzinfo=utc),
+                                           scheduled_resolution_time=datetime(2025, 6, 30, 23, 59, tzinfo=utc), **base),
+         items, as_of),
+        ("multiple choice, dated", QuestionSnapshot(question_id=9, question_type="multiple_choice", question_text="Which one?",
+                                                    options=("A", "B"),
+                                                    scheduled_resolution_time=datetime(2025, 4, 1, tzinfo=utc), **base),
+         items, late),
+        ("numeric, dated", QuestionSnapshot(question_id=10, question_type="numeric", question_text="How much?",
+                                            unit_of_measure="units", lower_bound=0.0, upper_bound=50.0,
+                                            scheduled_resolution_time=datetime(2025, 12, 31, tzinfo=utc), **base),
+         items[:1], as_of),
     ]
 
 
