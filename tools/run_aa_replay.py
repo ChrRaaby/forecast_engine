@@ -193,14 +193,14 @@ def write_table(rows: list[dict[str, Any]], path: Path) -> None:
         w.writerows(rows)
 
 
-def append_ledger(run: str, calls: int, spent: float, note: str, ledger: Path = LEDGER) -> None:
+def append_ledger(run: str, calls: int, spent: float, note: str, ledger: Path = LEDGER, experiment: str = "B-32") -> None:
     """Same table as tools/run_structured_pilot.py writes (the ledger counts every paid experiment run)."""
     if not ledger.exists():
         return
     rows = [ln for ln in ledger.read_text(encoding="utf-8").splitlines() if ln.startswith("| 20")]
     cum = sum(float(ln.split("|")[6].strip().lstrip("$")) for ln in rows) + spent
     with ledger.open("a", encoding="utf-8") as f:
-        f.write(f"| {run[:4]}-{run[4:6]}-{run[6:8]} | B-32 | {run} | {note} | {calls} | ${spent:.3f} | ${cum:.3f} | ${180 - cum:.2f} |\n")
+        f.write(f"| {run[:4]}-{run[4:6]}-{run[6:8]} | {experiment} | {run} | {note} | {calls} | ${spent:.3f} | ${cum:.3f} | ${180 - cum:.2f} |\n")
 
 
 def run(args, llm=None, *, runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES, out_root: Path = OUT,

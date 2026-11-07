@@ -637,7 +637,14 @@ EXP005_RULE = DecisionRule(
     kill_if_ci_upper_below=0.015,
     on_conflict="kill",
 )
-RULES = {"exp005": EXP005_RULE}
+# EXP-002 card as amended 2026-11-07, before any run: the protocol's default rule (adopt: CI excludes 0, reliability and failure
+# rate not worse beyond the defaults; kill: CI upper end below the same fixed 0.015 nats as EXP-005; adopt-and-kill conflict → kill).
+EXP002_RULE = DecisionRule(
+    name="EXP-002 rule (card amended 2026-11-07)",
+    kill_if_ci_upper_below=0.015,
+    on_conflict="kill",
+)
+RULES = {"exp005": EXP005_RULE, "exp002": EXP002_RULE}
 
 
 @dataclass

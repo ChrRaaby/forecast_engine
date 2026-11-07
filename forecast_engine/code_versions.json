@@ -6,5 +6,9 @@
   "def31abc09091e6d": {
     "label": "code-2026-11-07",
     "note": "B-75(2): prompt_version picks the forecast prompt (live prompt unchanged; no variants registered)"
+  },
+  "80d4c9c85e5d64ba": {
+    "label": "code-2026-11-07b",
+    "note": "EXP-002 (B-09b): prompt variant dates-yes-2026-11-07 registered for replay/shadow arms (live prompt and configs unchanged)"
   }
 }
