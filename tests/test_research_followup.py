@@ -9,7 +9,7 @@ import pytest
 import main
 from evals.replay import assert_record_intact, check_record, replay_record
 from forecast_engine import research_followup as rf
-from forecast_engine.clock import FixedClock
+from forecast_engine.clock import FixedClock, SystemClock
 from forecast_engine.config import (
     CONFIG_VERSION,
     DEFAULT_CONFIG,
@@ -274,8 +274,34 @@ def test_unexpected_error_keeps_the_original_items(monkeypatch):
 def test_no_gemini_key_skips_without_calling_the_critic(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     llm = FakeLlm([_gaps("a gap")])
-    out = asyncio.run(rf.followup(Q, _bundle(), FixedClock(AS_OF), _cfg(), llm))
+    out = asyncio.run(rf.followup(Q, _bundle(), FixedClock(AS_OF), _cfg(), llm, allow_live_search_in_replay=True))
     assert llm.calls == [] and any("GEMINI_API_KEY not set" in e for e in out.errors)
+
+
+# --- B-77: no live searches under a clock earlier than today ----------------------------------------------------------------
+
+def test_replay_refuses_live_search_unless_allowed(monkeypatch):
+    """A frozen clock in the past + the real Gemini search: refused before any call, reason in the bundle's errors."""
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic")
+    called = []
+
+    monkeypatch.setattr(rf, "_post_gemini", lambda model, prompt: called.append(prompt) or {})
+    llm = FakeLlm([_gaps("a gap")])
+    b = _bundle()
+    out = asyncio.run(rf.followup(Q, b, FixedClock(AS_OF), _cfg(), llm))
+    assert llm.calls == [] and called == []
+    assert out.items == b.items and out.calls == b.calls
+    assert any("future leak" in e and "allow_live_search_in_replay" in e for e in out.errors)
+    # the explicit flag lets it through
+    asyncio.run(rf.followup(Q, b, FixedClock(AS_OF), _cfg(), llm, allow_live_search_in_replay=True))
+    assert len(called) == 1 and len(llm.calls) == 1
+
+
+def test_replay_guard_leaves_fake_search_and_live_clock_alone():
+    """An injected search is not refused in replay; the system clock (live) is never treated as a replay."""
+    assert rf.is_replay(FixedClock(AS_OF)) and not rf.is_replay(SystemClock())
+    out = _run(_cfg(max_cost_usd_per_q=1.0), FakeLlm([_gaps("a gap")]), FakeSearch())
+    assert any((i.title or '').startswith("Follow-up search 1") for i in out.items) and not out.errors
 
 
 def test_forecast_on_the_enlarged_bundle_sees_the_section():

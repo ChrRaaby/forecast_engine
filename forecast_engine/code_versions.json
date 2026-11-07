@@ -7,8 +7,12 @@
     "label": "code-2026-11-07",
     "note": "B-75(2): prompt_version picks the forecast prompt (live prompt unchanged; no variants registered)"
   },
-  "80d4c9c85e5d64ba": {
+  "9bec388831a20049": {
     "label": "code-2026-11-07b",
-    "note": "EXP-002 (B-09b): prompt variant dates-yes-2026-11-07 registered for replay/shadow arms (live prompt and configs unchanged)"
+    "note": "B-77: follow-up research refuses live Gemini search under a clock earlier than today unless allowed (no live-bot change)"
+  },
+  "371393578b7e87a2": {
+    "label": "code-2026-11-07c",
+    "note": "EXP-002 (B-09b): prompt variant dates-yes-2026-11-07 registered for replay/shadow arms, on top of the B-77 search guard (live prompt and configs unchanged)"
   }
 }
