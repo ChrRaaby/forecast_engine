@@ -39,7 +39,8 @@ UNREGISTERED_FLAG = "version_unregistered"  # on every record of a run whose cod
 # Everything that can change what is forecast or submitted: the whole engine package, the live adapter (question conversion,
 # CDF building, comment), its helpers, and the locked library versions. Fingerprinted by their exact text with LF line endings, so
 # it is the same on every OS and Python version. Strict on purpose: even a comment edit needs a registered fingerprint.
-CODE_FILES: tuple[str, ...] = ("forecast_engine/*.py", "main.py", "bot_helpers.py", "poetry.lock")
+CODE_FILES: tuple[str, ...] = ("forecast_engine/*.py", "forecast_engine/prompt_variants/*.py", "main.py", "bot_helpers.py",
+                              "poetry.lock")
 LIBRARIES: tuple[str, ...] = ("forecasting-tools", "openai", "asknews", "requests")
 
 # code fingerprint -> {"label", "note"}. Kept in a JSON file outside CODE_FILES, so registering a fingerprint doesn't change it.

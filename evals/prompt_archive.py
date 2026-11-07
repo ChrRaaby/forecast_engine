@@ -10,11 +10,11 @@ Two different prompts in a replay, never mixed up:
 - NEW FORECAST (`evals.replay.replay_record` -> `forecast_engine.core.forecast`): an experiment re-forecasts the stored question
   with today's code. Nothing here is ever sent to a model.
 
-How a record's prompt version is found. Records don't store `BotConfig.prompt_version`; they store `config_version` (the
-`CONFIG_VERSION` the code had) and `config_hash`. `forecast()` builds every config's prompt from the one `prompts.py`, whatever
-`cfg.prompt_version` says, so the template is fixed by the code version, and `config.py` already requires a `CONFIG_VERSION`
-bump for any change that alters forecasts. `PROMPT_VERSION_BY_CONFIG_VERSION` maps one to the other. A config version or prompt
-version not in the tables is refused (never rebuilt with the current code, never guessed from a date).
+How a record's prompt version is found. Records from 2026-11-03 on store it (`prompt_version`, B-75(1)), and since B-75(2)
+(2026-11-07) `forecast()` builds the prompt that `cfg.prompt_version` names: the live prompt (prompts.py) or a registered
+experimental variant (`forecast_engine/prompt_versions.py`). Older records don't store it; they were all built from prompts.py,
+so their template follows from their `config_version` via `PROMPT_VERSION_BY_CONFIG_VERSION`. A config version or prompt version
+not in the tables is refused (never rebuilt with the current code, never guessed from a date).
 
 The drift guard (`drift_problems()`, run by the tests, `evals.replay --check` and `evals.validate_harness`) keeps the archive
 honest: the archived template for the live prompt version must render exactly what the live code renders; the live prompt code
@@ -27,6 +27,9 @@ Changing the live prompt (e.g. EXP-002 going live), in one commit:
   3. add it to ARCHIVE below with its file hash and `live_fingerprint()`, and add the new CONFIG_VERSION to
      PROMPT_VERSION_BY_CONFIG_VERSION. Never change or remove an existing line: older records still need it.
 `poetry run pytest tests/test_prompt_archive.py` prints the hashes to paste when they don't match.
+
+Experimental variants (B-75(2)) are archived the same way: a frozen copy here whose `live_sha256` is `variant_fingerprint()`;
+the guard checks each one renders what its variant module renders, and that published configs never use a variant.
 
 Follow-up research (B-17, `FollowupConfig.prompt_version`) needs no entry: the critic and search prompts are not part of the
 forecast prompt; what they found is stored in the record as research items, and the check rebuilds from those stored items.
@@ -44,6 +47,7 @@ from typing import Any
 
 from forecast_engine import clock as _clock
 from forecast_engine import config as _config
+from forecast_engine import prompt_versions as _versions
 from forecast_engine import prompts as _prompts
 from forecast_engine.schema import QuestionSnapshot, ResearchBundle, ResearchItem
 
@@ -136,6 +140,25 @@ def live_prompt(q: QuestionSnapshot, items: Sequence[ResearchItem], as_of: datet
     return _prompts.forecast_prompt(q, bundle.as_prompt_text(), _clock.today_str(_clock.FixedClock(as_of)))
 
 
+def variant_sources(version: str) -> list[str]:
+    """The code that shapes an experimental variant's text: its own module plus everything the live prompt depends on (a variant
+    may reuse prompts.py helpers, so a change there can change the variant too)."""
+    return [Path(_versions.VARIANTS[version].__file__).read_text(encoding="utf-8"), *live_prompt_sources()]
+
+
+def variant_fingerprint(version: str) -> str:
+    return _sha("\n\0\n".join(_lf(s) for s in variant_sources(version)))
+
+
+def variant_prompt(version: str, q: QuestionSnapshot, items: Sequence[ResearchItem], as_of: datetime) -> str:
+    """What forecast() sends for a config whose prompt_version names this variant."""
+    bundle = ResearchBundle(as_of=as_of, providers=[], items=list(items), calls=[])
+    return _versions.variant_builder(version)(q, bundle.as_prompt_text(), _clock.today_str(_clock.FixedClock(as_of)))
+
+
+PUBLISHED_CONFIGS = ("DEFAULT_CONFIG", "TOURNAMENT_CONFIG", "WIDE_CONFIG")  # these post to Metaculus: always the live prompt
+
+
 def live_configs() -> dict[str, _config.BotConfig]:
     out = {"DEFAULT_CONFIG": _config.DEFAULT_CONFIG, "TOURNAMENT_CONFIG": _config.TOURNAMENT_CONFIG,
            "WIDE_CONFIG": _config.WIDE_CONFIG}
@@ -184,11 +207,37 @@ def drift_problems() -> list[str]:
     """Everything that would let the archive and the live prompt drift apart; empty when all is well. Never prints prompts."""
     problems: list[str] = []
     current = _config.DEFAULT_CONFIG.prompt_version
+    if current != _versions.LIVE:
+        problems.append(f"DEFAULT_CONFIG.prompt_version is {current!r} but prompts.py renders {_versions.LIVE!r} "
+                        "(forecast_engine/prompt_versions.LIVE): a live prompt change bumps both together")
     for name, cfg in live_configs().items():
-        if cfg.prompt_version != current:
-            problems.append(
-                f"{name}.prompt_version is {cfg.prompt_version!r}, DEFAULT_CONFIG's is {current!r}; forecast() builds every "
-                "config's prompt from the one prompts.py, so records can't tell them apart (record the prompt version first)")
+        if name in PUBLISHED_CONFIGS and cfg.prompt_version != _versions.LIVE:
+            problems.append(f"{name}.prompt_version is {cfg.prompt_version!r}, but a published config must use the live prompt "
+                            f"{_versions.LIVE!r}; an experimental prompt runs only in a replay or shadow arm")
+        elif cfg.prompt_version not in _versions.known_versions():
+            problems.append(f"{name}.prompt_version is {cfg.prompt_version!r}, which is neither the live prompt nor a registered "
+                            "variant (forecast_engine/prompt_versions.VARIANTS)")
+    for version in _versions.VARIANTS:
+        if version == _versions.LIVE:
+            problems.append(f"variant {version!r} has the live prompt's version")
+            continue
+        if version not in ARCHIVE:
+            problems.append(f"variant {version!r} has no frozen template in the archive (add one; variant_fingerprint() = "
+                            f"{variant_fingerprint(version)})")
+            continue
+        t = ARCHIVE[version]
+        fp = variant_fingerprint(version)
+        if fp != t.live_sha256:
+            problems.append(f"the code of variant {version!r} (its module or the prompts.py code it builds on) changed: a changed "
+                            f"variant is a new version in a new module (fingerprint now {fp}, archived {t.live_sha256})")
+        for name, q, items, as_of in fixture_cases():
+            try:
+                same = t.build(q, items, as_of) == variant_prompt(version, q, items, as_of)
+            except Exception as e:  # noqa: BLE001 - a crash is drift too
+                problems.append(f"variant {version!r}, {name}: crashed ({type(e).__name__}: {e})")
+                continue
+            if not same:
+                problems.append(f"variant {version!r}, {name}: the archived template doesn't render what the variant renders")
     for config_version, version in PROMPT_VERSION_BY_CONFIG_VERSION.items():
         if version not in ARCHIVE:
             problems.append(f"config_version {config_version!r} maps to {version!r}, which has no frozen template")

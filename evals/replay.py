@@ -150,8 +150,8 @@ async def replay_record(record: dict[str, Any], cfg: BotConfig, llm: LlmClient) 
     call) a record whose research is dated after its as_of, or (TamperedRecord) whose inputs changed since the live forecast.
 
     The integrity check uses the record's own (archived) prompt template; the new forecast is built by today's code
-    (`forecast_engine.core.forecast`), so a record made before a prompt change is re-forecast with the new prompt. Note that
-    forecast() builds the prompt from prompts.py, whatever `cfg.prompt_version` says."""
+    (`forecast_engine.core.forecast`) with the prompt `cfg.prompt_version` names (B-75(2)): the live prompt, or an experimental
+    variant from forecast_engine/prompt_versions.py, so a prompt experiment replays on frozen research before it goes live."""
     assert_record_as_of(record)
     assert_record_intact(record)
     q, clock, bundle = inputs_from_record(record)

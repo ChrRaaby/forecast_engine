@@ -76,6 +76,9 @@
 - Record provenance (ADR-0011): any change to `forecast_engine/*.py`, `main.py`, `bot_helpers.py` or `poetry.lock` changes the code
   fingerprint; `tests/test_provenance.py` then fails and prints the line to append to `forecast_engine/code_versions.json`
   (append only). Forecast-altering changes also bump `CONFIG_VERSION`. A polarity-prompt edit needs a new `POLARITY_PROMPT_VERSION`.
+- Prompt experiments (ADR-0012): a new prompt is a variant module in `forecast_engine/prompt_variants/`, registered in
+  `forecast_engine/prompt_versions.py` and archived in `evals/prompt_archive.py`; only shadow/replay arms may name it. Published configs
+  always use the live prompt (`prompts.py`, `prompt_versions.LIVE`).
 
 ## Don'ts
 - Don't commit secrets, credentials, or real/sensitive data. Use synthetic or public sample data.
