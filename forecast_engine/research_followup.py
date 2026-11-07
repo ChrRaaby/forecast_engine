@@ -24,7 +24,7 @@ import time
 from dataclasses import replace
 from typing import Awaitable, Callable
 
-from .clock import Clock, today_str
+from .clock import Clock, SystemClock, today_str
 from .config import FollowupConfig, ResearchConfig
 from .llm import LlmClient
 from .research import _post_gemini
@@ -93,8 +93,16 @@ CONTROL_QUERIES = (
 Search = Callable[[str, str], Awaitable[dict]]  # (gemini model, prompt) -> raw generateContent response
 
 
+def is_replay(clock: Clock) -> bool:
+    """True if the clock's day is earlier than the real day (a frozen as-of clock, B-77). Live runs use the system clock."""
+    return today_str(clock) < today_str(SystemClock())
+
+
 async def _gemini_search(model: str, prompt: str) -> dict:
     return await asyncio.to_thread(_post_gemini, model, prompt)
+
+
+_REAL_SEARCH = _gemini_search  # the unpatched live search; tests that replace `_gemini_search` with a fake are not refused
 
 
 def critic_prompt(q: QuestionSnapshot, brief: str, today: str, mode: str, max_gaps: int) -> str:
@@ -133,15 +141,25 @@ async def followup(
     cfg: ResearchConfig,
     llm: LlmClient,
     search: Search | None = None,
+    allow_live_search_in_replay: bool = False,
 ) -> ResearchBundle:
-    """A copy of `bundle` with the follow-up section and calls added. `bundle` itself is never modified."""
+    """A copy of `bundle` with the follow-up section and calls added. `bundle` itself is never modified.
+
+    B-77: a real Gemini grounded search sees today's web whatever the clock says, so under a clock earlier than today (an offline
+    re-run) it could return the outcome. Such a run is refused, with the reason in the bundle's errors, unless
+    `allow_live_search_in_replay` is set. An injected `search` (tests, recorded answers) is never refused."""
     out = replace(bundle, providers=list(bundle.providers), items=list(bundle.items), calls=list(bundle.calls),
                   errors=list(bundle.errors))
     fcfg = cfg.followup
     if fcfg is None:
         return out
+    search = search or _gemini_search
+    if search is _REAL_SEARCH and not allow_live_search_in_replay and is_replay(clock):
+        out.errors.append(f"{SOURCE} skipped: clock {today_str(clock)} is earlier than today ({today_str(SystemClock())}); live "
+                          "grounded search would see today's web (future leak). Pass allow_live_search_in_replay to override")
+        return out
     try:
-        await _run(q, out, clock, cfg, fcfg, llm, search or _gemini_search)
+        await _run(q, out, clock, cfg, fcfg, llm, search)
     except Exception as e:  # never fail the forecast: drop what was added, keep the paid calls and the error
         out.items = list(bundle.items)
         out.providers = list(bundle.providers)
