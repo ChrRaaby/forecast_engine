@@ -92,5 +92,22 @@ _Card written BEFORE running. Results section filled by the report generator._
 - **Decision rule:** adopt if the paired CI on the primary metric excludes 0 in favour of the change and calibration doesn't worsen;
   inconclusive → keep the simpler prompt (protocol §6). Also check T5: the leakage test must allow exactly these dates and no others.
 
-## Results (generated)
+## Results (v2.1 screen, 2026-11-07, run 20261107T225241Z-screen on the PC)
+
+Cheap roster, polarity check off in both arms, 88 resolved binary questions (all with a scheduled resolution date), 1,056 calls,
+**$1.446** (ledger). Full report: data repo `experiments/EXP-002/20261107T225241Z-screen/report.md`.
+
+- **Score:** B − A log score +0.0083 nats in favour of B, 95% CI [−0.0114, +0.0299], N 88: no detectable difference (CI includes
+  0). Not clearly worse.
+- **Fix metric (polarity audit):** wrong-sided member answers A 4/264 (all NO) → B **0/264**. Small numbers, but in the direction
+  the fix predicts.
+- **Calibration:** reliability B 0.0334 vs A 0.0293 (+0.0041, inside the 0.005 margin, close to it: watch it on live data).
+- **Failures:** 0.0% in both arms.
+- **No-harm check: all 4 conditions met → VERDICT: GO LIVE as Tier 1.**
+- **Certainty:** moderate for "the YES wording removes wrong-sided answers" (4 → 0, cheap roster); low for anything about score
+  (CI ±0.02 nats); nothing yet about Roster A, which this run did not use.
+
 ## Decision
+
+2026-11-07: the pre-registered no-harm rule says GO LIVE (Tier 1). Going live (prompts.py, LIVE, CONFIG_VERSION, the cheap
+old-prompt shadow) is a separate PR that needs Christian's explicit OK. Not live yet.

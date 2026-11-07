@@ -194,13 +194,19 @@ def write_table(rows: list[dict[str, Any]], path: Path) -> None:
 
 
 def append_ledger(run: str, calls: int, spent: float, note: str, ledger: Path = LEDGER, experiment: str = "B-32") -> None:
-    """Same table as tools/run_structured_pilot.py writes (the ledger counts every paid experiment run)."""
+    """Same table as tools/run_structured_pilot.py writes (the ledger counts every paid experiment run). Only the first table (the
+    $180 frontier budget) is read and extended: the new row goes right after its last row, never into a later section (e.g. the
+    EXP-008 table, whose cells hold "~$" estimates)."""
     if not ledger.exists():
         return
-    rows = [ln for ln in ledger.read_text(encoding="utf-8").splitlines() if ln.startswith("| 20")]
-    cum = sum(float(ln.split("|")[6].strip().lstrip("$")) for ln in rows) + spent
-    with ledger.open("a", encoding="utf-8") as f:
-        f.write(f"| {run[:4]}-{run[4:6]}-{run[6:8]} | {experiment} | {run} | {note} | {calls} | ${spent:.3f} | ${cum:.3f} | ${180 - cum:.2f} |\n")
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    end = next((i for i, ln in enumerate(lines) if i > 0 and ln.startswith("## ")), len(lines))
+    main = [i for i in range(end) if lines[i].startswith("| 20")]
+    cum = sum(float(lines[i].split("|")[6].strip().lstrip("$")) for i in main) + spent
+    row = f"| {run[:4]}-{run[4:6]}-{run[6:8]} | {experiment} | {run} | {note} | {calls} | ${spent:.3f} | ${cum:.3f} | ${180 - cum:.2f} |"
+    at = (main[-1] + 1) if main else end
+    lines.insert(at, row)
+    ledger.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def run(args, llm=None, *, runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES, out_root: Path = OUT,
