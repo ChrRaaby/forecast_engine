@@ -1,24 +1,31 @@
 # EXP-008: Research desk (gap-fill), card v2
 
-> **DRAFT, not pre-registered: needs Christian's OK.** Nothing runs until Christian approves this card and the one-line switch
-> below. Items marked **[Christian]** are open choices; the card is only final once each one has an answer.
+> **PRE-REGISTERED at switch-on** (Christian's OK in the project thread, 2026-11-07; the switch-on date is the day PR "EXP-008
+> switch-on" merges, written in the log). From here the card is frozen: the decisions below override the v2 text further down
+> wherever they differ (cost settings in the arm table, the cost section's "[Christian]" items, the decision-rule wording).
 >
-> Groundwork for the open choices (facts, cost model, options, recommendations; nothing decided): `docs/research/14-exp008-decisions.md` (F-14).
->
-> **Christian's decisions on the open choices (2026-11-01, F-14; walk-through doc https://claude.ai/artifact/Ch89uneiVq28tCfEELRp47):**
-> 1. Cost: option **(e)** from research/14: at most 3 follow-up searches per arm (`max_gaps=3`), grounding fee counted at list price,
->    cap $0.15/q. (F-02: Google bills grounding per search query; 711 queries in Oct 2026, all inside the free 5,000/month.)
+> **Christian's decisions (2026-11-01, F-14; walk-through doc https://claude.ai/artifact/Ch89uneiVq28tCfEELRp47), as amended
+> 2026-11-07 after the B-70 pilot:**
+> 1. Cost: **at most 2 follow-up searches per arm** (`max_gaps=2`), grounding fee counted at list price, **cap $0.15/q**
+>    (`EXP008_FOLLOWUP` in `forecast_engine/config.py`). The 1 Nov choice was option (e), 3 searches; the B-70 pilot measured
+>    2.33 Google queries per search and recent volume of ~60 questions a week, at which 3 searches would cost ~$95 real to
+>    2027-01-31 and run past Google's free tier; 2 searches stay inside it, ~$18/month real (~$45 to 2027-01-31). The experiment
+>    therefore tests "two targeted searches". A later card can test 3 vs 2 if an arm wins.
 > 2. Roster: **cheap now**; a winning arm is confirmed as **one frontier arm** paired with the live forecast. Open: whether that is
 >    paid from the $180 frontier budget.
-> 3. Analysis point: one look at **150 resolved binary questions or 2027-01-31**, whichever comes first; switch on as early as possible;
->    "inconclusive" is the expected result unless the gain is ≥ ~0.04 nats.
-> 4. Kill: **0.015 nats**, with two wording fixes: if "narrow win" and "kill" both hold, kill wins; the $0.20/q cost kill uses cost at
->    list price (tokens + queries × $0.014), whatever is booked.
-> 5. Budget: a **separate EXP-008 line, $50 from the $100 PoC**, outside the $300 season cap; plus a Google Cloud budget alert.
-> 6. Control arm D: **no code change**; with (e) all arms are capped at 3 searches; report searches/q per arm.
+> 3. Analysis point: one look at **150 resolved binary questions or 2027-01-31**, whichever comes first; "inconclusive" is the
+>    expected result unless the gain is ≥ ~0.04 nats. No scores of these arms are looked at before then.
+> 4. Kill: **0.015 nats**. Wording fixes: (i) if "narrow win" and "kill" both hold, **kill wins**; (ii) the $0.20/q cost kill uses
+>    cost at **list price** (tokens + Google queries × $0.014), whatever is booked.
+> 5. Budget: a **separate EXP-008 line, $50 from the $100 PoC**, outside the $300 season cap (`docs/experiments/budget-ledger.md`);
+>    Google Cloud budget alert set (kr50/month, alerts 50/90/100/150%).
+> 6. Control arm D: **no code change**; all arms capped at 2 searches; searches/q per arm reported.
 >
-> Still before switch-on: B-70 (queries per follow-up search, gaps per critic call) and setting (e) in `EXP008_ARMS`. The card is
-> frozen (pre-registered) at switch-on.
+> **B-70 pilot (PC, 2026-11-07; numbers only, nothing the searches found was used).** Setting tried: 3 searches, cap $0.15.
+> 5 arm-runs on 4 recent binary tournament questions (B on 3, D on 2; 15 searches): Google queries per search mean 2.33, median 2,
+> max 4; the critic listed the maximum (3) gaps every time; booked $0.10/q per arm (list price), the cap never stopped a search;
+> 0 failures. `tools/check_models.py` passes, incl. the critic `openai/gpt-5-mini`. Unique live tournament questions per ISO week:
+> 93 / 29 / 83 / 27 / 78 (W41–W45, W45 partial). Certainty: low (n = 15 searches), enough to set the budget, not more.
 
 _Card written BEFORE running. Results section filled by the report generator. Backlog B-64; tooling B-17 (built as switched-off
 shadow arms, `forecast_engine/research_followup.py`)._
@@ -114,13 +121,12 @@ shadow arms, `forecast_engine/research_followup.py`)._
     live frontier forecast, on questions resolving after the decision; it must beat live with a one-sided 95% CI above 0 (rule
     written on its own card before it starts). Only then a live config change: new `CONFIG_VERSION`, Christian's OK.
 
-## How to switch it on (after approval)
-In `forecast_engine/config.py`, replace the `SHADOW_CONFIGS` line with:
-
-    SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, **EXP008_ARMS}
-
-Before that: apply the cost setting chosen above in `EXP008_ARMS` (one field in `FollowupConfig`), run
-`poetry run python tools/check_models.py` (checks the critic model), and note the switch-on date here.
+## Switch-on (2026-11-07)
+`SHADOW_CONFIGS` in `forecast_engine/config.py` now includes `**EXP008_ARMS`, with `EXP008_FOLLOWUP` = max 2 searches, cap $0.15/q.
+`tools/check_models.py` passed on the PC on 2026-11-07. To stop the experiment, remove `**EXP008_ARMS` from `SHADOW_CONFIGS`
+(the live forecast is unaffected either way). Note: shadows run before the live forecast is published, so each question's
+publish waits for the three arms (estimated 1–3 minutes, not measured); the existing re-check before publishing still refuses
+closed questions.
 
 ## Changes from v1 (2026-10-07)
 - Added arm D, the compute-matched control (protocol §5, 2026-10-19); adoption needs a win over A and D.
