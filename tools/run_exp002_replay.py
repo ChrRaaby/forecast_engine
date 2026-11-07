@@ -1,20 +1,23 @@
 """EXP-002 replay (B-09b): the live prompt (arm A) vs the dates + "resolves YES" prompt (arm B) on resolved live binary records.
 
+EXP-002 is a FIX with a no-harm check (Christian, 2026-11-07), not a test that must show a gain: arm B may go live if it fixes the
+polarity bug and is not clearly worse (`no_harm`, card v2). It then runs as Tier 1, with the old prompt as the unpublished shadow.
+
     poetry run python tools/run_exp002_replay.py --dry-run                     # pick records, estimate the cost; no model calls
     poetry run python tools/run_exp002_replay.py --max-cost 20                 # the screen (frontier roster, every eligible record)
-    poetry run python tools/run_exp002_replay.py --resolved-after 2026-11-10 --run-kind rerun --max-cost 20   # the deciding rerun
 
 Both arms are replayed now, on each record's frozen research and as_of (`evals.replay.replay_record`), with the same config except
 `prompt_version`: arm A the live prompt, arm B the variant "dates-yes-2026-11-07" (forecast_engine/prompt_variants). The new prompt
 adds one line and no calls, so arm A is also the same-compute control. The old live answers are never used as the baseline: they
 were made at another time, under other provider conditions. Records are picked as in tools/run_aa_replay.py (one per question,
 the earliest non-shadow record, oldest first, release-date check T1, both replay guards); `--resolved-after` keeps only questions
-resolved after a date (the §6.3 rerun on fresh questions). Both arms of a question run at the same time (T11).
+resolved after a date (for a later check on fresh questions). Both arms of a question run at the same time (T11).
 
 The replay calls only the forecasting models: no research, no follow-up search (that runs only in main.py), so nothing can see
 today's web. The polarity check is off in both arms (its model has no verified release date, T1), so it can't change any score.
 The secondary metric is a polarity AUDIT afterwards: the same auditor reads every member's answer in both arms and counts answers
-whose number refers to NO or another event (expected: arm B ~0). The audit changes no forecast; `--no-audit` skips it.
+whose number refers to NO or another event (expected: arm B ~0). The audit changes no forecast; `--no-audit` skips it (and then
+the no-harm check can't pass, since the fix itself isn't checked).
 
 Cost: estimated before anything runs from the archive's mean cost per call (as run_aa_replay.py), × SAFETY; refused above
 --max-cost (default $20); a hard cap stops further calls once spent + one call's reserve would cross it. Outputs go to
@@ -143,6 +146,37 @@ def polarity_lines(rows: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+# No-harm check (card v2, 2026-11-07): all must hold for arm B to go live (Tier 1, old prompt in shadow). Fixed before any run.
+MAX_RELIABILITY_INCREASE = 0.005  # protocol default: calibration may not get worse by more than this
+MAX_FAILURE_RATE_INCREASE = 0.02  # protocol default: at most 2 more points of member forecasts without a usable number
+
+
+def no_harm(an: report.Analysis, pol: list[dict[str, Any]] | None) -> tuple[bool, list[str]]:
+    """(go live?, one line per condition). "Clearly worse" = the whole 95% CI of B − A log score is below 0."""
+    c = an.comparisons["B"]["log"]
+    lo, hi = c.improvement_ci
+    rel_b, rel_a = an.calibration_paired.get("B", (float("nan"), float("nan")))
+    fail_b, fail_a = an.summaries["B"].failure_rate, an.summaries["A"].failure_rate
+    checks = [
+        (c.n > 0 and hi >= 0, f"score not clearly worse (95% CI of B − A log score not entirely below 0): "
+                              f"Δ {report._f(c.improvement)}, CI [{report._f(lo)}, {report._f(hi)}], N {c.n}"),
+        (rel_b - rel_a <= MAX_RELIABILITY_INCREASE, f"calibration not worse by more than {MAX_RELIABILITY_INCREASE}: "
+                                                    f"reliability B {report._f(rel_b)} vs A {report._f(rel_a)}"),
+        (fail_b - fail_a <= MAX_FAILURE_RATE_INCREASE + 1e-12,
+         f"failure rate not up by more than {MAX_FAILURE_RATE_INCREASE:.0%}: B {fail_b:.1%} vs A {fail_a:.1%}"),
+    ]
+    if pol is None:
+        checks.append((False, "polarity audit not run (--no-audit): the fix itself is unchecked"))
+    else:
+        wrong = {arm: sum(1 for r in pol if r["arm"] == arm and r["verdict"] in ("NO", "OTHER")) for arm in ARMS}
+        checks.append((wrong["B"] <= wrong["A"], f"wrong-sided answers not more common in B: B {wrong['B']} vs A {wrong['A']}"))
+    ok = all(m for m, _ in checks)
+    lines = [f"[{'x' if m else ' '}] {t}" for m, t in checks]
+    lines.append("VERDICT: " + ("GO LIVE as Tier 1 (old prompt as unpublished shadow; switch back if live results turn worse)"
+                                if ok else "DO NOT SHIP: a no-harm condition failed (see above)"))
+    return ok, lines
+
+
 def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OUTCOMES, out_root: Path = OUT,
         ledger: Path = aa.LEDGER) -> int:
     cfgs = arm_configs(args.config)
@@ -192,6 +226,7 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
     table = run_dir / "runs.csv"
     aa.write_table(rows, table)
     pol_lines: list[str] = []
+    pol: list[dict[str, Any]] | None = None
     if not args.no_audit:
         pol = asyncio.run(audit(replayed, capped, args.parallel))
         with open(run_dir / "polarity.csv", "w", encoding="utf-8", newline="") as fh:
@@ -201,17 +236,17 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
         pol_lines = polarity_lines(pol)
     print(f"done: {capped.calls} calls, ${capped.spent:.4f} spent, {capped.refused} calls refused by the cap")
     an = report.analyse(report.read_table(table), "A", name=f"EXP-002 {args.run_kind}", decision_arms=["B"],
-                        rule=report.EXP002_RULE, run_kind=args.run_kind, tier=2, meta=report.provenance(table))
+                        run_kind=args.run_kind, tier=1, meta=report.provenance(table))
+    _, verdict = no_harm(an, pol)
     md = report.render_report(an)
     if pol_lines:
-        md += "\n## Secondary metric: polarity audit\n\n" + "".join(f"- {ln}\n" for ln in pol_lines)
+        md += "\n## Polarity audit (what the fix should fix)\n\n" + "".join(f"- {ln}\n" for ln in pol_lines)
+    md += "\n## No-harm check (EXP-002 card v2, fixed before the run)\n\n" + "".join(f"- {ln}\n" for ln in verdict)
     (run_dir / "report.md").write_text(md, encoding="utf-8", newline="\n")
     c = an.comparisons["B"][an.metric]
     print(f"B vs A: N {c.n}, log Δ {report._f(c.mean_diff)}, 95% CI [{report._f(c.ci_low)}, {report._f(c.ci_high)}]: "
           f"{c.verdict_words()}")
-    for d in an.decisions.values():
-        print("\n".join(d.lines()))
-    for ln in pol_lines:
+    for ln in pol_lines + verdict:
         print(ln)
     print(f"report: {run_dir / 'report.md'}")
     if capped.calls:
@@ -227,7 +262,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--config", choices=sorted(CONFIGS), default="frontier",
                     help="roster replayed in both arms (default frontier: the live published roster)")
     ap.add_argument("--resolved-after", help="only questions resolved after this date, YYYY-MM-DD (the §6.3 rerun)")
-    ap.add_argument("--run-kind", choices=report.RUN_KINDS, default="screen", help="labels the outcome (protocol §6.2, §6.3)")
+    ap.add_argument("--run-kind", choices=report.RUN_KINDS, default="screen", help="labels the run (default screen)")
     ap.add_argument("--max-cost", type=float, default=20.0, help="refuse above this estimate; hard cap on spend in $ (default 20)")
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--no-audit", action="store_true", help="skip the polarity audit (secondary metric)")

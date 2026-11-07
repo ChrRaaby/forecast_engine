@@ -152,8 +152,8 @@ def test_replay_writes_both_arms_audit_and_report(tmp_path, capsys):
     assert sum(1 for p in forecast_prompts if "resolves YES" in p) == 9 * members  # arm B only
     assert sum(1 for purpose, _ in llm.prompts if purpose == "polarity_check") == 2 * 9 * members  # the audit, after
     assert "arm A: 0/" in out and "arm B: 0/" in out
-    assert (run_dir / "polarity.csv").exists() and "polarity audit" in (run_dir / "report.md").read_text(encoding="utf-8")
-    assert "EXP-002 rule" in out
+    assert (run_dir / "polarity.csv").exists() and "Polarity audit" in (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "VERDICT:" in out and "No-harm check" in (run_dir / "report.md").read_text(encoding="utf-8")
     b = json.loads(next((run_dir / "records" / "B").glob("q*.json")).read_text(encoding="utf-8"))
     assert b["prompt_version"] == V
     assert "| EXP-002 |" in ledger.read_text(encoding="utf-8").splitlines()[-1]
@@ -183,3 +183,23 @@ def test_polarity_lines_count_no_and_other():
     rows = [{"arm": "A", "verdict": v} for v in ("YES", "NO", "OTHER", "FAILED")] + [{"arm": "B", "verdict": "YES"}]
     a, b = _tool().polarity_lines(rows)
     assert a.startswith("arm A: 2/4") and b.startswith("arm B: 0/1")
+
+
+def _an(lo, hi, rel=(0.01, 0.01), fail=(0.0, 0.0)):
+    from types import SimpleNamespace
+
+    cmp = SimpleNamespace(n=50, improvement=(lo + hi) / 2, improvement_ci=(lo, hi))
+    return SimpleNamespace(comparisons={"B": {"log": cmp}}, calibration_paired={"B": rel},
+                           summaries={"B": SimpleNamespace(failure_rate=fail[0]), "A": SimpleNamespace(failure_rate=fail[1])})
+
+
+def test_no_harm_check():
+    nh = _tool().no_harm
+    fixed = [{"arm": "A", "verdict": "NO"}, {"arm": "B", "verdict": "YES"}]
+    assert nh(_an(-0.03, 0.02), fixed)[0]  # inconclusive score, fewer wrong-sided answers: goes live
+    assert not nh(_an(-0.05, -0.001), fixed)[0]  # clearly worse
+    assert not nh(_an(-0.03, 0.02), [{"arm": "A", "verdict": "YES"}, {"arm": "B", "verdict": "NO"}])[0]  # fix made it worse
+    assert not nh(_an(-0.03, 0.02, rel=(0.03, 0.01)), fixed)[0]  # calibration worse
+    assert not nh(_an(-0.03, 0.02, fail=(0.05, 0.0)), fixed)[0]  # more failures
+    ok, lines = nh(_an(-0.03, 0.02), None)
+    assert not ok and "not run" in lines[-2]

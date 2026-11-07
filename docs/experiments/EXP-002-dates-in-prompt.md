@@ -1,6 +1,7 @@
 # EXP-002: Question dates and explicit YES wording in the forecasting prompt
 
-> **v2 (2026-11-07): pre-registration for the replay, written before any run.** Built in `tools/run_exp002_replay.py` with the
+> **v2 (2026-11-07): pre-registration for the replay, written before any run. EXP-002 is a FIX with a no-harm check, not a test
+> that must show a gain (Christian's decision, 2026-11-07).** Built in `tools/run_exp002_replay.py` with the
 > frozen prompt variant `dates-yes-2026-11-07` (ADR-0012). Nothing has been run or spent. The screen needs Christian's OK to spend.
 > The v2 section below replaces the v1 lines where they differ; v1 is kept unchanged under it for the record.
 
@@ -8,6 +9,10 @@ _Card written BEFORE running. Results section filled by the report generator._
 
 ## v2 pre-registration (2026-11-07, Claude, with Christian)
 
+- **Fix, not a bet (Christian, 2026-11-07):** both changes repair known defects: answers giving P(NO) (2/111 in the v1 audit; the
+  live polarity guard catches them, this removes the cause), and a prompt that asks for "the time left" without giving the end date.
+  A fix doesn't need to prove a score gain, which ~75 questions can't show anyway; it must fix the defect and do no clear harm.
+  Prompt *bets* (judge the research, base rate, weighed scenarios) are I-22, for a separate multi-arm run at ~150 questions.
 - **Why v2:** v1 planned a DEV-manifest run on the M2 harness. The live-record replay (B-38, B-32 guards, B-75 prompt versions)
   now does the same job more cheaply and with real questions, so the test runs there.
 - **Change vs. baseline (exact):** both arms are `TOURNAMENT_CONFIG` (Roster A, the live published roster) with the polarity check
@@ -33,26 +38,29 @@ _Card written BEFORE running. Results section filled by the report generator._
   checked per record by `evals.model_release` (T1).
 - **Primary metric:** binary log score of the aggregate (median of the members, the live rule), paired by question, cluster
   bootstrap (`evals.report`).
-- **Secondary metrics:** (1) polarity audit: the live auditor model reads every member answer in both arms after the run and
+- **Fix metric:** polarity audit: the live auditor model reads every member answer in both arms after the run and
   counts answers whose number refers to NO or another event (expected: arm B ≈ 0; v1 audit: 2/111 in the cheap roster); it
-  changes no forecast. (2) Brier, calibration (reliability), failure rate.
-- **Arms:** m = 1 candidate (B), so 95% CIs. **Tier 2** (a new prompt: confirm before live, protocol §6.2).
-- **Expected effect & MDE (certainty: low):** small, ≈0.008–0.010 Brier (v1). The real SD of paired differences isn't measured yet
-  (F-13 A/A pending); with the protocol's illustrative SD (0.06 Brier) the MDE at N ≈ 75 is ≈ 0.019 Brier, about twice the expected
-  effect. **The most likely screen outcome is "inconclusive"**, which by §6.3 leads to the one deciding rerun. The report prints the
-  measured and cluster-aware MDE.
-- **Rerun (§6.3):** if the screen is inconclusive or a narrow win, one rerun with the same arms, metric and rule on **only
-  questions resolved after the screen's date** (`--resolved-after <screen date> --run-kind rerun`), waiting for at least as many
-  such questions as the screen had (≈ mid-December at ~14 resolved binary per week, rough). The rerun decides.
+  changes no forecast. Also reported: Brier, calibration (reliability), failure rate.
+- **Arms:** m = 1 candidate (B), so 95% CIs. **Tier 1** (a fix that is cheap and easy to undo: goes live with the old prompt as
+  the unpublished shadow, so the comparison keeps running on fresh questions and live can switch back).
+- **Expected effect & certainty:** score effect small, ≈0.008–0.010 Brier (v1), far below what N ≈ 75 can detect (MDE ≈ 0.019 Brier
+  with the protocol's illustrative SD; the real SD is unmeasured until the F-13 A/A). **What this run can show:** whether the fix
+  removes wrong-sided answers, and whether the new prompt is *clearly* worse. **What it can't show:** a small gain, or a small
+  harm. A small harm is what the Tier 1 shadow is for: the old prompt keeps running next to live on fresh questions.
+- **No rerun before going live** (a fix, Tier 1). The shadow comparison is reviewed at ~150 resolved questions together with the
+  frontier verdict; if the new prompt is then clearly worse (same test), live switches back.
 - **Repeats k:** 1.
 - **Cost estimate:** ≈ $0.10 per question per arm for Roster A (rough, from live costs) → ≈ $15 for 75 questions, plus < $1 for the
   audit. The tool prints the exact estimate from the archive's per-call costs (`--dry-run`) and refuses above `--max-cost`
-  (default $20, hard cap). Same again for the rerun. From the $180 experiment budget.
-- **Decision rule (`report.EXP002_RULE`, `--rule exp002`):** adopt if the 95% CI of the log-score difference (B − A) excludes 0 in
-  B's favour, reliability isn't worse by more than 0.005 and the failure rate isn't up by more than 2 points; kill if the CI's
-  upper end is below 0.015 nats (the fixed smallest effect worth having, as EXP-005/F-12) or the point estimate is ≤ 0; adopt and
-  kill both true → kill; otherwise inconclusive → keep the live prompt and run the rerun. The polarity audit is reported, not part
-  of the rule. Nothing goes live from this card: a win is Tier 2, so it needs the rerun or a shadow run on fresh questions first.
+  (default $20, hard cap). One run. From the $180 experiment budget.
+- **Decision rule: no-harm check** (`no_harm()` in `tools/run_exp002_replay.py`, fixed before any run). Arm B goes live (Tier 1)
+  only if ALL hold:
+  1. the score is not clearly worse: the 95% CI of the log-score difference B − A is not entirely below 0;
+  2. calibration (reliability) is not worse by more than 0.005;
+  3. the failure rate (member forecasts with no usable number) is not up by more than 2 points;
+  4. the polarity audit ran and wrong-sided answers (NO or OTHER) are not more common in B than in A.
+  Any condition failing → don't ship; a changed prompt would be a new variant with its own card. Going live itself (prompts.py,
+  LIVE, CONFIG_VERSION, shadow config) is a separate PR after Christian's OK.
 
 ## v1 (2026-10-03), kept for the record
 
