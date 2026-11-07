@@ -203,3 +203,18 @@ def test_no_harm_check():
     assert not nh(_an(-0.03, 0.02, fail=(0.05, 0.0)), fixed)[0]  # more failures
     ok, lines = nh(_an(-0.03, 0.02), None)
     assert not ok and "not run" in lines[-2]
+
+
+def test_ledger_row_goes_into_the_first_table_only(tmp_path):
+    aa = _tool().aa
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        "# Ledger\n\n| Date | E | R | W | C | Cost | Cum | Left |\n|---|---|---|---|---|---|---|---|\n"
+        "| 2026-10-07 | EXP-005 | r | w | 60 | $0.666 | $0.666 | $179.33 |\n\n## EXP-008 section\n\n"
+        "| Date | What | Booked | Real | Real cum | Left of $50 |\n|---|---|---|---|---|---|\n"
+        "| 2026-11-07 | pilot | $0.516 | ~$0.03 | ~$0.03 | ~$49.97 |\n", encoding="utf-8")
+    aa.append_ledger("20261107T225241Z", 10, 1.0, "test", ledger, experiment="EXP-002")
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    i = next(k for k, ln in enumerate(lines) if "| EXP-002 |" in ln)
+    assert lines[i - 1].startswith("| 2026-10-07 | EXP-005") and "$1.666" in lines[i] and "$178.33" in lines[i]
+    assert lines[-1].startswith("| 2026-11-07 | pilot")
