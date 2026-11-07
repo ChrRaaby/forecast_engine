@@ -79,6 +79,8 @@ class ResearchBundle:
     items: list[ResearchItem]
     calls: list[LlmCall]
     errors: list[str] = field(default_factory=list)
+    # B-51a: date sanity flags from research_checks.check_bundle; stored in the record, never shown to the models
+    quality_flags: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:

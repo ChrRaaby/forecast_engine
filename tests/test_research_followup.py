@@ -407,7 +407,7 @@ def test_existing_records_keep_byte_identical_prompts_and_format():
 
     prompt = old_prompt.forecast_prompt(Q, text, "2026-05-01")
     assert hashlib.sha256(prompt.encode()).hexdigest() == GOLDEN_PROMPT_SHA256
-    assert list(b.to_dict()) == ["as_of", "providers", "items", "calls", "errors"]
+    assert list(b.to_dict()) == ["as_of", "providers", "items", "calls", "errors", "quality_flags"]  # B-51a added the last key
     rec = json.loads(json.dumps(asyncio.run(forecast(Q, FixedClock(AS_OF), b, DEFAULT_CONFIG, FakeLlm())).to_dict()))
     assert check_record(rec)
     assert_record_intact(rec)
