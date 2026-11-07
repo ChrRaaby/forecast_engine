@@ -103,10 +103,15 @@ def test_off_by_default_and_live_hashes_unchanged():
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
         "c18ebdd3d1ef", "11fb02f5ac67", "9785b336fd21")
     assert CONFIG_VERSION == "frontier-2026-10-08"
-    for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, *SHADOW_CONFIGS.values()):
+    for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, SHADOW_CONFIGS["cheap"]):
         assert cfg.research.followup is None and "followup" not in cfg.to_dict()["research"]
-    assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG}
-    assert not set(EXP008_ARMS) & set(SHADOW_CONFIGS)
+
+
+def test_exp008_switched_on_as_shadow_arms_only():
+    """EXP-008 switch-on (2026-11-07): the three arms run as unpublished shadows next to the cheap shadow (arm A); live configs
+    never carry the follow-up step."""
+    assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG, **EXP008_ARMS}
+    assert TOURNAMENT_CONFIG.research.followup is None and DEFAULT_CONFIG.research.followup is None
 
 
 def test_exp008_arms_are_the_cheap_ensemble_plus_one_follow_up_mode():
@@ -116,7 +121,7 @@ def test_exp008_arms_are_the_cheap_ensemble_plus_one_follow_up_mode():
     assert len(hashes) == 3 and DEFAULT_CONFIG.config_hash() not in hashes
     for c in EXP008_ARMS.values():
         assert c.forecasters == DEFAULT_CONFIG.forecasters and c.research.providers == DEFAULT_CONFIG.research.providers
-        assert c.research.followup.max_cost_usd_per_q == 0.06
+        assert (c.research.followup.max_gaps, c.research.followup.max_cost_usd_per_q) == (2, 0.15)  # Christian, 2026-11-07
 
 
 def test_bad_follow_up_settings_are_refused():
@@ -132,7 +137,8 @@ def test_no_follow_up_config_returns_an_equal_copy():
 
 
 def test_live_question_makes_zero_follow_up_calls(tmp_path, monkeypatch):
-    """The whole live path (research, live forecast, the default shadows) never reaches the follow-up step."""
+    """The live path (research, live forecast) and the cheap shadow (arm A) never reach the follow-up step. Since EXP-008 was
+    switched on, the EXP-008 arms do; that they leave the live and cheap bundles untouched is tested under "shadow wiring"."""
     from forecasting_tools import BinaryQuestion
 
     async def no_followup(*a, **k):
@@ -143,7 +149,7 @@ def test_live_question_makes_zero_follow_up_calls(tmp_path, monkeypatch):
 
     monkeypatch.setattr(rf, "followup", no_followup)
     monkeypatch.setattr(main, "gather_research", fake_research)
-    bot = _bot(tmp_path, monkeypatch, None, dict(SHADOW_CONFIGS), FakeLlm())
+    bot = _bot(tmp_path, monkeypatch, None, {"cheap": SHADOW_CONFIGS["cheap"]}, FakeLlm())
     question = BinaryQuestion(question_text=Q.question_text, id_of_question=Q.question_id, id_of_post=Q.post_id,
                               page_url="https://example.org/questions/2")
     asyncio.run(bot._run_individual_question(question))

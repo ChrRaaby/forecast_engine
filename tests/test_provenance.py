@@ -20,14 +20,15 @@ from tests.test_core import AS_OF, Q, _bundle
 from tests.test_records import _record
 from tests.test_tournament import _bot
 
-# config_hash of every config the bot can run, as on main before this change: provenance must not alter one of them.
+# config_hash of every config the bot can run, as on main before this change: provenance must not alter one of them. The EXP-008
+# arms' hashes changed once, deliberately, at switch-on (2026-11-07: max_gaps 2, cap $0.15; they had never run before).
 CONFIG_HASHES = {
     "default": ("c18ebdd3d1ef", DEFAULT_CONFIG),
     "tournament": ("11fb02f5ac67", TOURNAMENT_CONFIG),
     "wide": ("9785b336fd21", WIDE_CONFIG),
-    "exp008-b-gaps": ("cb90669a252c", EXP008_ARMS["exp008-b-gaps"]),
-    "exp008-c-against": ("98597cf32085", EXP008_ARMS["exp008-c-against"]),
-    "exp008-d-control": ("e1a704e2c285", EXP008_ARMS["exp008-d-control"]),
+    "exp008-b-gaps": ("2bff94ed1964", EXP008_ARMS["exp008-b-gaps"]),
+    "exp008-c-against": ("fbf036dba41f", EXP008_ARMS["exp008-c-against"]),
+    "exp008-d-control": ("fd32a398cdda", EXP008_ARMS["exp008-d-control"]),
 }
 # sha256 of polarity.PROMPT per POLARITY_PROMPT_VERSION. Append only; an edit to the prompt needs a new version line.
 POLARITY_PROMPTS = {"polarity-2026-10-05": "47c159d42ce86248de2976cf2c0b7c57079944daa6f1afba7b34201072cbc653"}

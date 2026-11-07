@@ -15,8 +15,12 @@
     "label": "code-2026-11-07c",
     "note": "EXP-002 (B-09b): prompt variant dates-yes-2026-11-07 registered for replay/shadow arms, on top of the B-77 search guard (live prompt and configs unchanged)"
   },
-  "5e60a9b3ea8c04b4": {
+  "32b6fe92ca271cca": {
     "label": "code-2026-11-07d",
-    "note": "B-51a: research date flags stored in records (prompt and forecasts unchanged)"
+    "note": "EXP-008 switched on: three research-desk arms added to SHADOW_CONFIGS (unpublished), max 2 follow-up searches per arm, cap $0.15/q (live configs and prompts unchanged)"
+  },
+  "323fe4242f131d49": {
+    "label": "code-2026-11-07e",
+    "note": "B-51a: research date flags stored in records (prompt and forecasts unchanged), on top of the EXP-008 shadow arms"
   }
 }
