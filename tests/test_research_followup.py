@@ -99,10 +99,11 @@ def _run(cfg, llm, search, bundle=None):
 # --- off by default ------------------------------------------------------------------------------------------------------
 
 def test_off_by_default_and_live_hashes_unchanged():
-    """The follow-up field must not move any existing config's hash, version or record (hashes as on main 532bdfb)."""
+    """The follow-up field must not move any existing config's hash, version or record (hashes as on main 532bdfb; changed on
+    purpose at the EXP-002 go-live 2026-11-07, see tests/test_provenance.py)."""
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
-        "c18ebdd3d1ef", "11fb02f5ac67", "9785b336fd21")
-    assert CONFIG_VERSION == "frontier-2026-10-08"
+        "e7407e584599", "550e5902f141", "94e6c663a494")
+    assert CONFIG_VERSION == "frontier-2026-11-07"
     for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, SHADOW_CONFIGS["cheap"]):
         assert cfg.research.followup is None and "followup" not in cfg.to_dict()["research"]
 
@@ -110,7 +111,9 @@ def test_off_by_default_and_live_hashes_unchanged():
 def test_exp008_switched_on_as_shadow_arms_only():
     """EXP-008 switch-on (2026-11-07): the three arms run as unpublished shadows next to the cheap shadow (arm A); live configs
     never carry the follow-up step."""
-    assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG, **EXP008_ARMS}
+    from forecast_engine.config import EXP002_OLD_PROMPT_SHADOW
+
+    assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS}
     assert TOURNAMENT_CONFIG.research.followup is None and DEFAULT_CONFIG.research.followup is None
 
 
@@ -400,7 +403,9 @@ def test_existing_records_keep_byte_identical_prompts_and_format():
                               ResearchItem(source="gemini_grounded", text="Made-up briefing.\n")])
     text = b.as_prompt_text()
     assert text == "[asknews_latest] Made-up title\nMade-up article.\n\n[gemini_grounded]\nMade-up briefing."
-    prompt = forecast_prompt(Q, text, "2026-05-01")
+    from forecast_engine.prompt_variants import template_2026_09_26_old as old_prompt  # the golden value is the pre-EXP-002 prompt
+
+    prompt = old_prompt.forecast_prompt(Q, text, "2026-05-01")
     assert hashlib.sha256(prompt.encode()).hexdigest() == GOLDEN_PROMPT_SHA256
     assert list(b.to_dict()) == ["as_of", "providers", "items", "calls", "errors", "quality_flags"]  # B-51a added the last key
     rec = json.loads(json.dumps(asyncio.run(forecast(Q, FixedClock(AS_OF), b, DEFAULT_CONFIG, FakeLlm())).to_dict()))

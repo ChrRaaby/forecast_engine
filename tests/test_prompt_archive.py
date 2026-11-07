@@ -21,14 +21,16 @@ from forecast_engine.config import CONFIG_VERSION, DEFAULT_CONFIG
 from forecast_engine.core import ForecastFailed, forecast
 from forecast_engine.schema import ResearchBundle, ResearchItem
 
-LIVE_VERSION = "template-2026-09-26"
+LIVE_VERSION = "dates-yes-live-2026-11-07"  # EXP-002 live from 2026-11-07
+OLD_VERSION = "template-2026-09-26"  # live until 2026-11-07
 # Tripwires, deliberately duplicated from evals/prompt_archive.py: the archive is append-only and archived templates are frozen.
 PINNED_CONFIG_VERSIONS = {
-    "m1-baseline-2026-09-30b": LIVE_VERSION, "m1-baseline-2026-09-30c": LIVE_VERSION, "m1-baseline-2026-10-01": LIVE_VERSION,
-    "m1-baseline-2026-10-03": LIVE_VERSION, "m1-baseline-2026-10-03b": LIVE_VERSION, "m1-baseline-2026-10-05": LIVE_VERSION,
-    "m1-baseline-2026-10-06": LIVE_VERSION, "frontier-2026-10-08": LIVE_VERSION,
+    "m1-baseline-2026-09-30b": OLD_VERSION, "m1-baseline-2026-09-30c": OLD_VERSION, "m1-baseline-2026-10-01": OLD_VERSION,
+    "m1-baseline-2026-10-03": OLD_VERSION, "m1-baseline-2026-10-03b": OLD_VERSION, "m1-baseline-2026-10-05": OLD_VERSION,
+    "m1-baseline-2026-10-06": OLD_VERSION, "frontier-2026-10-08": OLD_VERSION, "frontier-2026-11-07": LIVE_VERSION,
 }
-PINNED_FROZEN_FILES = {LIVE_VERSION: "e79eb2be55c1a48772c5f4fd854eda498f43b6bad3981fb62cf16bd7e4443c9c"}
+PINNED_FROZEN_FILES = {OLD_VERSION: "e79eb2be55c1a48772c5f4fd854eda498f43b6bad3981fb62cf16bd7e4443c9c",
+                       LIVE_VERSION: "d7df3b751e2f332ff5242471790c0c0d120a56a2a1143eb3d9d72d3017abc341"}
 
 AS_OF = datetime(2025, 3, 14, 12, 0, tzinfo=timezone.utc)
 NEW_LINE = "Your final answer is the probability that this question resolves YES.\n"  # a made-up EXP-002-style change
@@ -268,10 +270,11 @@ def test_archive_is_append_only_and_frozen_files_are_pinned():
 
 
 def test_live_configs_and_hashes_unchanged():
-    """This PR changes no live code: CONFIG_VERSION and the live config hashes are what they were on main."""
-    assert CONFIG_VERSION == "frontier-2026-10-08"
+    """Tripwire on the live configs. Changed on purpose at the EXP-002 go-live (2026-11-07): prompt_version is now
+    dates-yes-live-2026-11-07 (hashes were c18ebdd3d1ef / 11fb02f5ac67 / 9785b336fd21 under frontier-2026-10-08)."""
+    assert CONFIG_VERSION == "frontier-2026-11-07"
     assert (live_config.DEFAULT_CONFIG.config_hash(), live_config.TOURNAMENT_CONFIG.config_hash(),
-            live_config.WIDE_CONFIG.config_hash()) == ("c18ebdd3d1ef", "11fb02f5ac67", "9785b336fd21")
+            live_config.WIDE_CONFIG.config_hash()) == ("e7407e584599", "550e5902f141", "94e6c663a494")
 
 
 # ------------------------------------------------------------------ `evals.replay --check`

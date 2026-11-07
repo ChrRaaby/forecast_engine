@@ -69,11 +69,15 @@ AUDIT_MODEL = DEFAULT_CONFIG.polarity_check_model or "openai/gpt-5-mini"
 POLARITY_COLUMNS = ("question_id", "arm", "member", "verdict")
 
 
+OLD_PROMPT = "template-2026-09-26-old"  # the pre-EXP-002 live prompt (same text as "template-2026-09-26"), a variant since go-live
+
+
 def arm_configs(name: str) -> dict[str, BotConfig]:
-    """Arm A: the config as live, polarity check off. Arm B: the same with the EXP-002 prompt. Nothing else differs."""
+    """Arm A: the roster with the pre-EXP-002 prompt, polarity check off. Arm B: the same with the EXP-002 prompt. Nothing else
+    differs. (Before the go-live on 2026-11-07 arm A named the then-live "template-2026-09-26"; same text.)"""
     base = replace(CONFIGS[name], polarity_check_model=None)
-    assert base.prompt_version == prompt_versions.LIVE
-    return {"A": base, "B": replace(base, prompt_version=VARIANT)}
+    assert OLD_PROMPT in prompt_versions.known_versions()
+    return {"A": replace(base, prompt_version=OLD_PROMPT), "B": replace(base, prompt_version=VARIANT)}
 
 
 def pick(runs_dir: Path, outcomes: dict[int, dict[str, Any]], cfg: BotConfig, n: int, resolved_after: date | None):

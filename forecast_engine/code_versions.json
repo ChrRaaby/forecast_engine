@@ -22,5 +22,9 @@
   "323fe4242f131d49": {
     "label": "code-2026-11-07e",
     "note": "B-51a: research date flags stored in records (prompt and forecasts unchanged), on top of the EXP-008 shadow arms"
+  },
+  "c152f95af80a4ced": {
+    "label": "code-2026-11-07f",
+    "note": "EXP-002 LIVE: prompt dates-yes-live-2026-11-07 (CONFIG_VERSION frontier-2026-11-07); old prompt kept as variant template-2026-09-26-old for the cheap-old-prompt shadow; on top of B-51a"
   }
 }

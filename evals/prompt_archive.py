@@ -52,7 +52,9 @@ from forecast_engine import prompts as _prompts
 from forecast_engine.schema import QuestionSnapshot, ResearchBundle, ResearchItem
 
 from . import frozen_prompts_dates_yes_2026_11_07 as _dates_yes_2026_11_07
+from . import frozen_prompts_dates_yes_live_2026_11_07 as _dates_yes_live_2026_11_07
 from . import frozen_prompts_template_2026_09_26 as _t2026_09_26
+from . import frozen_prompts_template_2026_09_26_old as _t2026_09_26_old
 
 
 @dataclass(frozen=True)
@@ -72,11 +74,24 @@ ARCHIVE: dict[str, ArchivedTemplate] = {t.version: t for t in (
         file_sha256="e79eb2be55c1a48772c5f4fd854eda498f43b6bad3981fb62cf16bd7e4443c9c",
         live_sha256="52f6832b910b6662bc4fff9d7eeca5a077630d1eed478e3eb92226bc58e7325e",
     ),
-    # EXP-002 (B-09b) experimental variant: replay/shadow arms only. live_sha256 is its variant_fingerprint().
+    # EXP-002 (B-09b) experimental variant: replay/shadow arms only. live_sha256 is its variant_fingerprint(). Re-pinned once on
+    # 2026-11-07 (go-live) when variant_fingerprint() stopped hashing all of prompts.py; file hash and rendering are unchanged.
     ArchivedTemplate(
         "dates-yes-2026-11-07", _dates_yes_2026_11_07,
         file_sha256="1dc5076f25285b60d00fa3564ba930bd77d0effeb88d6aae77f66950c311aa7b",
-        live_sha256="aac8a01a76a0cf126297fa202653ae49e5182dcbe09656279373e074d3839467",
+        live_sha256="668f781e861d2e7cc58444ea35dcccab85e6b3ec4245158f7575a750dcae5e83",
+    ),
+    # EXP-002 live from 2026-11-07 (CONFIG_VERSION frontier-2026-11-07): same text as the variant above.
+    ArchivedTemplate(
+        "dates-yes-live-2026-11-07", _dates_yes_live_2026_11_07,
+        file_sha256="d7df3b751e2f332ff5242471790c0c0d120a56a2a1143eb3d9d72d3017abc341",
+        live_sha256="b41ad51ae715e5a0e0e13d705c6dda77a870fc323c66c5eb96953eb598ce5d4f",
+    ),
+    # The pre-EXP-002 live prompt as a variant (Tier 1 old-prompt shadow): same text as "template-2026-09-26".
+    ArchivedTemplate(
+        "template-2026-09-26-old", _t2026_09_26_old,
+        file_sha256="77f0469862557d22c51b8162b76d91d1d47bcb889c6763919b295644a4c774dd",
+        live_sha256="298b7461f27e0f259cd9997aa49b3becc6d427d53d9b3e3643ad0e62946b1a71",
     ),
 )}
 
@@ -95,6 +110,7 @@ PROMPT_VERSION_BY_CONFIG_VERSION: dict[str, str] = {
     "m1-baseline-2026-10-05": "template-2026-09-26",
     "m1-baseline-2026-10-06": "template-2026-09-26",
     "frontier-2026-10-08": "template-2026-09-26",
+    "frontier-2026-11-07": "dates-yes-live-2026-11-07",  # EXP-002 live
 }
 
 
@@ -148,9 +164,20 @@ def live_prompt(q: QuestionSnapshot, items: Sequence[ResearchItem], as_of: datet
 
 
 def variant_sources(version: str) -> list[str]:
-    """The code that shapes an experimental variant's text: its own module plus everything the live prompt depends on (a variant
-    may reuse prompts.py helpers, so a change there can change the variant too)."""
-    return [Path(_versions.VARIANTS[version].__file__).read_text(encoding="utf-8"), *live_prompt_sources()]
+    """The code that shapes an experimental variant's text: its own module, the prompts.py helpers it imports (each by its own
+    source, so a change to one of them changes the variant's fingerprint), and how research and "today" are rendered. Not the
+    rest of prompts.py: otherwise every live prompt change (e.g. a variant going live) would look like a change to every variant.
+    (Changed 2026-11-07 at the EXP-002 go-live; before, the whole of prompts.py counted.)"""
+    mod = _versions.VARIANTS[version]
+    helpers = sorted((name, obj) for name, obj in vars(mod).items()
+                     if inspect.isfunction(obj) and obj.__module__ == "forecast_engine.prompts")
+    return [
+        Path(mod.__file__).read_text(encoding="utf-8"),
+        *(inspect.getsource(obj) for _, obj in helpers),
+        inspect.getsource(ResearchBundle.as_prompt_text),
+        inspect.getsource(ResearchBundle.is_empty.fget),
+        inspect.getsource(_clock.today_str),
+    ]
 
 
 def variant_fingerprint(version: str) -> str:

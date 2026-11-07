@@ -12,7 +12,7 @@ import main
 from evals import replay
 from forecast_engine import polarity, provenance, research
 from forecast_engine.clock import FixedClock
-from forecast_engine.config import DEFAULT_CONFIG, EXP008_ARMS, TOURNAMENT_CONFIG, WIDE_CONFIG
+from forecast_engine.config import DEFAULT_CONFIG, EXP008_ARMS, SHADOW_CONFIGS, TOURNAMENT_CONFIG, WIDE_CONFIG
 from forecast_engine.llm import OpenRouterClient
 from forecast_engine.records import RecordWriter
 from forecast_engine.schema import ResearchBundle
@@ -21,14 +21,18 @@ from tests.test_records import _record
 from tests.test_tournament import _bot
 
 # config_hash of every config the bot can run, as on main before this change: provenance must not alter one of them. The EXP-008
-# arms' hashes changed once, deliberately, at switch-on (2026-11-07: max_gaps 2, cap $0.15; they had never run before).
+# arms' hashes changed once, deliberately, at switch-on (2026-11-07: max_gaps 2, cap $0.15; they had never run before). All hashes
+# changed again, deliberately, at the EXP-002 go-live (2026-11-07: prompt_version dates-yes-live-2026-11-07; CONFIG_VERSION
+# frontier-2026-11-07); before it: default c18ebdd3d1ef, tournament 11fb02f5ac67, wide 9785b336fd21, EXP-008 2bff94ed1964 /
+# fbf036dba41f / fd32a398cdda.
 CONFIG_HASHES = {
-    "default": ("c18ebdd3d1ef", DEFAULT_CONFIG),
-    "tournament": ("11fb02f5ac67", TOURNAMENT_CONFIG),
-    "wide": ("9785b336fd21", WIDE_CONFIG),
-    "exp008-b-gaps": ("2bff94ed1964", EXP008_ARMS["exp008-b-gaps"]),
-    "exp008-c-against": ("fbf036dba41f", EXP008_ARMS["exp008-c-against"]),
-    "exp008-d-control": ("fd32a398cdda", EXP008_ARMS["exp008-d-control"]),
+    "default": ("e7407e584599", DEFAULT_CONFIG),
+    "tournament": ("550e5902f141", TOURNAMENT_CONFIG),
+    "wide": ("94e6c663a494", WIDE_CONFIG),
+    "exp008-b-gaps": ("6d8b6e4496ed", EXP008_ARMS["exp008-b-gaps"]),
+    "exp008-c-against": ("ba71edc3760a", EXP008_ARMS["exp008-c-against"]),
+    "exp008-d-control": ("f69ba9a46922", EXP008_ARMS["exp008-d-control"]),
+    "cheap-old-prompt": ("cdd81dd8ebb6", SHADOW_CONFIGS["cheap-old-prompt"]),
 }
 # sha256 of polarity.PROMPT per POLARITY_PROMPT_VERSION. Append only; an edit to the prompt needs a new version line.
 POLARITY_PROMPTS = {"polarity-2026-10-05": "47c159d42ce86248de2976cf2c0b7c57079944daa6f1afba7b34201072cbc653"}

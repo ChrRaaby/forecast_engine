@@ -1,7 +1,10 @@
 """Prompts, ported from metac-bot-template c16d91f (main.py), with "today" injected from the Clock.
 
-Deliberately close to upstream for M1: this is the baseline. Changes to prompts are experiments (evaluation protocol §6)
-and must bump BotConfig.prompt_version.
+Live prompt version "dates-yes-live-2026-11-07" (EXP-002, live 2026-11-07, Christian's OK): the template plus one line with the
+question's scheduled resolution date after "Today is ...", and binary answers that say the number is P(YES). Same text as the
+experimental variant "dates-yes-2026-11-07" that passed the no-harm check. The previous prompt runs on as the unpublished shadow
+variant "template-2026-09-26-old". Changes to prompts are experiments (evaluation protocol §6) and must bump
+BotConfig.prompt_version (see forecast_engine/prompt_versions.py).
 """
 from __future__ import annotations
 
@@ -33,6 +36,19 @@ def research_prompt(q: QuestionSnapshot) -> str:
     )
 
 
+def dates_line(q: QuestionSnapshot) -> str:
+    """The date sentence for this question, or "" when the snapshot has no scheduled resolution time."""
+    if q.scheduled_resolution_time is None:
+        return ""
+    return (f"This question is still open. It is scheduled to resolve on "
+            f"{q.scheduled_resolution_time.strftime('%Y-%m-%d')}.")
+
+
+def _today_and_dates(q: QuestionSnapshot, today: str) -> str:
+    line = dates_line(q)
+    return f"Today is {today}." + (f"\n        {line}" if line else "")
+
+
 def binary_prompt(q: QuestionSnapshot, research: str, today: str) -> str:
     return _clean(
         f"""
@@ -54,7 +70,7 @@ def binary_prompt(q: QuestionSnapshot, research: str, today: str) -> str:
         Your research assistant says:
         {research}
 
-        Today is {today}.
+        {_today_and_dates(q, today)}
 
         Before answering you write:
         (a) The time left until the outcome to the question is known.
@@ -64,7 +80,7 @@ def binary_prompt(q: QuestionSnapshot, research: str, today: str) -> str:
 
         You write your rationale remembering that good forecasters put extra weight on the status quo outcome since the world changes slowly most of the time.
 
-        The last thing you write is your final answer as: "Probability: ZZ%", 0-100
+        The last thing you write is your final answer as: "Probability: ZZ%", 0-100, where ZZ is the probability that this question resolves YES
         """
     )
 
@@ -92,7 +108,7 @@ def multiple_choice_prompt(q: QuestionSnapshot, research: str, today: str) -> st
         Your research assistant says:
         {research}
 
-        Today is {today}.
+        {_today_and_dates(q, today)}
 
         Before answering you write:
         (a) The time left until the outcome to the question is known.
@@ -147,7 +163,7 @@ def numeric_prompt(q: QuestionSnapshot, research: str, today: str) -> str:
         Your research assistant says:
         {research}
 
-        Today is {today}.
+        {_today_and_dates(q, today)}
 
         {lower_msg}
         {upper_msg}

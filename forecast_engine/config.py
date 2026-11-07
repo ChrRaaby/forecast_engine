@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
 
-CONFIG_VERSION = "frontier-2026-10-08"
+CONFIG_VERSION = "frontier-2026-11-07"  # EXP-002 live: dates + "resolves YES" prompt (was frontier-2026-10-08)
 
 
 @dataclass(frozen=True)
@@ -92,7 +92,7 @@ class BotConfig:
     # Not a forecaster, so it doesn't share the live models' rate limits. None turns the check off.
     polarity_check_model: str | None = "openai/gpt-5-mini"
     research: ResearchConfig = field(default_factory=ResearchConfig)
-    prompt_version: str = "template-2026-09-26"  # prompts ported from metac-bot-template c16d91f
+    prompt_version: str = "dates-yes-live-2026-11-07"  # template c16d91f + EXP-002 (live 2026-11-07); was "template-2026-09-26"
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -139,7 +139,10 @@ EXP008_ARMS: dict[str, BotConfig] = {
 # separate records and scored as they resolve. The cheap ensemble gives the paired live comparison ADR-0009 asks for; experiments
 # (EXP-005, EXP-008) add their arm here. Shadow failures never affect the live forecast. EXP-008 switched on here (Christian's
 # OK, 2026-11-07); to stop it, remove **EXP008_ARMS.
-SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, **EXP008_ARMS}
+# EXP-002 Tier 1 (live 2026-11-07): "cheap-old-prompt" is the cheap ensemble with the previous prompt, paired with "cheap" (new
+# prompt) on every question, so live can switch back if the new prompt turns out worse (review at ~150 resolved questions).
+EXP002_OLD_PROMPT_SHADOW = replace(DEFAULT_CONFIG, prompt_version="template-2026-09-26-old")
+SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
