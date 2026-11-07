@@ -152,6 +152,16 @@ Rigour costs money, and the PoC has $100. The levers:
 - Screen at k = 1, decide at k = 3, and only for promising changes.
 - Free credits (B-01). The AskNews grant (1,000 calls/month; archive search = 5 calls) caps backtest research at ~175 archive
   queries/month after live use. Build research in monthly batches (research/03 addendum b).
+- **Prompt changes (Christian, 2026-11-07, after EXP-002):** a full frontier replay of both arms costs ~$22 for ~90 questions,
+  too much for a recurring check. So:
+  1. **Screen on the cheap roster** (`DEFAULT_CONFIG`; ~$1.5 for 88 questions × 2 arms in EXP-002). Only a change that looks good,
+     or is risky, goes on to a frontier check; where possible that check uses live results (Tier 1 shadow) instead of a paid replay.
+     Caveat on every result: a prompt can act differently on stronger models.
+  2. **Reuse the baseline arm:** the old-prompt arm of a replay is kept (`data/experiments/<EXP>/<run>/records/A`) and later prompt
+     checks on the same questions pay only for their new arm. Caveat on every result that reuses it: the arms were not run at the
+     same moment (T11), and providers drift over time.
+  3. Fixes (a known defect, e.g. EXP-002) use a pre-registered **no-harm check** instead of needing a significant gain; bets on
+     accuracy still need the §6 rule.
 
 Rough example: 150 DEV questions × 3 configs × k = 1 × ~$0.05 ≈ $23, plus one-off research of ~$5–15. We plan experiments against this budget.
 
@@ -181,3 +191,5 @@ Systematic disagreement means the harness is wrong (leakage or distribution mism
   confirmed on fresh questions (Tier 1 while live with the old config in shadow, Tier 2 before live); §6.3 inconclusive or narrow wins get one rerun on fresh questions only, then a final
   decision. Agreed with Christian after reviewing arXiv 2609.22682 (research note
   in the project files).
+- 2026-11-07: §8 prompt changes: screen on the cheap roster, reuse the baseline arm, no-harm check for fixes (Christian, after
+  EXP-002 cost ~$22 on the frontier roster vs $1.45 on the cheap one).
