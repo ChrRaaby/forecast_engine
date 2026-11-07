@@ -1,3 +1,10 @@
 {
-  "175633cd00fee1cf": {"label": "code-2026-11-03", "note": "first registered: record provenance (B-76, B-71, B-75(1)); forecasts as frontier-2026-10-08"}
+  "175633cd00fee1cf": {
+    "label": "code-2026-11-03",
+    "note": "first registered: record provenance (B-76, B-71, B-75(1)); forecasts as frontier-2026-10-08"
+  },
+  "def31abc09091e6d": {
+    "label": "code-2026-11-07",
+    "note": "B-75(2): prompt_version picks the forecast prompt (live prompt unchanged; no variants registered)"
+  }
 }
