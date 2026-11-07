@@ -1,5 +1,8 @@
 # EXP-002: Question dates and explicit YES wording in the forecasting prompt
 
+> **v2.1 (2026-11-07, before any run): run on the CHEAP roster to save cost** (Christian: ~$22 on Roster A is too steep for a
+> recurring prompt check). Lines marked v2.1 below replace the Roster A ones.
+>
 > **v2 (2026-11-07): pre-registration for the replay, written before any run. EXP-002 is a FIX with a no-harm check, not a test
 > that must show a gain (Christian's decision, 2026-11-07).** Built in `tools/run_exp002_replay.py` with the
 > frozen prompt variant `dates-yes-2026-11-07` (ADR-0012). Nothing has been run or spent. The screen needs Christian's OK to spend.
@@ -15,8 +18,8 @@ _Card written BEFORE running. Results section filled by the report generator._
   Prompt *bets* (judge the research, base rate, weighed scenarios) are I-22, for a separate multi-arm run at ~150 questions.
 - **Why v2:** v1 planned a DEV-manifest run on the M2 harness. The live-record replay (B-38, B-32 guards, B-75 prompt versions)
   now does the same job more cheaply and with real questions, so the test runs there.
-- **Change vs. baseline (exact):** both arms are `TOURNAMENT_CONFIG` (Roster A, the live published roster) with the polarity check
-  off; the only difference is `prompt_version`: arm A = `template-2026-09-26` (live), arm B = `dates-yes-2026-11-07`
+- **Change vs. baseline (exact):** (v2.1) both arms are `DEFAULT_CONFIG` (the cheap roster M1, which runs live as the unpublished
+  shadow; `--config cheap`) with the polarity check off; the only difference is `prompt_version`: arm A = `template-2026-09-26` (live), arm B = `dates-yes-2026-11-07`
   (`forecast_engine/prompt_variants/dates_yes_2026_11_07.py`, frozen copy `evals/frozen_prompts_dates_yes_2026_11_07.py`). Arm B is
   the live prompt plus:
   1. after "Today is …": *"This question is still open. It is scheduled to resolve on YYYY-MM-DD."* from the snapshot's
@@ -34,8 +37,10 @@ _Card written BEFORE running. Results section filled by the report generator._
   question opens and is read from the snapshot stored at as_of (never the actual resolve time). The replay calls only the
   forecasting models on frozen research: no research step, no follow-up search (that runs only in main.py), so nothing sees
   today's web.
-- **Evaluation models + release dates:** Roster A (GPT-6.1 Sol, Claude Sonnet 5.5, Gemini 3.1 Pro, Grok 4.7, Qwen3.8 Max), each
-  checked per record by `evals.model_release` (T1).
+- **Evaluation models + release dates:** (v2.1) cheap roster M1 (GPT-6 Luna, Gemini 3.5 Flash-Lite, DeepSeek V4.1 Flash), each
+  checked per record by `evals.model_release` (T1). **Limit:** the live published roster is Roster A, and a prompt can act
+  differently on stronger models; this run screens. It suits the fix metric, since both known wrong-sided answers came from Gemini
+  Flash-Lite. Roster A is checked on live results, not by a separate paid replay (see below).
 - **Primary metric:** binary log score of the aggregate (median of the members, the live rule), paired by question, cluster
   bootstrap (`evals.report`).
 - **Fix metric:** polarity audit: the live auditor model reads every member answer in both arms after the run and
@@ -46,13 +51,17 @@ _Card written BEFORE running. Results section filled by the report generator._
 - **Expected effect & certainty:** score effect small, ≈0.008–0.010 Brier (v1), far below what N ≈ 75 can detect (MDE ≈ 0.019 Brier
   with the protocol's illustrative SD; the real SD is unmeasured until the F-13 A/A). **What this run can show:** whether the fix
   removes wrong-sided answers, and whether the new prompt is *clearly* worse. **What it can't show:** a small gain, or a small
-  harm. A small harm is what the Tier 1 shadow is for: the old prompt keeps running next to live on fresh questions.
-- **No rerun before going live** (a fix, Tier 1). The shadow comparison is reviewed at ~150 resolved questions together with the
-  frontier verdict; if the new prompt is then clearly worse (same test), live switches back.
+  harm, or how Roster A reacts. Those are what the Tier 1 shadow is for (v2.1): after going live, an unpublished cheap-roster shadow
+  keeps old and new prompt side by side on fresh questions (cheap; set up in the go-live PR).
+- **No rerun before going live** (a fix, Tier 1). At ~150 resolved questions (with the frontier verdict) the shadow comparison and
+  live Roster A results are reviewed; if the new prompt is then clearly worse (same test), live switches back.
+- **Reusable baseline (v2.1, Christian 2026-11-07):** arm A's replayed records are kept (`data/experiments/EXP-002/<run>/records/A`)
+  as the cheap-roster baseline for later prompt checks on the same questions, so a later check pays only for its new arm. Caveat
+  to state on any result that reuses it: the arms were then not run at the same moment (T11), and providers drift over time.
 - **Repeats k:** 1.
-- **Cost estimate:** ≈ $0.10 per question per arm for Roster A (rough, from live costs) → ≈ $15 for 75 questions, plus < $1 for the
-  audit. The tool prints the exact estimate from the archive's per-call costs (`--dry-run`) and refuses above `--max-cost`
-  (default $20, hard cap). One run. From the $180 experiment budget.
+- **Cost estimate:** (v2.1) Roster A would cost ≈ $22 for the 88 eligible questions (dry run 2026-11-07: $0.123/question/arm incl.
+  audit); too steep for a recurring check. The cheap roster's exact estimate comes from `--dry-run --config cheap`; the run goes
+  ahead without a further question if that estimate is ≤ $5 (`--max-cost 5`, hard cap). One run. From the $180 experiment budget.
 - **Decision rule: no-harm check** (`no_harm()` in `tools/run_exp002_replay.py`, fixed before any run). Arm B goes live (Tier 1)
   only if ALL hold:
   1. the score is not clearly worse: the 95% CI of the log-score difference B − A is not entirely below 0;
