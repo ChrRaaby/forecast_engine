@@ -108,19 +108,32 @@ def sync(repo: str) -> list[str]:
     return warnings
 
 
-def push_archive() -> str:
-    """Commit and push data/ to the private archive repo (ChrRaaby/forecast_engine_data), if it is one."""
-    data = ROOT / "data"
+def push_archive(data: Path | None = None) -> str:
+    """Commit and push data/ to the private archive repo (ChrRaaby/forecast_engine_data), if it is one.
+
+    The remote can get commits from elsewhere (e.g. miss-review notes pushed from a cloud session), so local commits are replayed
+    on top of origin/main (`pull --rebase`) before pushing; earlier unpushed syncs are pushed too, not only today's. A rebase
+    conflict is aborted (nothing lost, local commits kept) and raised, so the run reports it. Never forces. (Fix 2026-11-08: 7
+    syncs from 3-7 Nov had silently stayed local after the remote moved ahead.)"""
+    data = data or ROOT / "data"
     if not (data / ".git").exists():
         return "data/ is not a git repo; archive not pushed"
     git = ["git", "-C", str(data), "-c", "user.name=forecast_engine archiver", "-c", "user.email=archiver@localhost"]
     subprocess.run([*git, "add", "-A"], check=True)
-    if subprocess.run([*git, "diff", "--cached", "--quiet"]).returncode == 0:
+    committed = subprocess.run([*git, "diff", "--cached", "--quiet"]).returncode != 0
+    if committed:
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        subprocess.run([*git, "commit", "-q", "-m", f"Archive sync {stamp}"], check=True)
+    subprocess.run([*git, "fetch", "-q", "origin", "main"], check=True)
+    if subprocess.run([*git, "rebase", "-q", "origin/main"]).returncode != 0:
+        subprocess.run([*git, "rebase", "--abort"])
+        raise RuntimeError("data/: rebase onto origin/main hit a conflict; aborted, local commits kept, nothing pushed")
+    ahead = int(subprocess.run([*git, "rev-list", "--count", "origin/main..HEAD"], check=True, capture_output=True,
+                               text=True).stdout.strip() or 0)
+    if not ahead:
         return "archive up to date"
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    subprocess.run([*git, "commit", "-q", "-m", f"Archive sync {stamp}"], check=True)
-    subprocess.run([*git, "push", "-q", "origin", "main"], check=True)
-    return "archive pushed"
+    subprocess.run([*git, "push", "-q", "origin", "HEAD:main"], check=True)
+    return f"archive pushed ({ahead} commit{'s' if ahead != 1 else ''})"
 
 
 def _clip(text: str | None) -> str:
