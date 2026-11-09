@@ -159,7 +159,9 @@ Rigour costs money, and the PoC has $100. The levers:
      Caveat on every result: a prompt can act differently on stronger models.
   2. **Reuse the baseline arm:** the old-prompt arm of a replay is kept (`data/experiments/<EXP>/<run>/records/A`) and later prompt
      checks on the same questions pay only for their new arm. Caveat on every result that reuses it: the arms were not run at the
-     same moment (T11), and providers drift over time. Tool: `tools/run_prompt_check.py --reuse-baseline` (B-79).
+     same moment (T11), and providers drift over time. Tool: `tools/run_prompt_check.py --reuse-baseline` (B-79). **Paused 2026-11-09:** the B-79 drift check found the same
+     prompt and cheap config scoring worse two days later (log Δ −0.031, 95% CI [−0.057, −0.007], N 88), ~4× EXP-002's effect.
+     Until a repeat drift check passes (F-18), prompt checks run both arms fresh.
   3. Fixes (a known defect, e.g. EXP-002) use a pre-registered **no-harm check** instead of needing a significant gain; bets on
      accuracy still need the §6 rule.
 

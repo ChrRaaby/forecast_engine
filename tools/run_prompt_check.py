@@ -66,7 +66,9 @@ DATA = ROOT / "data"
 OUT = DATA / "experiments"
 CONFIGS = {"frontier": TOURNAMENT_CONFIG, "cheap": DEFAULT_CONFIG}
 T11_CAVEAT = ("Arm A was reused from an earlier run: the arms were not run at the same moment (T11), and model providers drift "
-              "over time, so part of any difference may be drift, not the prompt. Size of that risk: see the B-79 drift check.")
+              "over time, so part of any difference may be drift, not the prompt. The B-79 drift check (2026-11-09) measured it: the same "
+              "prompt and cheap config scored log Δ −0.031 (95% CI [−0.057, −0.007], N 88) two days later. Reuse is paused "
+              "(protocol §8.2) until a repeat drift check passes (F-18): do not base a decision on this run.")
 
 
 def arm_configs(name: str, baseline_prompt: str, variant: str | None) -> dict[str, BotConfig]:
