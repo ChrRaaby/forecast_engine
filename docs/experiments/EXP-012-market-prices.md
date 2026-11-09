@@ -128,4 +128,25 @@ Note: using the price makes the forecast useless as a trading signal (research/0
 price-free arm A, which is recorded anyway.
 
 ## Results (generated)
+Step 1b, 2026-11-09, `tools/market_match.py` (judge `exp012-judge-v1`), report in the data repo
+`markets/exp012/step1b-report.md`. No outcome or score was opened; the table was not frozen.
+- Records: 161 published live binary records from 2026-10-01 (161 questions). 59 (36.6%) had no candidate market.
+- Grade-A real-money matches: **7/161 = 4.3%** (FutureEval 2/50, MiniBench 1/82, wide runs 4/29). Grade B: 8.
+  All 7 grade-A matches had an as-of price.
+- Median |bot − market| gap on grade-A matches: 15.0 points (mean 14.3; n = 7).
+- LK5: 0 violations (price time and market creation time ≤ `as_of`, all candidates). LK6: Polymarket 9/9 priced at
+  10-minute resolution (median age 0.07 h); Kalshi 8/8 from trades (median age 9.7 h, p90 120 h); Manifold 1/5 (others dead > 7 days).
+- API cost ≈ $0.11.
+- Deviations from the card, stated: a keyword-overlap cut-off (0.12) before the judge, and Kalshi found via a locally
+  ranked series list (no keyword search). Both can lower recall, so 4.3% may be a slight underestimate; 13 matches
+  were needed for 8%. The judge saw Polymarket's end date as stored today, and 5 candidates' rules text contained
+  resolution wording (LK3 covers the fields we pass, not text inside the rules); irrelevant now that nothing is scored.
+- Certainty: the match rate is a count over all records (no sampling), so it is solid for this season's question mix;
+  the gap figure (n = 7) is anecdotal.
+
 ## Decision
+2026-11-09, Christian: **parked** under decision rule 1 (futility: match rate 4.3% < 8%). At ~75 resolved binary
+questions a month, ~3 matched questions a month would take about a year to reach the analysis point. Kept at $0 extra:
+a "market said X%" line in the weekly miss review for matched questions (B-72), no forecast change. The code
+(`evals/markets.py`, `tools/market_match.py`) stays for that review line. Reopen only as a new variant card, e.g. if a
+future tournament's questions match markets far more often.
