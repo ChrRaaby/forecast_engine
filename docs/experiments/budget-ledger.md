@@ -9,6 +9,7 @@ Every run that spends money adds a row (tools append automatically). Costs are O
 | 2026-10-08 | EXP-005 | benchmark-forward (planned) | forward test on 11 benchmark questions, arms A/B/C, gpt-6.1-sol + gemini-3.1-pro-preview, k=1; **hard cap $5** (actual cost added as its own row after the run) | 0 | $0.000 | $0.666 | $179.33 |
 | 2026-10-08 | EXP-005 | 20261008T211403Z | benchmark-forward, 11 questions, arms A/B/C, openai/gpt-6.1-sol, google/gemini-3.1-pro-preview, k=1 (research incl.) | 98 | $1.972 | $2.638 | $177.36 |
 | 2026-11-07 | EXP-002 | 20261107T225241Z | EXP-002 screen (cheap config, booked by hand: the tool crashed on the ledger before this fix), 88 binary records × 2 arms + polarity audit; verdict GO LIVE (no-harm) | 1056 | $1.446 | $4.084 | $175.92 |
+| 2026-11-09 | EXP-012 | (planned) | market matcher, one cheap judge call per record (~590 records + weekly top-ups); **hard cap $5** (actual cost added as its own row after the run) | 0 | $0.000 | $4.084 | $175.92 |
 
 ## EXP-008 research desk: separate line, $50 from the $100 PoC
 
