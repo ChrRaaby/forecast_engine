@@ -113,9 +113,17 @@ def test_replay_refuses_future_research_before_any_model_call():
         asyncio.run(replay.replay_record(rec, DEFAULT_CONFIG, llm))
     assert llm.calls == 0
     naive = vh.synthetic_record()
-    naive["research"]["items"][0]["published_at"] = "2025-03-14T13:00:00"  # no zone: read as UTC, so 1 h late
-    with pytest.raises(LeakageError):
+    naive["research"]["items"][0]["published_at"] = "2025-03-14T13:00:00"  # no zone: refused, not read as UTC
+    with pytest.raises(LeakageError, match="no time zone"):
         replay.assert_record_as_of(naive)
+    early = vh.synthetic_record()
+    early["research"]["items"][0]["published_at"] = "2025-03-01T00:00:00"  # long before as_of, but still no zone: refused
+    with pytest.raises(LeakageError, match="no time zone"):
+        replay.assert_record_as_of(early)
+    bundle = vh.synthetic_record()
+    bundle["research"]["as_of"] = "2025-03-01T00:00:00"
+    with pytest.raises(LeakageError, match="no time zone"):
+        replay.assert_record_as_of(bundle)
     replay.assert_record_as_of(vh.synthetic_record())  # undated items are allowed (live research, captured at as_of)
 
 

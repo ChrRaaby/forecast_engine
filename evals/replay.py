@@ -108,17 +108,29 @@ def _utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
+def _has_zone(iso: str) -> bool:
+    return datetime.fromisoformat(iso).tzinfo is not None
+
+
 def assert_record_as_of(record: dict[str, Any]) -> None:
     """Raise LeakageError if the record's frozen research could not all have existed at the record's as_of (T2; B-32).
 
     Refused: a research item dated after as_of, and a bundle whose own as_of is after the record's. Unlike the backtest guard
     (`evals.asof.assert_bundle_as_of`), undated items are allowed: live research was captured at as_of by construction (the
-    record's as_of is stamped after research), and Gemini-grounded items carry no date at all. A date without a time zone is read
-    as UTC. The error names counts and dates only, never research text."""
+    record's as_of is stamped after research), and Gemini-grounded items carry no date at all. A date without a time zone (an item's
+    `published_at` or the bundle's `as_of`) is refused, not read as UTC: a guess about the zone could hide a leak (F-13, checked
+    on the archive 2026-11-09: none of the 4,667 dates and 1,342 bundle times lacks a zone). The error names counts and dates
+    only, never research text."""
     as_of = datetime.fromisoformat(record["as_of"])
     if as_of.tzinfo is None:
         raise LeakageError("record as_of has no time zone; can't check its research")
     research = record["research"]
+    naive = [("research as_of", research["as_of"])] if research.get("as_of") and not _has_zone(research["as_of"]) else []
+    naive += [("item published_at", i["published_at"]) for i in research.get("items", [])
+              if i.get("published_at") and not _has_zone(i["published_at"])]
+    if naive:
+        raise LeakageError(f"{len(naive)} research date(s) have no time zone, so they can't be checked against the record's "
+                           f"as_of {record['as_of']}: {', '.join(f'{k} {v}' for k, v in naive[:5])}")
     if research.get("as_of") and _utc(datetime.fromisoformat(research["as_of"])) > as_of:
         raise LeakageError(f"research bundle is as of {research['as_of']}, after the record's as_of {record['as_of']}")
     late = sorted(
