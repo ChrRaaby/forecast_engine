@@ -23,6 +23,7 @@ Every run that spends money adds a row (tools append automatically). Costs are O
 Christian, 2026-11-01 (F-14 decision 5); outside the $300 season cap and the $180 frontier budget. Booked cost counts Google's
 grounding fee at list price ($0.014 per search query); "real" is what is actually paid (Google's fee is $0 while the project stays
 inside its 5,000 free queries a month). Add one row a month from the monitor (OpenRouter) and the Google billing report.
+**Christian, 2026-11-11 (F-20): real spend counts against the $50; booked is shown beside it.**
 
 | Date | What | Booked | Real (est.) | Real cumulative | Left of $50 |
 |---|---|---|---|---|---|
