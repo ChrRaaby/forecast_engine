@@ -54,7 +54,14 @@ Each threat has a control and an **automated check**. A control without a check 
   Related questions (same series or event) go in the same split and form one cluster for statistics.
 
 ## 4. Metrics
-- **Primary (pre-declared per experiment; default):** binary **log score**, reported as the Metaculus baseline score, because live ranking is log-based.
+- **Primary (pre-declared per experiment; default from 2026-11-11):** the **Metaculus baseline score per question across all
+  question types** (binary, multiple choice, numeric, discrete; each log-based, `evals/scoring.py`), one value per question, compared
+  as the mean paired difference. Reason: binary questions are only ~40% of what the bot forecasts (98 of 245 frontier questions on
+  2026-11-11) and every question counts the same in the tournament, so a binary-only metric throws away more than half the data.
+  The per-type breakdown is always reported next to it. Thresholds (kill, smallest effect of interest) are written on the card in
+  baseline-score points. A card may still declare a single type as primary when the change only touches that type (e.g. a numeric
+  tail fix), saying why. Cards pre-registered before 2026-11-11 keep the metric they were registered with (EXP-002 review, EXP-008,
+  EXP-010 rerun, the B-51b gate, B-74).
 - **Always reported:** Brier score; calibration (reliability diagram, 10 bins, ECE); sharpness; MC log score; numeric
   log score (Metaculus continuous) and CRPS; **edge vs. community prediction as-of** where available; failure/abstain rate;
   **$ per question**; latency.
@@ -195,3 +202,5 @@ Systematic disagreement means the harness is wrong (leakage or distribution mism
   in the project files).
 - 2026-11-07: §8 prompt changes: screen on the cheap roster, reuse the baseline arm, no-harm check for fixes (Christian, after
   EXP-002 cost ~$22 on the frontier roster vs $1.45 on the cheap one).
+- 2026-11-11: §4 default primary metric is the baseline score per question across all question types (was binary log score);
+  earlier pre-registered cards keep theirs. Christian, after the whole-project review (backlog B-81).
