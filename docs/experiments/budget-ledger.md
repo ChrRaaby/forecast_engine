@@ -11,6 +11,12 @@ Every run that spends money adds a row (tools append automatically). Costs are O
 | 2026-11-07 | EXP-002 | 20261107T225241Z | EXP-002 screen (cheap config, booked by hand: the tool crashed on the ledger before this fix), 88 binary records × 2 arms + polarity audit; verdict GO LIVE (no-harm) | 1056 | $1.446 | $4.084 | $175.92 |
 | 2026-11-09 | EXP-012 | (planned) | market matcher, one cheap judge call per record (~590 records + weekly top-ups); **hard cap $5** (actual cost added as its own row after the run) | 0 | $0.000 | $4.084 | $175.92 |
 | 2026-11-09 | B-79 | 20261109T211141Z | B-79 drift check, 88 binary records (88 with reused arm A), cheap config | 264 | $0.550 | $4.634 | $175.37 |
+| 2026-11-09 | EXP-012 | 20261109T211634Z | market matcher, judge google/gemini-3.5-flash-lite, 6 binary records (step 1b, draft table) | 6 | $0.006 | $4.640 | $175.36 |
+| 2026-11-09 | B-32 | 20261109T210025Z | A/A replay, 89 binary records × 2, cheap config | 534 | $1.190 | $5.830 | $174.17 |
+| 2026-11-09 | EXP-012 | 20261109T212543Z | market matcher, judge google/gemini-3.5-flash-lite, 161 binary records (step 1b, draft table) | 86 | $0.077 | $5.907 | $174.09 |
+| 2026-11-09 | EXP-012 | 20261109T212544Z | market matcher, judge google/gemini-3.5-flash-lite, 161 binary records (step 1b, draft table) | 29 | $0.026 | $5.933 | $174.07 |
+| 2026-11-09 | EXP-012 | 20261109T212634Z | market matcher, judge google/gemini-3.5-flash-lite, 161 binary records (step 1b, draft table) | 1 | $0.001 | $5.934 | $174.07 |
+| 2026-11-09 | B-32 | 20261109T215614Z | A/A replay, 28 binary records × 2, frontier config | 280 | $4.470 | $10.404 | $169.60 |
 
 ## EXP-008 research desk: separate line, $50 from the $100 PoC
 
