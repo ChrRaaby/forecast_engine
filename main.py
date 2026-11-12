@@ -41,7 +41,7 @@ from forecasting_tools.data_models.data_organizer import DataOrganizer  # noqa: 
 from forecasting_tools.data_models.forecast_report import ForecastReport  # noqa: E402
 from forecasting_tools.data_models.multiple_choice_report import PredictedOption  # noqa: E402
 
-from forecast_engine import guards, parsing, provenance, research_followup  # noqa: E402
+from forecast_engine import guards, parsing, provenance, research_followup, research_v2  # noqa: E402
 from forecast_engine.clock import Clock, SystemClock  # noqa: E402
 from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
@@ -315,7 +315,11 @@ class EngineBot(ForecastBot):
         """B-62: forecast with each shadow config on the live question's research; never publish, never raise.
 
         A shadow whose research config has a follow-up step (B-17, EXP-008) forecasts on an enlarged copy of the live research; the
-        live bundle is not changed and not paid for twice. The copy is stored in the shadow record, so the forecast replays."""
+        live bundle is not changed and not paid for twice. The copy is stored in the shadow record, so the forecast replays.
+        EXP-013 (B-80) research-v2 steps run the same way, before the follow-up step; arms with the same source-block settings share
+        one fetch + extraction per question (`cache`), and each call is charged to the run once (`charged`)."""
+        cache: dict = {}
+        charged = {id(c) for c in research.calls}  # the live research was paid for by the live forecast
         for name, scfg in self.shadows.items():
             if scfg.config_hash() == live_cfg.config_hash():
                 continue  # the live forecast already is this config (e.g. after the season fallback)
@@ -325,11 +329,17 @@ class EngineBot(ForecastBot):
             prov = self._provenance(scfg, role="shadow", roster=name)
             try:
                 shadow_research = research
+                if research_v2.active(scfg.research):
+                    shadow_research = await research_v2.apply(snapshot, shadow_research, self.clock, scfg.research, self.llm,
+                                                              cache)
                 if scfg.research.followup is not None:
-                    shadow_research = await research_followup.followup(snapshot, research, self.clock, scfg.research, self.llm)
-                # the live research was paid for by the live forecast; the follow-up step's calls are charged now, so they
-                # count even if the forecast below raises something other than ForecastFailed
-                self.spent_usd += shadow_research.cost_usd - research.cost_usd
+                    shadow_research = await research_followup.followup(snapshot, shadow_research, self.clock, scfg.research,
+                                                                       self.llm)
+                # the step calls are charged now, so they count even if the forecast below raises something other than
+                # ForecastFailed; a call shared by two arms (same object) is charged once
+                new = [c for c in shadow_research.calls if id(c) not in charged]
+                charged.update(id(c) for c in new)
+                self.spent_usd += sum(c.cost_usd or 0.0 for c in new)
                 rec = await forecast(snapshot, self.clock, shadow_research, scfg, self.llm)
                 self.spent_usd += rec.cost_usd - shadow_research.cost_usd
                 self._write(writer, rec, prov, published=False, status="shadow")

@@ -60,6 +60,67 @@ class FollowupConfig:
 
 
 @dataclass(frozen=True)
+class SourceBlockConfig:
+    """EXP-013 arms B and E (B-80): fetch the page(s) the question resolves on and put a short, labelled block at the top of the
+    brief. Fetch safety: only plain http(s) GETs of links written in the question's resolution criteria / fine print; no cookies,
+    no credentials, public addresses only, same-host redirects only, timeout and size cap. The page text is data: only the
+    extractor's short block (value, its date, a verified quote <= quote_max_chars, or NOT FOUND) reaches the forecasters."""
+
+    max_links: int = 2
+    timeout_s: float = 20.0
+    max_bytes: int = 2_000_000  # read at most this much of a response
+    max_text_chars: int = 40_000  # page text kept (stored in the record and shown to the extractor)
+    max_redirects: int = 3
+    extractor_model: str = "openai/gpt-5-mini"  # one cheap call per question, all fetched pages together
+    extractor_max_tokens: int = 3000
+    extractor_reasoning_effort: str = "low"
+    quote_max_chars: int = 300
+    prompt_version: str = "exp013-source-2026-11-12"
+
+
+@dataclass(frozen=True)
+class BriefWriterConfig:
+    """EXP-013 arm C (B-80): a stronger Gemini with Google grounding writes the brief instead of the live Flash-Lite call, under
+    strict rules (a link and a date for every number, NOT FOUND instead of an estimate, the resolution source first). Model and
+    thinking level chosen by Christian after the arm C pilot (tools/exp013_armc_pilot.py), 2026-11-12: 1.6 Google queries per
+    call, ~$0.011 of tokens per call, ~13 s."""
+
+    model: str = "gemini-3.8-flash"  # Google AI Studio id (Christian, 2026-11-12, after the pilot)
+    thinking_level: str | None = "low"  # Gemini 3 thinkingLevel; "minimal" is not supported on 3.8 Flash
+    # Recorded at the standard list price ($1.50/$7.50 per M from 2027-01-01). Until 2026-12-31 Google's intro price is
+    # $0.75/$3.75, so records overstate token cost by 2x until then (safe side; no date switch).
+    usd_per_m_in: float = 1.50
+    usd_per_m_out: float = 7.50  # output incl. thinking
+    grounding_usd_per_query: float = 0.014  # counted at list price, free tier ignored (as research_followup)
+    # Cap on the call's cost per question at list price. One request can't be stopped midway, so the cap bounds the output
+    # tokens (maxOutputTokens) up front; grounding queries are not under our control and are checked after the call (an
+    # over-cap call is flagged in the record; the brief is still used).
+    max_cost_usd_per_q: float = 0.05
+    # Grounding queries assumed when sizing maxOutputTokens. 0 = the ceiling covers tokens only: at list price 3 queries ($0.042)
+    # would leave ~700 output tokens under $0.05, too few for a brief with thinking. Google's free grounding allowance (5,000 a
+    # month) likely covers arm C; the pilot measures it. The fee is still recorded at list price and flagged when over the cap.
+    reserved_queries: int = 0
+    prompt_version: str = "exp013-c-writer-2026-11-12"
+
+
+@dataclass(frozen=True)
+class NewsConfig:
+    """EXP-013 arm D (B-80): AskNews with keywords written by a cheap model instead of the full question sentence, plus the
+    historical ("news knowledge") search next to "latest news". Both parts can be switched separately. Credits per question:
+    1 (keyword latest) + 5 (historical, assumed; check on the AskNews usage page before switch-on), instead of the live 1."""
+
+    keywords: bool = True
+    historical: bool = True
+    keyword_model: str = "openai/gpt-5-mini"
+    keyword_max_tokens: int = 2000
+    keyword_reasoning_effort: str = "low"
+    n_articles: int = 8
+    historical_n_articles: int = 8
+    historical_lookback_days: int = 365
+    prompt_version: str = "exp013-d-news-2026-11-12"
+
+
+@dataclass(frozen=True)
 class ResearchConfig:
     # Tried in order; each available provider contributes items. Providers without credentials are skipped.
     providers: tuple[str, ...] = ("asknews_latest", "gemini_grounded")
@@ -74,6 +135,11 @@ class ResearchConfig:
     # B-17 / EXP-008 follow-up searches on top of the gathered research. None = off (every live config). Only the shadow runner
     # applies it (main.py `_run_shadows`); gather_research() ignores it.
     followup: FollowupConfig | None = None
+    # EXP-013 (B-80) research v2 steps, applied by the shadow runner only (forecast_engine/research_v2.py), never by
+    # gather_research(). None = off (every live config).
+    source_block: SourceBlockConfig | None = None
+    brief_writer: BriefWriterConfig | None = None
+    news: NewsConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -96,8 +162,9 @@ class BotConfig:
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        if d["research"]["followup"] is None:
-            del d["research"]["followup"]  # off: leave the dict, and so config_hash(), as it was before the field existed
+        for step in ("followup", "source_block", "brief_writer", "news"):
+            if d["research"][step] is None:
+                del d["research"][step]  # off: leave the dict, and so config_hash(), as it was before the field existed
         return d
 
     def config_hash(self) -> str:
@@ -143,6 +210,17 @@ EXP008_ARMS: dict[str, BotConfig] = {
 # prompt) on every question, so live can switch back if the new prompt turns out worse (review at ~150 resolved questions).
 EXP002_OLD_PROMPT_SHADOW = replace(DEFAULT_CONFIG, prompt_version="template-2026-09-26-old")
 SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS}
+# EXP-013 "research v2" (B-80): built 2026-11-12, switched OFF. Arms B-D are the cheap ensemble with one research change each, on
+# top of the live question's research (baseline = the "cheap" shadow); arm E is the live frontier roster with B's source block,
+# compared with the published live forecast. B and E share one fetch + extraction per question. To switch on (only with
+# Christian's OK and the frozen card docs/experiments/EXP-013-research-v2.md): add **EXP013_ARMS to SHADOW_CONFIGS.
+EXP013_ARMS: dict[str, BotConfig] = {
+    "exp013-b-source": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, source_block=SourceBlockConfig())),
+    "exp013-c-writer": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, brief_writer=BriefWriterConfig())),
+    "exp013-d-news": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, news=NewsConfig())),
+    "exp013-e-frontier-source": replace(TOURNAMENT_CONFIG, research=replace(TOURNAMENT_CONFIG.research,
+                                                                            source_block=SourceBlockConfig())),
+}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
