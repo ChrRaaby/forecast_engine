@@ -3,6 +3,7 @@
     poetry run python tools/run_aa_replay.py --dry-run          # pick records, estimate the cost; no model calls, no key needed
     poetry run python tools/run_aa_replay.py                    # replay 60 records twice (arms A and A2), cheap config, $5 cap
     poetry run python -m evals.validate_harness --real data/experiments/B-32-aa/<run>/runs.csv
+    poetry run python tools/run_aa_replay.py --pin-hosts deepseek/deepseek-v4.1-flash=deepinfra   # one host per open-weight model (B-93)
 
 Live-replay (`evals.replay.replay_record`): each record's frozen research and as_of are reused, so the two arms see identical
 inputs and differ only by the models' own randomness. A harness that is right finds no difference (the CI contains 0) about 19
@@ -212,6 +213,17 @@ def append_ledger(run: str, calls: int, spent: float, note: str, ledger: Path = 
 def run(args, llm=None, *, runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES, out_root: Path = OUT,
         ledger: Path = LEDGER) -> int:
     cfg = aa_config(args.config)
+    from evals import hosts
+
+    try:
+        pins = hosts.parse_pins(getattr(args, "pin_hosts", None))
+    except ValueError as e:
+        print(f"REFUSED: {e}")
+        return 2
+    unknown = sorted(set(pins) - {f.model for f in cfg.forecasters})
+    if unknown:
+        print(f"REFUSED: --pin-hosts names models that are not in the {args.config} roster: {unknown}")
+        return 2
     picked, skips = pick_records(runs_dir, load_outcomes(outcomes_path), cfg, args.n)
     history = call_costs(runs_dir)
     est, per_call = estimate(len(picked), cfg, history)
@@ -240,7 +252,7 @@ def run(args, llm=None, *, runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES
         from forecast_engine.llm import OpenRouterClient
 
         load_dotenv(ROOT / ".env")
-        llm = OpenRouterClient(SystemClock())
+        llm = OpenRouterClient(SystemClock(), pinned_hosts=pins)
     capped = CappedLlm(llm, args.max_cost, per_call)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = out_root / run_id
@@ -249,15 +261,28 @@ def run(args, llm=None, *, runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES
     table = run_dir / "runs.csv"
     write_table(rows, table)
     print(f"done: {capped.calls} calls, ${capped.spent:.4f} spent, {capped.refused} calls refused by the cap")
+    note = f"A/A replay, {len(picked)} binary records × 2, {args.config} config" + (f", hosts pinned {pins}" if pins else "")
+    problems, host_lines = hosts.check_pins({arm: sorted((run_dir / "records" / arm).glob("q*.json")) for arm in ARMS}, pins)
+    if problems and not getattr(args, "allow_mixed_hosts", False):
+        (run_dir / "host_check.txt").write_text("\n".join(problems + [""] + host_lines) + "\n", encoding="utf-8")
+        print(f"HOST CHECK FAILED: {len(problems)} calls of a pinned model were not served by its pinned host (e.g. "
+              f"{problems[0]}); no report written, see {run_dir / 'host_check.txt'} (B-93)")
+        if capped.calls:
+            append_ledger(run_id, capped.calls, capped.spent, note, ledger)
+        return 3
     an = report.analyse(report.read_table(table), ARMS[0], name="B-32 A/A replay", decision_arms=[ARMS[1]], meta=report.provenance(table))
-    (run_dir / "report.md").write_text(report.render_report(an), encoding="utf-8", newline="\n")
+    md = report.render_report(an)
+    md += ("\n## Hosts (B-93)\n\n" + ("Pinned: " + ", ".join(f"{m} → {h}" for m, h in pins.items()) + "; every call checked.\n\n"
+                                       if pins else "No host pinned.\n\n")
+           + (f"**{len(problems)} calls ran on another host; compared anyway (--allow-mixed-hosts).**\n\n" if problems else "")
+           + "".join(f"- {ln}\n" for ln in host_lines))
+    (run_dir / "report.md").write_text(md, encoding="utf-8", newline="\n")
     c = an.comparisons[ARMS[1]][an.metric]
     print(f"{ARMS[1]} vs {ARMS[0]}: N {c.n}, log Δ {report._f(c.mean_diff)}, 95% CI [{report._f(c.ci_low)}, {report._f(c.ci_high)}]"
           f": {c.verdict_words()}")
     print(f"table: {table}\nnext: poetry run python -m evals.validate_harness --real {table}")
     if capped.calls:
-        append_ledger(run_id, capped.calls, capped.spent, f"A/A replay, {len(picked)} binary records × 2, {args.config} config",
-                      ledger)
+        append_ledger(run_id, capped.calls, capped.spent, note, ledger)
     return 0
 
 
@@ -268,6 +293,10 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-cost", type=float, default=5.0, help="refuse above this estimate; hard cap on spend in $ (default 5)")
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--dry-run", action="store_true", help="pick records and estimate the cost; no model calls")
+    ap.add_argument("--pin-hosts", action="append", metavar="MODEL=HOST",
+                    help="serve MODEL only from OpenRouter host HOST, fallbacks off (B-93; repeatable). The report is refused "
+                         "if any call of a pinned model ran elsewhere")
+    ap.add_argument("--allow-mixed-hosts", action="store_true", help="write the report even if the host check fails (flagged)")
     return ap
 
 

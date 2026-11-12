@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from typing import Protocol
 
 from openai import AsyncOpenAI
@@ -20,11 +21,15 @@ class LlmClient(Protocol):
 
 
 class OpenRouterClient:
-    def __init__(self, clock: Clock, api_key: str | None = None, timeout_s: float = 240.0) -> None:
+    def __init__(self, clock: Clock, api_key: str | None = None, timeout_s: float = 240.0,
+                 pinned_hosts: Mapping[str, str] | None = None) -> None:
+        """`pinned_hosts` (B-93, experiment runs only; the live bot passes none): model id -> the one OpenRouter host that may
+        serve it, with fallbacks off, so both arms of an experiment run on the same build of an open-weight model."""
         key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not key:
             raise RuntimeError("OPENROUTER_API_KEY is not set")
         self._clock = clock
+        self._pins = dict(pinned_hosts or {})
         self._client = AsyncOpenAI(base_url=OPENROUTER_BASE_URL, api_key=key, timeout=timeout_s, max_retries=2)
 
     async def complete(
@@ -35,6 +40,9 @@ class OpenRouterClient:
         if reasoning_effort:
             params["reasoning_effort"] = reasoning_effort
             extra_body["reasoning"] = {"effort": reasoning_effort}
+        pin = self._pins.get(model)
+        if pin:
+            extra_body["provider"] = {"order": [pin], "allow_fallbacks": False}
         call = LlmCall(
             purpose=purpose,
             provider="openrouter",
@@ -43,6 +51,8 @@ class OpenRouterClient:
             prompt=prompt,
             requested_at=self._clock.now(),
         )
+        if pin:
+            call.extra["pinned_host"] = pin
         start = time.monotonic()
         try:
             resp = await self._client.chat.completions.create(

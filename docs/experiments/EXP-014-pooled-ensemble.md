@@ -61,8 +61,27 @@ share model answers").
 
 ## Results (generated)
 
-_Pending._
+### Screen, 2026-11-12 (`tools/exp014.py --data <data repo>`, data repo at 2026-11-12 20:59 UTC; output in the project files
+`evals/exp014/screen-2026-11-12.txt`)
+
+| | N | B − A, baseline points/q | 95% CI | B wins | SD of Δ | MDE |
+|---|---|---|---|---|---|---|
+| All types (primary) | 88 (88 clusters) | **+0.41** | −2.32 to +3.38 | 45% (11 identical) | 13.6 | ≈ 4.1 |
+| binary | 38 | +1.16 | | | | |
+| numeric | 23 | −0.86 | | | | |
+| discrete | 22 | +0.57 | | | | |
+| multiple choice | 5 | −0.22 | | | | |
+
+Descriptive: mean score A 29.78, B 30.19; binary log score B − A +0.0081 nats (n = 38). All 88 questions are from the
+`frontier-2026-10-08` era (no `frontier-2026-11-07` question has resolved yet). Dropped: 158 not resolved yet, 1 annulled;
+none for missing scaling, CDF conversion or a mismatch between the recomputed and stored live median.
+
+Reading: **inconclusive**. The point estimate is slightly in B's favour, but the CI is wide (it spans −2.3 to +3.4 points)
+because pooling changes numeric and discrete forecasts a lot on some questions (SD of Δ 13.6 points). Certainty: low
+(n = 88, one era, screen).
 
 ## Decision
 
-_Pending._
+Screen rule: the CI's upper end (+3.38) is above 0.75, so B is **not dropped**; inconclusive → the deciding rerun goes
+ahead as written: questions resolved after 2026-11-12 only, at ≥ 80 such questions (`tools/exp014.py --data data
+--resolved-after 2026-11-12`). No change to live.
