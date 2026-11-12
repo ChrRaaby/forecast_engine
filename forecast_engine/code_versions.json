@@ -38,5 +38,9 @@
   "b530b9073f00f708": {
     "label": "code-2026-11-12b",
     "note": "EXP-013 (B-80) research v2 built, switched OFF: research_v2.py (source block, brief writer, AskNews keywords + historical) for shadow arms only, on top of B-86 + B-93; live configs, hashes and CONFIG_VERSION unchanged"
+  },
+  "3539ebd38263a351": {
+    "label": "code-2026-11-12c",
+    "note": "EXP-013 arm C set to the pilot's choice (gemini-3.8-flash, thinking low, recorded at standard price $1.50/$7.50); brief writer records Google queries per call and flags brief links not among the grounding sources; arms still OFF, live unchanged"
   }
 }

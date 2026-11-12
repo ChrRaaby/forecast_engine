@@ -323,6 +323,23 @@ def writer_prompt(q: QuestionSnapshot, today: str) -> str:
     return research_prompt(q) + STRICT_RULES.format(today=today)
 
 
+BRIEF_URL_RE = re.compile(r"https?://[^\s<>\"'\]\[)(,]+", re.I)
+
+
+def link_check(text: str, source_uris: list[str | None]) -> dict[str, Any]:
+    """Links the brief cites that are not among the grounding sources Google returned. Recorded and flagged, never removed: Flash
+    sometimes runs no search, and then any link in the brief comes from the model's memory. Google often returns its own redirect
+    URLs as sources, so an unmatched link is a flag for review, not proof that the link is made up."""
+    cited = []
+    for m in BRIEF_URL_RE.finditer(text or ""):
+        url = m.group(0).rstrip(".,;:!?*_")
+        if url not in cited:
+            cited.append(url)
+    sources = {u.rstrip("/") for u in source_uris if u}
+    unmatched = [u for u in cited if u.rstrip("/") not in sources]
+    return {"links_in_brief": len(cited), "links_not_in_sources": unmatched, "unsourced_links": bool(unmatched)}
+
+
 def max_output_tokens(prompt: str, cfg: BriefWriterConfig) -> int:
     """Output-token ceiling (thinking included) that keeps tokens + reserved grounding queries under the cap at list price."""
     in_cost = len(prompt) / 4 * cfg.usd_per_m_in / 1e6  # ~4 characters per token
@@ -385,7 +402,9 @@ async def _brief_writer(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, 
             "sources": [{"title": s.get("title"), "uri": s.get("uri")} for s in sources],
             "cost_note": "tokens at list price + grounding fee per search query at list price (free tier ignored)",
             "over_cap": call.cost_usd > cfg.max_cost_usd_per_q,
+            "n_search_queries": len(queries), "no_search": not queries,
         })
+        call.extra.update(link_check(text, [s.get("uri") for s in sources]))
         if call.extra["over_cap"]:
             out.errors.append(f"exp013 brief_writer over cap: ${call.cost_usd:.4f} > ${cfg.max_cost_usd_per_q:.2f}")
         if not text.strip():

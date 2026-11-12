@@ -82,12 +82,15 @@ class SourceBlockConfig:
 class BriefWriterConfig:
     """EXP-013 arm C (B-80): a stronger Gemini with Google grounding writes the brief instead of the live Flash-Lite call, under
     strict rules (a link and a date for every number, NOT FOUND instead of an estimate, the resolution source first). Model and
-    thinking level are chosen by the arm C pilot (tools/exp013_armc_pilot.py); the values below are placeholders until then."""
+    thinking level chosen by Christian after the arm C pilot (tools/exp013_armc_pilot.py), 2026-11-12: 1.6 Google queries per
+    call, ~$0.011 of tokens per call, ~13 s."""
 
-    model: str = "gemini-3.5-flash"  # PLACEHOLDER until the pilot picks; Google AI Studio id
-    thinking_level: str | None = "low"  # Gemini 3 thinkingLevel; None = model default
-    usd_per_m_in: float = 1.50  # list price for the model above (ai.google.dev pricing, read 2026-11-11 by the pilot thread)
-    usd_per_m_out: float = 9.00  # output incl. thinking
+    model: str = "gemini-3.8-flash"  # Google AI Studio id (Christian, 2026-11-12, after the pilot)
+    thinking_level: str | None = "low"  # Gemini 3 thinkingLevel; "minimal" is not supported on 3.8 Flash
+    # Recorded at the standard list price ($1.50/$7.50 per M from 2027-01-01). Until 2026-12-31 Google's intro price is
+    # $0.75/$3.75, so records overstate token cost by 2x until then (safe side; no date switch).
+    usd_per_m_in: float = 1.50
+    usd_per_m_out: float = 7.50  # output incl. thinking
     grounding_usd_per_query: float = 0.014  # counted at list price, free tier ignored (as research_followup)
     # Cap on the call's cost per question at list price. One request can't be stopped midway, so the cap bounds the output
     # tokens (maxOutputTokens) up front; grounding queries are not under our control and are checked after the call (an

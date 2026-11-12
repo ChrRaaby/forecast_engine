@@ -258,14 +258,16 @@ def test_writer_replaces_the_live_brief_in_place(monkeypatch):
     live = _bundle()
     out = _apply(cfg, FakeLlm(), live)
     model, prompt, thinking, limit = seen[0]
-    assert (model, thinking) == ("gemini-3.5-flash", "low") and "NOT FOUND" in prompt and "Today is 2026-05-01." in prompt
+    assert (model, thinking) == ("gemini-3.8-flash", "low") and "NOT FOUND" in prompt and "Today is 2026-05-01." in prompt
     assert limit == rv.max_output_tokens(prompt, BriefWriterConfig())
     assert [i.source for i in out.items] == ["asknews_latest", "asknews_latest", "gemini_grounded"]
     assert out.items[:2] == live.items[:2] and out.items[2].text.startswith("Made-up strict brief")
     assert "Sources consulted:\n- stats.example.org" in out.items[2].text and live.items[2].text == LIVE_BRIEF
     call = out.calls[-1]
-    assert call.cost_usd == pytest.approx((1000 * 1.50 + 1500 * 9.00) / 1e6 + 2 * 0.014)
+    assert call.cost_usd == pytest.approx((1000 * 1.50 + 1500 * 7.50) / 1e6 + 2 * 0.014)
     assert call.extra["over_cap"] is False and call.extra["search_queries"] == ["q0", "q1"]
+    assert call.extra["n_search_queries"] == 2 and call.extra["no_search"] is False
+    assert call.extra["links_in_brief"] == 1 and call.extra["unsourced_links"] is False  # the cited link is a grounding source
 
 
 def test_writer_over_cap_is_flagged_and_failure_keeps_the_live_brief(monkeypatch):
@@ -284,7 +286,7 @@ def test_writer_over_cap_is_flagged_and_failure_keeps_the_live_brief(monkeypatch
 
 def test_output_ceiling_follows_the_cap():
     cfg = BriefWriterConfig()
-    assert rv.max_output_tokens("x" * 4000, cfg) == int((0.05 - 1000 * 1.5e-6) / 9e-6)  # tokens only by default
+    assert rv.max_output_tokens("x" * 4000, cfg) == int((0.05 - 1000 * 1.5e-6) / 7.5e-6)  # tokens only by default
     assert rv.max_output_tokens("x" * 4000, replace(cfg, reserved_queries=3)) == 2048  # list-price fee: floor
 
 
@@ -366,3 +368,19 @@ def test_shadow_runner_applies_arms_charges_shared_calls_once_and_records_replay
         assert check_record(recs[n])  # the stored prompt rebuilds from the stored research
     # forecasts: cheap 3 + 3 polarity, B 3 + 3, E 5 + 5; the shared extraction once
     assert bot.spent_usd == pytest.approx(0.001 * (6 + 6 + 10 + 1))
+
+
+def test_writer_flags_links_not_among_grounding_sources_and_no_search(monkeypatch):
+    text = ("Index 4.2 (source: https://stats.example.org/index, 2026-04-28); poll 51% (source: https://made-up.example.com/poll, "
+            "2026-04-01).")
+    monkeypatch.setattr(rv, "_post_writer", lambda *a: _gemini(text=text, n_queries=0))
+    out = _apply(replace(DEFAULT_CONFIG.research, brief_writer=BriefWriterConfig()), FakeLlm())
+    x = out.calls[-1].extra
+    assert x["no_search"] is True and x["n_search_queries"] == 0 and x["links_in_brief"] == 2
+    assert x["links_not_in_sources"] == ["https://made-up.example.com/poll"] and x["unsourced_links"] is True
+    assert "made-up.example.com" in out.items[2].text  # flagged for review, never removed
+
+
+def test_arm_c_is_the_pilots_choice():
+    c = EXP013_ARMS["exp013-c-writer"].research.brief_writer
+    assert (c.model, c.thinking_level, c.usd_per_m_in, c.usd_per_m_out) == ("gemini-3.8-flash", "low", 1.50, 7.50)
