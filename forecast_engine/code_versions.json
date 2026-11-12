@@ -34,5 +34,9 @@
   "54a62ef67afecc67": {
     "label": "code-2026-11-12",
     "note": "B-93: OpenRouterClient takes optional pinned_hosts (experiment runs only; live passes none, forecasts unchanged); on top of B-86"
+  },
+  "b530b9073f00f708": {
+    "label": "code-2026-11-12b",
+    "note": "EXP-013 (B-80) research v2 built, switched OFF: research_v2.py (source block, brief writer, AskNews keywords + historical) for shadow arms only, on top of B-86 + B-93; live configs, hashes and CONFIG_VERSION unchanged"
   }
 }
