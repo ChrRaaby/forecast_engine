@@ -10,6 +10,8 @@ an option to REUSE arm A from an earlier run so a later check pays only for its 
     poetry run python tools/run_prompt_check.py --exp B-79 --reuse-baseline <run dir> --baseline-arm B --rescore-arm A
     # drift check: the baseline replayed fresh (A2) vs its stored answers (A), same questions; measures the T11 risk
     poetry run python tools/run_prompt_check.py --exp B-79 --reuse-baseline <run dir> --baseline-arm B --drift-check
+    # pin one OpenRouter host per open-weight member (B-93, protocol §5); the report is refused if any call ran elsewhere
+    poetry run python tools/run_prompt_check.py --exp EXP-0xx --variant <v> --pin-hosts deepseek/deepseek-v4.1-flash=deepinfra
 
 Arms differ only by `prompt_version` (both with the polarity check off, as in tools/run_exp002_replay.py); arm A is the
 baseline prompt (default: the live prompt). Records are picked as in tools/run_aa_replay.py; `--resolved-after` keeps fresh
@@ -43,6 +45,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from evals import hosts  # noqa: E402
 from evals import prompt_archive as pa  # noqa: E402
 from evals import report  # noqa: E402
 from evals.outcomes import load_outcomes, resolved_date  # noqa: E402
@@ -229,6 +232,15 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
     cfgs = arm_configs(args.config, args.baseline_prompt, args.variant)
     if mode == "drift":
         cfgs["A2"] = cfgs["A"]
+    try:
+        pins = hosts.parse_pins(getattr(args, "pin_hosts", None))
+    except ValueError as e:
+        print(f"REFUSED: {e}")
+        return 2
+    unknown = sorted(set(pins) - {f.model for f in cfgs["A"].forecasters})
+    if unknown:
+        print(f"REFUSED: --pin-hosts names models that are not in the {args.config} roster: {unknown}")
+        return 2
     base = None
     if args.reuse_baseline:
         try:
@@ -236,6 +248,12 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
         except ReuseRefused as e:
             print(f"REUSE REFUSED: {e}")
             return 2
+        if pins:
+            problems, _ = hosts.check_pins({f"{base.arm} (stored)": base.records.values()}, pins)
+            if problems:
+                print(f"REFUSED: the stored baseline was not run with the same host pins ({len(problems)} calls, e.g. "
+                      f"{problems[0]}); a pinned arm can't be compared with it (B-93)")
+                return 2
     outcomes = load_outcomes(outcomes_path)
     after = date.fromisoformat(args.resolved_after) if args.resolved_after else None
     if after is not None:
@@ -301,7 +319,7 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
         from forecast_engine.llm import OpenRouterClient
 
         load_dotenv(ROOT / ".env")
-        llm = OpenRouterClient(SystemClock())
+        llm = OpenRouterClient(SystemClock(), pinned_hosts=pins)
     capped = aa.CappedLlm(llm, args.max_cost, per_call)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = out_root / args.exp / f"{run_id}-{'drift' if mode == 'drift' else args.run_kind}"
@@ -321,6 +339,22 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
             p[1]["question"]["question_id"] for p in picked if p[1]["question"]["question_id"] not in reused),
     }, indent=1), encoding="utf-8")
     print(f"done: {capped.calls} calls, ${capped.spent:.4f} spent, {capped.refused} calls refused by the cap")
+    what = "B-79 drift check" if mode == "drift" else f"prompt check {args.variant}"
+
+    def ledger_row() -> None:
+        if capped.calls:
+            aa.append_ledger(run_id, capped.calls, capped.spent,
+                             f"{what}, {len(picked)} binary records ({len(reused)} with reused arm A), {args.config} config"
+                             + (f", hosts pinned {pins}" if pins else ""), ledger, experiment=args.exp)
+
+    problems, host_lines = hosts.check_pins(
+        {arm: sorted((run_dir / "records" / arm).glob("q*.json")) for arm in sorted(cfgs)}, pins)
+    if problems and not getattr(args, "allow_mixed_hosts", False):
+        (run_dir / "host_check.txt").write_text("\n".join(problems + [""] + host_lines) + "\n", encoding="utf-8")
+        print(f"HOST CHECK FAILED: {len(problems)} calls of a pinned model were not served by its pinned host (e.g. "
+              f"{problems[0]}); no report written, see {run_dir / 'host_check.txt'} (B-93)")
+        ledger_row()
+        return 3
     cand = "A2" if mode == "drift" else "B"
     title = f"{args.exp} " + ("B-79 drift check (fresh baseline A2 vs stored A)" if mode == "drift" else f"prompt check {args.variant}")
     an = report.analyse(report.read_table(table), "A", name=title, decision_arms=[cand], run_kind=args.run_kind,
@@ -336,6 +370,10 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
         lines += drift_lines(rows)
     if lines:
         md += "\n## Baseline reuse (B-79)\n\n" + "".join(f"- {ln}\n" for ln in lines)
+    md += ("\n## Hosts (B-93)\n\n" + ("Pinned: " + ", ".join(f"{m} → {h}" for m, h in pins.items()) + "; every call checked.\n\n"
+                                       if pins else "No host pinned.\n\n")
+           + (f"**{len(problems)} calls ran on another host; compared anyway (--allow-mixed-hosts).**\n\n" if problems else "")
+           + "".join(f"- {ln}\n" for ln in host_lines))
     (run_dir / "report.md").write_text(md, encoding="utf-8", newline="\n")
     c = an.comparisons[cand][an.metric]
     print(f"{cand} vs A: N {c.n}, log Δ {report._f(c.mean_diff)}, 95% CI [{report._f(c.ci_low)}, {report._f(c.ci_high)}]: "
@@ -343,11 +381,7 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
     for ln in lines:
         print(ln)
     print(f"report: {run_dir / 'report.md'}")
-    if capped.calls:
-        what = "B-79 drift check" if mode == "drift" else f"prompt check {args.variant}"
-        aa.append_ledger(run_id, capped.calls, capped.spent,
-                         f"{what}, {len(picked)} binary records ({len(reused)} with reused arm A), {args.config} config",
-                         ledger, experiment=args.exp)
+    ledger_row()
     return 0
 
 
@@ -392,6 +426,10 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-cost", type=float, default=5.0, help="refuse above this estimate; hard cap on spend in $ (default 5)")
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--dry-run", action="store_true", help="pick records and estimate the cost; no model calls")
+    ap.add_argument("--pin-hosts", action="append", metavar="MODEL=HOST",
+                    help="serve MODEL only from OpenRouter host HOST, fallbacks off (B-93; repeatable). The report is refused "
+                         "if any call of a pinned model ran elsewhere")
+    ap.add_argument("--allow-mixed-hosts", action="store_true", help="write the report even if the host check fails (flagged)")
     return ap
 
 

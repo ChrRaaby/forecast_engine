@@ -105,6 +105,13 @@ Each threat has a control and an **automated check**. A control without a check 
   run-to-run noise is identical in both and cancels. Such tests are far more sensitive than prompt tests at no extra cost (the
   table above does not apply to them; their noise comes only from how much the transform moves each forecast). Where an idea
   can be tested as a transform of existing answers, test it that way first.
+- **One host per open-weight model inside an experiment (B-93):** OpenRouter can route an open-weight model (today DeepSeek V4.1
+  Flash on the cheap roster) to about 15 different hosts per run. Experiment runs pin each open-weight member to one named host
+  with fallbacks off (`--pin-hosts MODEL=HOST` in `tools/run_prompt_check.py` and `tools/run_aa_replay.py`), and the tool refuses
+  to write the report if any call of a pinned model was served elsewhere. The card names the host (one that serves the model
+  unquantized, from the model's OpenRouter provider list). Exception: a drift check against a stored unpinned run (F-18) runs
+  unpinned like the run it repeats; the tool refuses to mix a pinned arm with an unpinned stored baseline. The live bot does
+  not pin (decided 2026-11-03: record the host, avoid outages).
 - **Kill thresholds:** a "too small to be worth it" rule uses a fixed smallest effect of interest written into the card before
   the run (a value judgement about cost and complexity), not a fraction of an MDE measured later.
 - **Multiplicity:** one primary metric per experiment. Secondary metrics are descriptive, not decision-making.
@@ -231,3 +238,4 @@ Systematic disagreement means the harness is wrong (leakage or distribution mism
   earlier pre-registered cards keep theirs. Christian, after the whole-project review (backlog B-81).
 - 2026-11-12: §5 measured noise table, "read k off the table" rule and "prefer designs that share model answers"; §8 note on
   the four-run reanalysis. Christian approved the non-determinism report's recommendations (backlog B-91).
+- 2026-11-12: §5 one host per open-weight model inside an experiment (`--pin-hosts`, B-93).

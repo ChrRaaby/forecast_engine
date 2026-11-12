@@ -30,5 +30,9 @@
   "70b262d843a39143": {
     "label": "code-2026-11-11",
     "note": "B-86: shadows run after the live forecast is published (or its failure written), same snapshot and research; no forecast change (CONFIG_VERSION unchanged)"
+  },
+  "54a62ef67afecc67": {
+    "label": "code-2026-11-12",
+    "note": "B-93: OpenRouterClient takes optional pinned_hosts (experiment runs only; live passes none, forecasts unchanged); on top of B-86"
   }
 }
