@@ -53,6 +53,10 @@ PRICES: dict[str, tuple[float, float]] = {
     "gemini-3.5-flash": (1.50, 9.00),
     "gemini-3.1-pro-preview": (2.00, 12.00),
     "gemini-3-flash-preview": (0.50, 3.00),
+    # Added 2026-11-12 (blog.google Hydrogen launch post; ai.google.dev "What's new in Gemini 3.8 Flash"). 3.8 Flash is
+    # $0.75/$3.75 until 2026-12-31; the standard price from 2027-01-01 is used, since EXP-013 runs to 2027-01-31.
+    "gemini-3.8-flash": (1.50, 7.50),
+    "gemini-4-hydrogen": (1.50, 7.50),
     "gemini-3.5-flash-lite": (0.30, 2.50),  # the live writer; price as in forecast_engine/config.py
 }
 GROUNDING_USD_PER_QUERY = 0.014  # $14 per 1,000 search queries for Gemini 3 after the free allowance
