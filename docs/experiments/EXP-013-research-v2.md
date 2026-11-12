@@ -21,13 +21,13 @@ arms, card and analysis are not touched. Code: `forecast_engine/research_v2.py`,
   | B source | `exp013-b-source` | Up to 2 links from the question's resolution criteria / fine print are fetched (plain HTTP GET). A cheap model extracts "current value relevant to the question, its date, a short quote" or "NOT FOUND / not retrievable". That block goes at the top of the brief, labelled "Resolution source, fetched <time>". Rest of the brief as live | 1 cheap extraction call + ≤ 2 page fetches |
   | C writer | `exp013-c-writer` | The Gemini Flash-Lite brief is replaced by a brief from a stronger search model, with rules: a link and a date for every number; "not found" instead of an estimate; state the latest value of the resolution source if found. AskNews part as live | 0 (one call replaced by a dearer one) |
   | E frontier + source | `exp013-e-frontier-source` | The **live frontier roster** with arm B's resolution-source block, compared with the published live forecast (its own baseline). Added 2026-11-11 (Christian) so a win for B can go live without a second confirmation round | 5 frontier forecasts + B's extraction (shared with B) |
-  | D news | `exp013-d-news` | AskNews is queried with keywords written by a cheap model instead of the full question sentence, and runs the historical ("news knowledge") search (last 365 days) next to "latest news"; historical articles are tagged as such. Gemini brief as live. **Full arm D on every question (Christian, 2026-11-12)** | 1 cheap keyword call + 2 AskNews calls (~6 extra credits) |
+  | D news | `exp013-d-news` | AskNews is queried with keywords written by a cheap model instead of the full question sentence, and runs the historical ("news knowledge") search (last 150 days; amended 2026-11-12, see below) next to "latest news"; historical articles are tagged as such. Gemini brief as live. **Full arm D on every question (Christian, 2026-11-12)** | 1 cheap keyword call + 2 AskNews calls (~6 extra credits) |
 
-  Build details (fixed at freeze): B/E extractor `openai/gpt-5-mini` (reasoning low), one call for all fetched pages, quote
+  Build details (fixed at freeze, helper model amended 2026-11-12): B/E extractor `openai/gpt-6-luna` (reasoning low), one call for all fetched pages, quote
   checked against the page text (a quote not found on the page turns the block into NOT FOUND); public addresses only,
   same-host redirects (≤ 3), 2 MB read cap, 40,000 characters kept and stored in the record. B and E share one fetch +
   extraction per question. C: `gemini-3.8-flash`, thinking "low", records Google queries per call and flags brief links not
-  among the grounding sources (kept, marked for review). D: keyword writer `openai/gpt-5-mini` (reasoning low), 8 + 8 articles.
+  among the grounding sources (kept, marked for review). D: keyword writer `openai/gpt-6-luna` (reasoning low), 8 + 8 articles.
   Any failed step falls back to the live research for that part and the error is recorded; replays refuse live-web steps.
 
   Combinations are not arms. If more than one arm wins, the combination is what goes to the Tier 2 confirmation.
@@ -111,7 +111,7 @@ arms, card and analysis are not touched. Code: `forecast_engine/research_v2.py`,
    credentials; the page text is treated as data, and only the extractor's short block (value, date, quote ≤ 300 characters)
    reaches the members, never the raw page. The fetched text is stored in the shadow record (private data repo) so the
    forecast replays.
-3. Arm C model chosen and piloted (done 2026-11-12: gemini-3.8-flash; Christian confirms grounding free-tier coverage in the billing console); AskNews credit budget checked (done 2026-11-11; real historical-search price still to read off the usage page); arms B and D add no Google queries; model IDs checked (done 2026-11-12 on the PC: all 26 checks OK, incl. openai/gpt-5-mini, gemini-3.8-flash with thinking, the 5 frontier models).
+3. Arm C model chosen and piloted (done 2026-11-12: gemini-3.8-flash; Christian confirms grounding free-tier coverage in the billing console); AskNews credit budget checked (done 2026-11-11; historical-search price checked 2026-11-12, see the amendment); arms B and D add no Google queries; model IDs checked (done 2026-11-12 on the PC: all 26 checks OK, incl. gemini-3.8-flash with thinking, the 5 frontier models).
 4. Offline tests; code version registered; live configs, hashes and `CONFIG_VERSION` unchanged (shadow arms only). Done 2026-11-12 (PR #35: 593 tests, 717/717 live records replay).
 5. This card frozen with Christian's choices (done 2026-11-12), then the one-line switch-on in `SHADOW_CONFIGS` (`**EXP013_ARMS`) with Christian's OK.
 
@@ -150,6 +150,17 @@ confirm). **Cap rule (decided by Christian 2026-11-12):** the $0.05/q cap counts
 against the free tier, not the cap (at $0.014 each, 1 of 5 3.8 Flash calls would pass $0.05). **Build requirement:** record
 queries per call and flag links in the brief that are not among the grounding sources (a call with no search may cite links
 from memory).
+
+## Amendment 2026-11-12 (before switch-on, no arm run or scored)
+Two changes, decided by Christian 2026-11-12, made before any EXP-013 arm was switched on, so no data is affected:
+1. **Arm D look-back 365 → 150 days.** AskNews refuses historical searches over 160 days (found by a single test search,
+   23:05 UTC); as built, every arm D historical search would have failed and fallen back to the live research.
+2. **Helper model `openai/gpt-5-mini` → GPT-6 Luna** for the B/E source extractor and the D keyword writer. OpenRouter lists
+   gpt-5-mini as expiring on 2026-12-11, inside the experiment window. GPT-6 Luna: no expiry, supports reasoning "low", already a
+   cheap-roster member, $0.10/$0.50 per M tokens (extractor ≤ ~$0.003/q, keywords < $0.001/q).
+AskNews price: the test hour showed ~10 credits for one refused + one successful historical search; with 1 Nov (20 searches ≈
+100 credits) the price is most likely 5 per search. First-week check: arm D's credits per question should be ~7 (if ~12, the
+historical search costs 10 and Christian decides whether to keep it).
 
 ## Results (generated)
 ## Decision
