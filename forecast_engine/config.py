@@ -71,7 +71,9 @@ class SourceBlockConfig:
     max_bytes: int = 2_000_000  # read at most this much of a response
     max_text_chars: int = 40_000  # page text kept (stored in the record and shown to the extractor)
     max_redirects: int = 3
-    extractor_model: str = "openai/gpt-5-mini"  # one cheap call per question, all fetched pages together
+    # one cheap call per question, all fetched pages together. GPT-6 Luna (in the cheap roster): $0.10/$0.50 per M, no expiry on
+    # OpenRouter; replaced gpt-5-mini (expires 2026-12-11) before switch-on (Christian, 2026-11-12)
+    extractor_model: str = "openai/gpt-6-luna"
     extractor_max_tokens: int = 3000
     extractor_reasoning_effort: str = "low"
     quote_max_chars: int = 300
@@ -111,12 +113,12 @@ class NewsConfig:
 
     keywords: bool = True
     historical: bool = True
-    keyword_model: str = "openai/gpt-5-mini"
+    keyword_model: str = "openai/gpt-6-luna"  # was gpt-5-mini (expires 2026-12-11), Christian 2026-11-12
     keyword_max_tokens: int = 2000
     keyword_reasoning_effort: str = "low"
     n_articles: int = 8
     historical_n_articles: int = 8
-    historical_lookback_days: int = 365
+    historical_lookback_days: int = 150  # AskNews refuses windows over 160 days (live check 2026-11-12)
     prompt_version: str = "exp013-d-news-2026-11-12"
 
 
