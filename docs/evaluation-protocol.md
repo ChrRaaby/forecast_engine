@@ -82,6 +82,29 @@ Each threat has a control and an **automated check**. A control without a check 
   borderline detectable on our set sizes. **Many plausible tweaks will be undetectable**, so we prioritise changes with large
   expected effects and say "inconclusive" when warranted. The real SD is measured in EXP-001, and the MDE is recomputed. With
   clustered questions the √N formula is optimistic; also report the cluster-aware MDE ≈ 2.8 × the bootstrap SE.
+- **Measured noise and how to pick k (2026-11-12, B-91):** same prompt, same frozen research, two runs at the same moment
+  (F-13 A/A): per-question SD of the binary log-score difference **0.126** on the cheap roster (n = 89, one run, moderate
+  certainty) and **0.084** on the frontier roster (n = 28, low to moderate). Four cheap runs of one prompt over two days
+  (n = 84, $0 reanalysis, 2026-11-11) showed no clear drift beyond this noise: the B-79 "drift" was most likely one low draw.
+  Smallest detectable effect (binary log score, 80% power, MDE ≈ 2.8 × SD/√N, SD of a k-run arm ≈ 0.126/√k):
+
+  | Questions (N), cheap roster | k = 1 | k = 2 | k = 3 | k = 5 |
+  |---|---|---|---|---|
+  | 150, effect the same on every question (best case) | 0.029 | 0.020 | 0.017 | 0.013 |
+  | 150, uneven effect (assumed extra SD 0.06) | 0.032 | 0.025 | 0.022 | 0.019 |
+  | 300, best case | 0.020 | 0.014 | 0.012 | 0.009 |
+
+  Frontier roster at k = 1, N = 150: ≈ 0.019 (best case). In Metaculus baseline points a binary log difference is × 144
+  (0.029 ≈ 4 points). Cost of a 150-question, two-arm prompt test: cheap ≈ $2.5 at k = 1, $7.4 at k = 3; frontier ≈ $37 and
+  $110. **Rule:** every card states its smallest effect of interest, reads k off this table (N comes from the calendar, k is
+  the only precision money buys), and says "undetectable at our budget" when no affordable k reaches it. Example: a prompt
+  test with a smallest effect of 0.015 needs k ≈ 4 at 150 questions even in the best case. The table assumes F-13's noise;
+  recompute it when a new A/A run changes the SD.
+- **Prefer designs that share model answers:** when an idea only post-processes forecasts (extremizing, capping, blending in
+  market prices, pooling members: EXP-003, EXP-010, EXP-012, EXP-014), both arms are computed from the same model answers, so
+  run-to-run noise is identical in both and cancels. Such tests are far more sensitive than prompt tests at no extra cost (the
+  table above does not apply to them; their noise comes only from how much the transform moves each forecast). Where an idea
+  can be tested as a transform of existing answers, test it that way first.
 - **Kill thresholds:** a "too small to be worth it" rule uses a fixed smallest effect of interest written into the card before
   the run (a value judgement about cost and complexity), not a fraction of an MDE measured later.
 - **Multiplicity:** one primary metric per experiment. Secondary metrics are descriptive, not decision-making.
@@ -168,7 +191,9 @@ Rigour costs money, and the PoC has $100. The levers:
      checks on the same questions pay only for their new arm. Caveat on every result that reuses it: the arms were not run at the
      same moment (T11), and providers drift over time. Tool: `tools/run_prompt_check.py --reuse-baseline` (B-79). **Paused 2026-11-09:** the B-79 drift check found the same
      prompt and cheap config scoring worse two days later (log Δ −0.031, 95% CI [−0.057, −0.007], N 88), ~4× EXP-002's effect.
-     Until a repeat drift check passes (F-18), prompt checks run both arms fresh.
+     Until a repeat drift check passes (F-18), prompt checks run both arms fresh. A $0 reanalysis of four cheap runs (2026-11-11,
+     n = 84) found the B-79 run also 0.022 below two runs made 11 minutes later, so the "drift" was most likely one low draw;
+     the pause still stands until F-18 (two same-moment arms, ~23 Nov) confirms it.
   3. Fixes (a known defect, e.g. EXP-002) use a pre-registered **no-harm check** instead of needing a significant gain; bets on
      accuracy still need the §6 rule.
 
@@ -204,3 +229,5 @@ Systematic disagreement means the harness is wrong (leakage or distribution mism
   EXP-002 cost ~$22 on the frontier roster vs $1.45 on the cheap one).
 - 2026-11-11: §4 default primary metric is the baseline score per question across all question types (was binary log score);
   earlier pre-registered cards keep theirs. Christian, after the whole-project review (backlog B-81).
+- 2026-11-12: §5 measured noise table, "read k off the table" rule and "prefer designs that share model answers"; §8 note on
+  the four-run reanalysis. Christian approved the non-determinism report's recommendations (backlog B-91).

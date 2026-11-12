@@ -1,6 +1,6 @@
 # Backlog
 
-_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-11-11_
+_Prioritised, top = next. Maintained by Claude (Code or chat) at the end of every session. Last updated: 2026-11-12_
 
 **Rules**
 - One row per item. `Rank` is the order within a section. Re-rank rather than adding "urgent" labels.
@@ -93,6 +93,17 @@ _Evaluation-first: no experiment changes the live bot until the harness (B-27, B
 | 6 | B-21 | Local 4090 open-weight model as a free backtest baseline / ensemble member | I-04, R-12 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 7 | B-22 | Jev as a cheap news-relevance filter (A/B in the backtest) | I-03 | Claude Code | M | Todo | Sonnet 5.5 · PC |
 | 8 | B-34 | Backtest ↔ live agreement check per config era (≥ 50 resolved live Qs) | Protocol §9 | Claude Code | S | Todo | Sonnet 5.5 · PC |
+
+## Non-determinism follow-ups (2026-11-12)
+_Christian approved all five open recommendations of the non-determinism report ([report](https://claude.ai/artifact/E5GFK7R8iii4J1HsM3AaQS); four-run reanalysis in the project files `evals/nondet-4run/`). B-90 is left free for the "Build EXP-013 preconditions" thread's credit-tool item._
+
+| Rank | ID | Item | Why | Owner | Size | Status | Model |
+|---|---|---|---|---|---|---|---|
+| 1 | B-91 | Protocol §5: measured noise table (F-13 SD 0.126 cheap / 0.084 frontier), cards read k off it or say "undetectable at our budget"; prefer designs that share model answers; §8 note on the four-run reanalysis | Report rec 2 | Claude | S | Done 2026-11-12 | Opus 5.5 · cloud |
+| 2 | B-92 | EXP-014 pooled ensemble: median of 5 frontier + 3 cheap shadow answers vs live median of 5, on resolved live records, $0. Card pre-registered 2026-11-12; screen now, deciding rerun on questions resolved after 2026-11-12 | Report rec 3 | Claude | S | Doing | Opus 5.5 · cloud |
+| 3 | B-93 | Pin one OpenRouter host per open-weight model in experiment runs (fallbacks off), record the pin, and refuse to compare arms served by different hosts. Live bot unchanged | Report rec 4 | Claude | S | Doing | Opus 5.5 · cloud |
+| 4 | B-94 | Alert when a live model's served name or host changes, and mark config eras, from the stored `served_model` / `upstream_provider` fields | Report rec 6 | Claude | S | Doing | Opus 5.5 · cloud |
+| 5 | B-95 | Research-noise test: fetch research twice for the same open questions and measure how much the forecast moves (~$1–2 + AskNews credits; needs Christian's go with the estimate) | Report rec 7 | Claude | M | Doing | Opus 5.5 · cloud |
 
 ## Follow-ups & reminders
 _Dated or waiting items that aren't development work. Checked at the start of every session; done ones move to Done._
