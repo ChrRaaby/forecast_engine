@@ -52,4 +52,27 @@ Example: S1 says 30%, S2 says 32%, R2 says 40%. The models alone moved 2 points;
 
 ## Results
 
-_Pending (PC run)._
+Run 2026-11-12 on the PC (`tools/run_research_noise.py --n 30 --max-cost 2`, main at 1eac0e1; run folder
+`data/experiments/B-95/20261112T221755Z` in the data repo). 30 of 37 eligible questions, all 30 with three forecasts;
+270 forecasting calls $0.684 + Gemini research $0.070 (list price, grounding fee not included) = **$0.754**; 0 calls refused
+by the cap, 0 research errors; 60 AskNews calls.
+
+| Comparison | mean \|Δp\| of the aggregate | SD of Δlogit |
+|---|---|---|
+| S2 vs S1: same research, models asked again | 6.7 points | 1.375 |
+| R2 vs S1: research fetched again too | 6.2 points | 0.855 |
+| Extra movement from the research (R2 − S2 rows, paired) | **−0.5 points, 95% CI −8.5 to +5.9** | research-only SD ≈ 0 |
+
+AskNews returned the **same articles** both times (100% of URLs in common, every question), so the second fetch differed
+only in the Gemini brief, which is rewritten each time.
+
+**Reading (rule above): research noise is minor.** The CI includes 0 and the point estimate is below 1 point, so nothing
+to do. Certainty: low. N = 30, one run, cheap roster; the CI is wide (it only rules out an extra movement larger than about
+6 points); and because AskNews gave identical articles back to back, this measured the Gemini brief's randomness, not news
+arriving between live runs hours apart.
+
+Side finding (descriptive, not part of the rule): on these open questions the cheap roster's own run-to-run movement was
+6.7 points, about twice the 3.6 points the F-13 A/A measured on resolved questions with frozen research (n = 89). Open
+questions sit nearer 50% where forecasts move more, and the samples differ (n = 30 here), so this does not overturn the
+protocol's noise table, but the table may understate noise on live-like questions. A later A/A on open questions would
+settle it (not scheduled).

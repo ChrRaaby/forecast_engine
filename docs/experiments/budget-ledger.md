@@ -17,6 +17,7 @@ Every run that spends money adds a row (tools append automatically). Costs are O
 | 2026-11-09 | EXP-012 | 20261109T212544Z | market matcher, judge google/gemini-3.5-flash-lite, 161 binary records (step 1b, draft table) | 29 | $0.026 | $5.933 | $174.07 |
 | 2026-11-09 | EXP-012 | 20261109T212634Z | market matcher, judge google/gemini-3.5-flash-lite, 161 binary records (step 1b, draft table) | 1 | $0.001 | $5.934 | $174.07 |
 | 2026-11-09 | B-32 | 20261109T215614Z | A/A replay, 28 binary records × 2, frontier config | 280 | $4.470 | $10.404 | $169.60 |
+| 2026-11-12 | B-95 | 20261112T221755Z | research-noise test, 30 binary questions × 3 forecasts, 2 research fetches each (60 AskNews calls), cheap config | 270 | $0.754 | $11.158 | $168.84 |
 
 ## EXP-008 research desk: separate line, $50 from the $100 PoC
 

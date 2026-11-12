@@ -18,6 +18,10 @@ Done
 - B-95: card + `tools/run_research_noise.py`; dry run 30 of 37 eligible questions, est. $1.10 + 60 AskNews calls. Waits for
   Christian's go on the PC.
 
+- PR #34 merged with Christian's OK. B-95 run on the PC with his OK (cap $2): $0.754, research noise minor (see the card).
+
 Next
-- Christian: review the PR (B-92 tool, B-93, B-94, B-95 tool); go for the B-95 PC run.
-- Weekly report routine: add the B-94 step once merged.
+- Weekly report routine: add the B-94 step (coordinator).
+- F-21 EXP-014 rerun ~mid-December; F-18 ~23 Nov (coordinator, unpinned).
+- PC: the B-95 ledger row was pushed from the cloud; the PC checkout holds the same row uncommitted, so drop that local edit
+  (`git checkout -- docs/experiments/budget-ledger.md`) before the next `git pull --rebase`.
