@@ -68,6 +68,7 @@
   - test (offline, network blocked): `poetry run pytest`
   - check model IDs against the live lists: `poetry run python tools/check_models.py`
   - served-model / host change alerts for the weekly report (B-94): `poetry run python tools/check_served_models.py` (exit 1 = a WARNING)
+  - model catalogue (B-96): newer models per vendor, price changes, retirements, from the live lists: `poetry run python tools/model_catalog.py` (snapshot in `data/model_catalog/`; exit 1 = one of our models missing or retiring)
   - dry run: `poetry run python main.py --mode test_questions --max-questions 3`
   - outcomes of forecast questions: `poetry run python -m evals.outcomes` (also runs in the daily archive task)
   - replay check (every live record reproduces its prompts): `poetry run python -m evals.replay --check`
