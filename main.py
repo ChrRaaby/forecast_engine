@@ -228,60 +228,68 @@ class EngineBot(ForecastBot):
             prov = self._provenance(cfg, role="live" if cfg is self.cfg else "live-fallback", roster=provenance.roster_name(cfg))
             research = await gather_research(snapshot, self.clock, cfg.research)
             try:
-                record = await forecast(snapshot, self.clock, research, cfg, self.llm)
-            except ForecastFailed as e:
-                self._charge(cfg, e.record.cost_usd)
-                self._write(self.writer, e.record, prov, published=False, status="failed")
-                self._count_failure(question)
-                raise
+                return await self._forecast_and_publish(question, snapshot, research, cfg, prov, start)
             finally:
+                # B-86: shadows run only once the live forecast is published or its failure/refusal is written, so their minutes
+                # never delay the live post; same snapshot and research as the live forecast; _run_shadows never raises
                 await self._run_shadows(snapshot, research, cfg)
-            self._charge(cfg, record.cost_usd)
-            if self.publish_reports_to_metaculus and research.is_empty:
-                self._write(self.writer, record, prov, published=False, status="refused_no_research")
-                raise RuntimeError(f"refusing to publish without research: {research.errors}")
 
-            if isinstance(question, NumericQuestion):
-                _, clipped = parsing.fit_to_bounds(record.aggregate, question.lower_bound, question.upper_bound,
-                                                   question.open_lower_bound, question.open_upper_bound)
-                if clipped:
-                    record.errors.append("numeric percentiles clipped to the range Metaculus accepts")
-            report_type = DataOrganizer.get_report_type_for_question_type(type(question))
+    async def _forecast_and_publish(self, question: MetaculusQuestion, snapshot: QuestionSnapshot, research: ResearchBundle,
+                                    cfg: BotConfig, prov: dict | None, start: float) -> ForecastReport:
+        """The live forecast on `research`, then (with --publish) the post to Metaculus; every outcome writes the live record."""
+        try:
+            record = await forecast(snapshot, self.clock, research, cfg, self.llm)
+        except ForecastFailed as e:
+            self._charge(cfg, e.record.cost_usd)
+            self._write(self.writer, e.record, prov, published=False, status="failed")
+            self._count_failure(question)
+            raise
+        self._charge(cfg, record.cost_usd)
+        if self.publish_reports_to_metaculus and research.is_empty:
+            self._write(self.writer, record, prov, published=False, status="refused_no_research")
+            raise RuntimeError(f"refusing to publish without research: {research.errors}")
+
+        if isinstance(question, NumericQuestion):
+            _, clipped = parsing.fit_to_bounds(record.aggregate, question.lower_bound, question.upper_bound,
+                                               question.open_lower_bound, question.open_upper_bound)
+            if clipped:
+                record.errors.append("numeric percentiles clipped to the range Metaculus accepts")
+        report_type = DataOrganizer.get_report_type_for_question_type(type(question))
+        try:
+            prediction = to_prediction(question, record.aggregate)
+            submitted = submitted_block(question, prediction)
+        except Exception as e:
+            record.errors.append(f"could not convert forecast for Metaculus: {type(e).__name__}: {e}")
+            self._write(self.writer, record, prov, published=False, status="failed")
+            self._count_failure(question)
+            raise
+        report = report_type(
+            question=question,
+            prediction=prediction,
+            explanation=build_comment(question, record, report_type.make_readable_prediction(prediction),
+                                      prov["version_id"] if prov else None),
+            price_estimate=record.cost_usd,
+            minutes_taken=(time.monotonic() - start) / 60,
+            errors=record.errors + research.errors,
+        )
+        published = False
+        if self.publish_reports_to_metaculus:
+            ok, why = question_forecastable(question, self.clock)
+            if not ok:  # the run can take minutes; re-check right before publishing (B-09)
+                record.errors.append(f"not published: {why}")
+                self._write(self.writer, record, prov, published=False, status="failed", submitted=submitted)
+                raise RuntimeError(f"not published: {why}")
             try:
-                prediction = to_prediction(question, record.aggregate)
-                submitted = submitted_block(question, prediction)
+                await report.publish_report_to_metaculus(metaculus_client=self.metaculus_client)
             except Exception as e:
-                record.errors.append(f"could not convert forecast for Metaculus: {type(e).__name__}: {e}")
-                self._write(self.writer, record, prov, published=False, status="failed")
-                self._count_failure(question)
+                record.errors.append(f"publishing failed: {type(e).__name__}: {e}")
+                self._write(self.writer, record, prov, published=False, status="failed", submitted=submitted)
                 raise
-            report = report_type(
-                question=question,
-                prediction=prediction,
-                explanation=build_comment(question, record, report_type.make_readable_prediction(prediction),
-                                          prov["version_id"] if prov else None),
-                price_estimate=record.cost_usd,
-                minutes_taken=(time.monotonic() - start) / 60,
-                errors=record.errors + research.errors,
-            )
-            published = False
-            if self.publish_reports_to_metaculus:
-                ok, why = question_forecastable(question, self.clock)
-                if not ok:  # the run can take minutes; re-check right before publishing (B-09)
-                    record.errors.append(f"not published: {why}")
-                    self._write(self.writer, record, prov, published=False, status="failed", submitted=submitted)
-                    raise RuntimeError(f"not published: {why}")
-                try:
-                    await report.publish_report_to_metaculus(metaculus_client=self.metaculus_client)
-                except Exception as e:
-                    record.errors.append(f"publishing failed: {type(e).__name__}: {e}")
-                    self._write(self.writer, record, prov, published=False, status="failed", submitted=submitted)
-                    raise
-                published = True
-            self._write(self.writer, record, prov, published=published, status="ok", submitted=submitted)
-            if self.retries:
-                self.retries.succeeded(question.id_of_question)
-            return report
+            published = True
+        self._write(self.writer, record, prov, published=published, status="ok", submitted=submitted)
+        if self.retries:
+            self.retries.succeeded(question.id_of_question)
+        return report
 
     def _provenance(self, cfg: BotConfig, *, role: str, roster: str) -> dict | None:
         return provenance.record_provenance(self.run_info, cfg, role=role, roster=roster) if self.run_info else None

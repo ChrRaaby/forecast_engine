@@ -26,5 +26,9 @@
   "c152f95af80a4ced": {
     "label": "code-2026-11-07f",
     "note": "EXP-002 LIVE: prompt dates-yes-live-2026-11-07 (CONFIG_VERSION frontier-2026-11-07); old prompt kept as variant template-2026-09-26-old for the cheap-old-prompt shadow; on top of B-51a"
+  },
+  "70b262d843a39143": {
+    "label": "code-2026-11-11",
+    "note": "B-86: shadows run after the live forecast is published (or its failure written), same snapshot and research; no forecast change (CONFIG_VERSION unchanged)"
   }
 }
