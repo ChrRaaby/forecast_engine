@@ -20,7 +20,7 @@ arms, card and analysis are not touched. Code: `forecast_engine/research_v2.py`,
   | A baseline | `cheap` (already running) | nothing | 0 |
   | B source | `exp013-b-source` | Up to 2 links from the question's resolution criteria / fine print are fetched (plain HTTP GET). A cheap model extracts "current value relevant to the question, its date, a short quote" or "NOT FOUND / not retrievable". That block goes at the top of the brief, labelled "Resolution source, fetched <time>". Rest of the brief as live | 1 cheap extraction call + ≤ 2 page fetches |
   | C writer | `exp013-c-writer` | The Gemini Flash-Lite brief is replaced by a brief from a stronger search model, with rules: a link and a date for every number; "not found" instead of an estimate; state the latest value of the resolution source if found. AskNews part as live | 0 (one call replaced by a dearer one) |
-  | E frontier + source | `exp013-e-frontier-source` | The **live frontier roster** with arm B's resolution-source block, compared with the published live forecast (its own baseline). Added 2026-11-11 (Christian) so a win for B can go live without a second confirmation round | 5 frontier forecasts + B's extraction (shared with B) |
+  | E frontier + source (replaced by F, 2026-11-14) | `exp013-e-frontier-source` | The **live frontier roster** with arm B's resolution-source block, compared with the published live forecast (its own baseline). Added 2026-11-11 (Christian) so a win for B can go live without a second confirmation round | 5 frontier forecasts + B's extraction (shared with B) |
   | D news | `exp013-d-news` | AskNews is queried with keywords written by a cheap model instead of the full question sentence, and runs the historical ("news knowledge") search (last 150 days; amended 2026-11-12, see below) next to "latest news"; historical articles are tagged as such. Gemini brief as live. **Full arm D on every question (Christian, 2026-11-12)** | 1 cheap keyword call + 2 AskNews calls (~6 extra credits) |
 
   Build details (fixed at freeze, helper model amended 2026-11-12): B/E extractor `openai/gpt-6-luna` (reasoning low), one call for all fetched pages, quote
@@ -161,6 +161,29 @@ Two changes, decided by Christian 2026-11-12, made before any EXP-013 arm was sw
 AskNews price: the test hour showed ~10 credits for one refused + one successful historical search; with 1 Nov (20 searches ≈
 100 credits) the price is most likely 5 per search. First-week check: arm D's credits per question should be ~7 (if ~12, the
 historical search costs 10 and Christian decides whether to keep it).
+
+## Amendment 2026-11-14: frontier full-research arm F replaces arm E, then promotion to live (before switch-on)
+Decided by Christian 2026-11-14 (card "1 week shadow, then live"), before any EXP-013 arm was switched on or scored. Reason: he
+wants better research live without waiting months; the swap keeps the comparison (roles reversed) and limits the risk of untested
+plumbing (the 365-day bug of 12 Nov was found only by a live call).
+1. **Arm E is replaced by arm F `exp013-f-frontier-full`:** the live frontier roster with all three research changes together
+   (B's source block + C's writer + D's news). Cheap arms B, C, D unchanged (they still say which part helps). Arm E's decision
+   rule now applies to F (no-harm rule below). Budget: F from the $180 frontier experiment budget, cost restated at switch-on.
+2. **Plumbing check after ~1 week (no scores looked at):** per arm fetch success and failure reasons, step fallbacks, extra
+   seconds per question, real $/q, AskNews credits per question (~7 expected; ~12 means the historical search costs 10), Google
+   queries per call, and a few F briefs read by eye. Christian decides on promotion from this check alone.
+3. **Promotion to live (Tier 1 style, as the card already allowed for the source block):** if the check is clean, the published
+   forecast uses F's research (new `CONFIG_VERSION`, Christian's OK, PR + CI) and the previous frontier setup runs on as a
+   shadow (`exp013-frontier-old`, same cost). **Build requirement:** every other shadow (cheap, cheap-old-prompt, EXP-008 arms,
+   EXP-013 B/C/D) keeps reading today's live research unchanged; the new layers are added only to the published forecast's
+   research, so EXP-008 and EXP-013's cheap comparisons stay clean.
+4. **Decision rule for F (replaces arm E's):** compared with the old frontier setup on the same questions (before promotion:
+   F vs published live; after: published live vs `exp013-frontier-old`, sign kept as "full research minus old"). At the
+   150 look and at the final look: keep the full package live if the mean paired difference is above 0, the lower end of its
+   95% cluster-bootstrap CI is above −2 baseline-score points per question, and its failure rate is not worse. **Switch back**
+   to the old setup if either look fails that, or if the final look puts the CI entirely below 0. No other looks at scores.
+   Questions forecast before and after the promotion are pooled (same two setups, roles swapped); the report also shows them
+   split by phase.
 
 ## Results (generated)
 ## Decision
