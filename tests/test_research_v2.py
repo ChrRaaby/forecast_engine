@@ -96,26 +96,31 @@ def _apply(cfg, llm, bundle=None, cache=None):
 
 # --- off by default --------------------------------------------------------------------------------------------------------
 
-def test_switched_off_live_hashes_unchanged():
+def test_switched_on_as_shadows_live_hashes_unchanged():
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
         "e7407e584599", "550e5902f141", "94e6c663a494")
     assert {n: c.config_hash() for n, c in EXP008_ARMS.items()} == {
         "exp008-b-gaps": "6d8b6e4496ed", "exp008-c-against": "ba71edc3760a", "exp008-d-control": "f69ba9a46922"}
     assert CONFIG_VERSION == "frontier-2026-11-07"
-    for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, *SHADOW_CONFIGS.values()):
+    others = [c for n, c in SHADOW_CONFIGS.items() if n not in EXP013_ARMS]
+    for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, *others):  # live, and the shadows that read the live research
         assert not rv.active(cfg.research)
         assert not {"source_block", "brief_writer", "news"} & set(cfg.to_dict()["research"])
-    assert not set(EXP013_ARMS) & set(SHADOW_CONFIGS)  # not switched on
+    assert {n: SHADOW_CONFIGS[n] for n in EXP013_ARMS} == EXP013_ARMS  # switched on as shadows (Christian, 2026-11-14)
 
 
 def test_arm_definitions():
     a = EXP013_ARMS
-    assert set(a) == {"exp013-b-source", "exp013-c-writer", "exp013-d-news", "exp013-e-frontier-source"}
+    assert set(a) == {"exp013-b-source", "exp013-c-writer", "exp013-d-news", "exp013-f-frontier-full"}
     assert len({c.config_hash() for c in a.values()}) == 4
     for n in ("exp013-b-source", "exp013-c-writer", "exp013-d-news"):
         assert a[n].forecasters == DEFAULT_CONFIG.forecasters and a[n].research.followup is None
-    assert a["exp013-e-frontier-source"].forecasters == TOURNAMENT_CONFIG.forecasters
-    assert a["exp013-b-source"].research.source_block == a["exp013-e-frontier-source"].research.source_block  # shared extraction
+    f = a["exp013-f-frontier-full"]
+    assert f.forecasters == TOURNAMENT_CONFIG.forecasters and f.min_successful_forecasters == 3 and f.research.followup is None
+    # F = all three changes, each the same settings as its cheap arm (so each step is shared per question)
+    assert (f.research.source_block, f.research.brief_writer, f.research.news) == (
+        a["exp013-b-source"].research.source_block, a["exp013-c-writer"].research.brief_writer, a["exp013-d-news"].research.news)
+    assert f.research.providers == TOURNAMENT_CONFIG.research.providers
     assert a["exp013-d-news"].research.news == NewsConfig(keywords=True, historical=True)  # full arm D, both parts switchable
     assert a["exp013-c-writer"].research.brief_writer.max_cost_usd_per_q == 0.05
 
@@ -232,14 +237,14 @@ def test_page_text_and_size_cap(monkeypatch):
     assert "not retrievable as text" in rv._http_get("https://stats.example.org/index", SourceBlockConfig())["error"]
 
 
-def test_b_and_e_share_one_fetch_and_extraction(monkeypatch):
+def test_b_and_f_share_one_fetch_and_extraction(monkeypatch):
     get = FakeGet()
     monkeypatch.setattr(rv, "_http_get", get)
     llm, cache = FakeLlm(extraction=_found()), {}
     b = _apply(EXP013_ARMS["exp013-b-source"].research, llm, cache=cache)
-    e = _apply(EXP013_ARMS["exp013-e-frontier-source"].research, llm, cache=cache)
+    f = _apply(replace(EXP013_ARMS["exp013-f-frontier-full"].research, brief_writer=None, news=None), llm, cache=cache)
     assert len(get.urls) == 2 and len(llm.purposes("exp013_source_extract")) == 1
-    assert b.items[0] is e.items[0] and [id(c) for c in b.calls[2:]] == [id(c) for c in e.calls[2:]] and len(b.calls) == 5
+    assert b.items[0] is f.items[0] and [id(c) for c in b.calls[2:]] == [id(c) for c in f.calls[2:]] and len(b.calls) == 5
 
 
 # --- C: brief writer -------------------------------------------------------------------------------------------------------
@@ -349,25 +354,73 @@ def test_real_news_and_writer_refused_under_a_past_clock():
 
 # --- shadow wiring and replay ----------------------------------------------------------------------------------------------
 
+def _fake_all(monkeypatch, news_log=None, writer_log=None):
+    monkeypatch.setattr(rv, "_http_get", FakeGet())
+    monkeypatch.setattr(rv, "_asknews_search", _fake_asknews(news_log if news_log is not None else []))
+    monkeypatch.setattr(rv, "_post_writer", lambda *a: (writer_log.append(a) if writer_log is not None else None) or _gemini())
+
+
+def test_full_package_in_one_config(monkeypatch):
+    """Arm F: news (keyword latest replaces the live AskNews items, historical added), then the stronger brief replaces the
+    Flash-Lite brief, then the source block goes on top."""
+    _fake_all(monkeypatch)
+    out = _apply(EXP013_ARMS["exp013-f-frontier-full"].research, FakeLlm(extraction=_found()))
+    assert [(i.source, i.title) for i in out.items] == [
+        (rv.SOURCE_BLOCK, "Resolution source, fetched 2026-05-01 12:00 UTC"), ("asknews_latest", "kw 1"), ("asknews_latest", "kw 2"),
+        ("asknews_historical", "hist 1"), ("asknews_historical", "hist 2"), ("gemini_grounded", None)]
+    assert out.items[-1].text.startswith("Made-up strict brief") and not out.errors
+    assert [c.purpose for c in out.calls[2:]] == ["exp013_news_keywords", "exp013_news", "exp013_news", "exp013_brief_writer",
+                                                   "exp013_source_fetch", "exp013_source_fetch", "exp013_source_extract"]
+
+
+def test_all_four_arms_share_every_paid_step(monkeypatch):
+    news, writer = [], []
+    _fake_all(monkeypatch, news, writer)
+    llm, cache = FakeLlm(extraction=_found()), {}
+    outs = {n: _apply(c.research, llm, cache=cache) for n, c in EXP013_ARMS.items()}
+    assert len(news) == 2 and len(writer) == 1  # AskNews: one keyword latest + one historical; Gemini writer once
+    assert len(llm.purposes("exp013_news_keywords")) == 1 and len(llm.purposes("exp013_source_extract")) == 1
+    f = outs["exp013-f-frontier-full"]
+    assert f.items[0] is outs["exp013-b-source"].items[0] and f.items[-1] is outs["exp013-c-writer"].items[-1]
+    assert f.items[1:5] == outs["exp013-d-news"].items[:4]
+
+
+def test_shared_failure_hits_each_arm_alike(monkeypatch):
+    _fake_all(monkeypatch)
+
+    def boom(*a):
+        raise RuntimeError("Gemini HTTP 500: synthetic")
+
+    monkeypatch.setattr(rv, "_post_writer", boom)
+    cache = {}
+    c = _apply(EXP013_ARMS["exp013-c-writer"].research, FakeLlm(), cache=cache)
+    f = _apply(EXP013_ARMS["exp013-f-frontier-full"].research, FakeLlm(extraction=_found()), cache=cache)
+    for out in (c, f):
+        assert "exp013 brief_writer failed: RuntimeError: Gemini HTTP 500: synthetic" in out.errors
+        assert out.items[-1].text == LIVE_BRIEF  # the live brief stays
+    assert f.items[0].source == rv.SOURCE_BLOCK and f.items[1].title == "kw 1"  # the other steps still apply
+
+
 def test_shadow_runner_applies_arms_charges_shared_calls_once_and_records_replay(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(rv, "_http_get", FakeGet())
+    _fake_all(monkeypatch)
     llm = FakeLlm(extraction=_found())
-    shadows = {"cheap": DEFAULT_CONFIG, "exp013-b-source": EXP013_ARMS["exp013-b-source"],
-               "exp013-e-frontier-source": EXP013_ARMS["exp013-e-frontier-source"]}
+    shadows = {"cheap": DEFAULT_CONFIG, **EXP013_ARMS}
     bot = main.EngineBot(clock=FixedClock(AS_OF), cfg=TOURNAMENT_CONFIG, llm=llm, writer=RecordWriter("run", root=tmp_path / "l"),
                          publish=False, max_run_cost_usd=10, shadows=shadows, run_id="run")
     asyncio.run(bot._run_shadows(Q, _bundle(), TOURNAMENT_CONFIG))
-    assert len(llm.purposes("exp013_source_extract")) == 1
+    assert len(llm.purposes("exp013_source_extract")) == 1 and len(llm.purposes("exp013_news_keywords")) == 1
     recs = {n: json.loads((tmp_path / "data" / "forecasts" / f"run-shadow-{n}" / f"q{Q.question_id}.json").read_text("utf-8"))
             for n in shadows}
     assert all(r["status"] == "shadow" for r in recs.values())
     assert recs["cheap"]["research"]["items"][0]["source"] == "asknews_latest"
-    for n in ("exp013-b-source", "exp013-e-frontier-source"):
+    for n in ("exp013-b-source", "exp013-f-frontier-full"):
         assert recs[n]["research"]["items"][0]["source"] == rv.SOURCE_BLOCK
+    for n in EXP013_ARMS:
         assert check_record(recs[n])  # the stored prompt rebuilds from the stored research
-    # forecasts: cheap 3 + 3 polarity, B 3 + 3, E 5 + 5; the shared extraction once
-    assert bot.spent_usd == pytest.approx(0.001 * (6 + 6 + 10 + 1))
+    writer = (1000 * 1.50 + 1500 * 7.50) / 1e6 + 2 * 0.014
+    # forecasts: cheap, B, C, D 3 + 3 polarity each, F 5 + 5; extraction and keyword call once; the writer once; AskNews unpriced
+    assert bot.spent_usd == pytest.approx(0.001 * (4 * 6 + 10 + 1 + 1) + writer)
 
 
 def test_writer_flags_links_not_among_grounding_sources_and_no_search(monkeypatch):

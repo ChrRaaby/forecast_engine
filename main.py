@@ -316,8 +316,8 @@ class EngineBot(ForecastBot):
 
         A shadow whose research config has a follow-up step (B-17, EXP-008) forecasts on an enlarged copy of the live research; the
         live bundle is not changed and not paid for twice. The copy is stored in the shadow record, so the forecast replays.
-        EXP-013 (B-80) research-v2 steps run the same way, before the follow-up step; arms with the same source-block settings share
-        one fetch + extraction per question (`cache`), and each call is charged to the run once (`charged`)."""
+        EXP-013 (B-80) research-v2 steps run the same way, before the follow-up step; arms with the same settings for a step share its
+        paid work per question (`cache`: fetch + extraction, writer call, AskNews searches), and each call is charged once (`charged`)."""
         cache: dict = {}
         charged = {id(c) for c in research.calls}  # the live research was paid for by the live forecast
         for name, scfg in self.shadows.items():
