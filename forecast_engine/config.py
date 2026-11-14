@@ -225,8 +225,17 @@ EXP013_ARMS: dict[str, BotConfig] = {
     "exp013-d-news": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, news=NewsConfig())),
     "exp013-f-frontier-full": replace(TOURNAMENT_CONFIG, research=EXP013_FULL_RESEARCH),
 }
+# B-96 frontier challenger (Christian, 2026-11-14, roster review https://claude.ai/artifact/4Y1Y3zVQzbi3Aw8NcWSopo): Gemini 4
+# Carbon answers every tournament question beside the live roster's Gemini 3.1 Pro (Feb 2026 preview), on the live question's
+# research, never published. At the next swap window (early Feb 2027) the live median is recomputed with Carbon's answer in place
+# of 3.1 Pro's on the same questions ($0). OpenRouter list price 2026-11-14: $2/$10 per M (intro; Google says $4/$20 later).
+# One member, so min_successful_forecasters=1. To stop it, remove **CHALLENGER_SHADOWS.
+CHALLENGER_SHADOWS: dict[str, BotConfig] = {
+    "challenger-gemini-4-carbon": replace(TOURNAMENT_CONFIG, forecasters=(ForecasterSpec("google/gemini-4-carbon"),),
+                                          min_successful_forecasters=1),
+}
 SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS,
-                                        **EXP013_ARMS}
+                                        **EXP013_ARMS, **CHALLENGER_SHADOWS}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))

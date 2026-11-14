@@ -113,9 +113,10 @@ def test_exp008_switched_on_as_shadow_arms_only():
     never carry the follow-up step."""
     from forecast_engine.config import EXP002_OLD_PROMPT_SHADOW
 
-    from forecast_engine.config import EXP013_ARMS
+    from forecast_engine.config import CHALLENGER_SHADOWS, EXP013_ARMS
 
-    assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS, **EXP013_ARMS}
+    assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS, **EXP013_ARMS,
+                              **CHALLENGER_SHADOWS}
     assert TOURNAMENT_CONFIG.research.followup is None and DEFAULT_CONFIG.research.followup is None
 
 
@@ -433,3 +434,14 @@ def test_follow_up_record_passes_check_record_and_replays(tmp_path, monkeypatch)
     assert not llm.purposes("research_followup_critic")  # replay uses the stored section, it never searches again
     rec["research"]["items"][-1]["text"] = "Edited later."
     assert not check_record(rec)
+
+
+def test_b96_carbon_challenger_is_one_frontier_member_on_live_research():
+    """B-96 (2026-11-14): Gemini 4 Carbon runs as a one-member shadow with the live frontier settings; only the roster differs."""
+    from dataclasses import replace
+
+    from forecast_engine.config import CHALLENGER_SHADOWS
+
+    c = CHALLENGER_SHADOWS["challenger-gemini-4-carbon"]
+    assert [s.model for s in c.forecasters] == ["google/gemini-4-carbon"] and c.min_successful_forecasters == 1
+    assert replace(c, forecasters=TOURNAMENT_CONFIG.forecasters, min_successful_forecasters=3) == TOURNAMENT_CONFIG
