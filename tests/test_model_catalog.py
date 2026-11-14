@@ -126,5 +126,5 @@ def test_our_models_reads_the_real_configs():
     mod = _tool()
     roles, frontier = mod.our_models()
     assert len(frontier) == 5 and all(m in roles for m in frontier)
-    assert any("polarity check" in r for r in roles.get("openai/gpt-5-mini", []))
+    assert any("polarity check" in r for rs in roles.values() for r in rs)
     assert any(r.startswith("research writer") for r in roles["google/gemini-3.5-flash-lite"])

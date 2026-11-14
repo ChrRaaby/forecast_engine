@@ -102,8 +102,8 @@ def test_off_by_default_and_live_hashes_unchanged():
     """The follow-up field must not move any existing config's hash, version or record (hashes as on main 532bdfb; changed on
     purpose at the EXP-002 go-live 2026-11-07, see tests/test_provenance.py)."""
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
-        "e7407e584599", "550e5902f141", "94e6c663a494")
-    assert CONFIG_VERSION == "frontier-2026-11-07"
+        "714ff99803b1", "f3c50c57f8d1", "19ba975f2f40")
+    assert CONFIG_VERSION == "frontier-2026-11-14"
     for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, SHADOW_CONFIGS["cheap"]):
         assert cfg.research.followup is None and "followup" not in cfg.to_dict()["research"]
 

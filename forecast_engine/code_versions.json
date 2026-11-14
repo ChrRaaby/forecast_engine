@@ -50,5 +50,6 @@
   "c507cd3490623c22": {
     "label": "code-2026-11-14",
     "note": "EXP-013 SWITCHED ON as shadows: arms B, C, D (cheap) and F (frontier roster + all three research changes; replaces arm E); arms share each paid step per question (fetch, writer, AskNews); live configs, hashes and CONFIG_VERSION unchanged"
-  }
+  },
+  "7397eda509868a9f": {"label": "code-2026-11-14-terra", "note": "B-96: polarity check on openai/gpt-6.1-terra (gpt-5-mini shuts down 2026-12-11); CONFIG_VERSION frontier-2026-11-14; all config hashes change (polarity_check_model)"}
 }

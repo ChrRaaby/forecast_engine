@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
 
-CONFIG_VERSION = "frontier-2026-11-07"  # EXP-002 live: dates + "resolves YES" prompt (was frontier-2026-10-08)
+CONFIG_VERSION = "frontier-2026-11-14"  # B-96: polarity check on GPT-6.1 Terra (was frontier-2026-11-07: EXP-002 dates + "resolves YES" prompt)
 
 
 @dataclass(frozen=True)
@@ -158,7 +158,10 @@ class BotConfig:
     min_successful_forecasters: int = 2
     # Binary polarity check (2026-10-05): an auditor reads each binary member's text; members answering for NO are excluded.
     # Not a forecaster, so it doesn't share the live models' rate limits. None turns the check off.
-    polarity_check_model: str | None = "openai/gpt-5-mini"
+    # B-96 (Christian, 2026-11-14): GPT-6.1 Terra replaces gpt-5-mini, which OpenAI shuts down on 2026-12-11 (OpenAI's named
+    # successor). Pre-registered check on 977 stored checks + 2 known flips (tools/polarity_swap_check.py, run
+    # polarity-20261114T204601Z): every flag caught, 2/973 false flags (both 52-55% coin-flip answers), 0 failures; GPT-6 Luna failed.
+    polarity_check_model: str | None = "openai/gpt-6.1-terra"
     research: ResearchConfig = field(default_factory=ResearchConfig)
     prompt_version: str = "dates-yes-live-2026-11-07"  # template c16d91f + EXP-002 (live 2026-11-07); was "template-2026-09-26"
 

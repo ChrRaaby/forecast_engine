@@ -272,9 +272,9 @@ def test_archive_is_append_only_and_frozen_files_are_pinned():
 def test_live_configs_and_hashes_unchanged():
     """Tripwire on the live configs. Changed on purpose at the EXP-002 go-live (2026-11-07): prompt_version is now
     dates-yes-live-2026-11-07 (hashes were c18ebdd3d1ef / 11fb02f5ac67 / 9785b336fd21 under frontier-2026-10-08)."""
-    assert CONFIG_VERSION == "frontier-2026-11-07"
+    assert CONFIG_VERSION == "frontier-2026-11-14"
     assert (live_config.DEFAULT_CONFIG.config_hash(), live_config.TOURNAMENT_CONFIG.config_hash(),
-            live_config.WIDE_CONFIG.config_hash()) == ("e7407e584599", "550e5902f141", "94e6c663a494")
+            live_config.WIDE_CONFIG.config_hash()) == ("714ff99803b1", "f3c50c57f8d1", "19ba975f2f40")
 
 
 # ------------------------------------------------------------------ `evals.replay --check`
