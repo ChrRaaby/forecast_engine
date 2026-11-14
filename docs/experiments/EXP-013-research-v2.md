@@ -126,8 +126,9 @@ Arm C model decided by Christian 2026-11-12: **gemini-3.8-flash**, thinking leve
 Arm D decided by Christian 2026-11-12: **full arm D** (keywords + historical search on every question), AskNews overage accepted.
 Arm C cap decided by Christian 2026-11-12: **tokens only** (see below).
 
-Still open: nothing on this card. Before switch-on (checks, not design): AskNews historical-search price,
-Google billing console (grounding SKU, free tier).
+Still open: nothing on this card. Pre-switch-on checks done: AskNews historical-search price (2026-11-12, see amendment);
+Google billing console (Christian, 2026-11-14): 31 Oct–14 Nov total DKK 5.32, every charged SKU is a token SKU (incl. the
+3.8 Flash pilot on 12 Nov), no paid search-query SKU, so grounding searches are free so far (query counts not visible at $0).
 
 ## Arm C pilot (2026-11-12, before freeze; numbers only, no forecasts or scores)
 Tool `tools/exp013_armc_pilot.py` (commits 2e92791, 4a63a65). Same 5 live questions per model (46586, 46587, 46582, 46722,
