@@ -46,5 +46,9 @@
   "832cd90d51adb2df": {
     "label": "code-2026-11-12d",
     "note": "EXP-013 arms (still OFF): arm D historical look-back 365 -> 150 days (AskNews limit 160); source extractor and keyword writer gpt-5-mini -> gpt-6-luna (gpt-5-mini expires 2026-12-11); live configs unchanged"
+  },
+  "c507cd3490623c22": {
+    "label": "code-2026-11-14",
+    "note": "EXP-013 SWITCHED ON as shadows: arms B, C, D (cheap) and F (frontier roster + all three research changes; replaces arm E); arms share each paid step per question (fetch, writer, AskNews); live configs, hashes and CONFIG_VERSION unchanged"
   }
 }

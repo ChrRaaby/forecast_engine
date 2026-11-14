@@ -4,7 +4,7 @@
 
 Three steps, each switched on by its own field of ResearchConfig (all None on every live config):
 
-- source_block (arms B, E): fetch up to 2 links written in the question's resolution criteria / fine print with a plain GET,
+- source_block (arms B, F): fetch up to 2 links written in the question's resolution criteria / fine print with a plain GET,
   let one cheap model extract the current value, its date and a short quote, and put that as a separate, labelled section at the
   TOP of the brief ("Resolution source, fetched <time>"). Only that short block reaches the forecasters, never the page. A quote
   that is not on the fetched page is treated as NOT FOUND. With no link in the question, no block is added (the prompt stays as
@@ -16,8 +16,9 @@ Three steps, each switched on by its own field of ResearchConfig (all None on ev
   later look can tell which search an article came from. The Gemini brief stays as live.
 
 The shadow runner (main.py `_run_shadows`) calls this before the EXP-008 follow-up step. `cache` is one dict per question, shared
-by that question's arms: arms with the same SourceBlockConfig (B and E) share one fetch and one extraction, and the shared calls
-are the same objects in both records (the runner charges them once).
+by that question's arms: arms with the same settings for a step share its paid work (B and F one fetch + extraction, C and F one
+writer call, D and F one keyword call + AskNews searches); the shared calls are the same objects in each record (the runner
+charges them once), and a shared failure hits each arm alike.
 
 Nothing here ever raises: a failed step leaves the copy as it was for that step (so the arm sees the baseline's text there),
 keeps the calls already paid for, and notes the error. Every network step is refused under a clock earlier than today (an offline
@@ -56,6 +57,10 @@ URL_RE = re.compile(r"https?://[^\s<>\"'\]\[)(]+", re.I)
 CREDITS_LATEST, CREDITS_HISTORICAL = 1, 5  # research/03; the historical price is to be checked before switch-on
 
 
+class StepFailed(RuntimeError):
+    """A step's shared result was a failure (the reason is the message); raised in each arm that uses it."""
+
+
 def active(cfg: ResearchConfig) -> bool:
     return any(s is not None for s in (cfg.source_block, cfg.brief_writer, cfg.news))
 
@@ -90,7 +95,8 @@ async def apply(q: QuestionSnapshot, bundle: ResearchBundle, clock: Clock, cfg: 
             await step(q, out, clock, scfg, llm, cache)
         except Exception as e:  # never fail the forecast: undo this step's text, keep the paid calls, note the error
             out.items, out.providers = snapshot
-            out.errors.append(f"exp013 {name} failed: {type(e).__name__}: {e}")
+            why = str(e) if isinstance(e, StepFailed) else f"{type(e).__name__}: {e}"
+            out.errors.append(f"exp013 {name} failed: {why}")
     return out
 
 
@@ -367,20 +373,41 @@ _REAL_POST_WRITER = _post_writer
 
 async def _brief_writer(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, cfg: BriefWriterConfig, llm: LlmClient,
                         cache: dict) -> None:
+    """Arms with the same BriefWriterConfig (C and F) share one writer call per question (same call and item objects)."""
+    key = ("brief_writer", cfg)
+    if key not in cache:
+        cache[key] = await _build_brief(q, clock, cfg)
+    calls, errors, item, fail = cache[key]
+    out.calls.extend(calls)
+    out.errors.extend(errors)
+    if fail:
+        raise StepFailed(fail)
+    if item is None:
+        return
+    idx = [n for n, i in enumerate(out.items) if i.source == "gemini_grounded"]
+    if idx:  # replace the live brief in place, so the rest of the prompt is unchanged
+        out.items[idx[0]] = item
+        out.items = [i for n, i in enumerate(out.items) if n not in idx[1:]]
+    else:
+        out.items.append(item)
+        out.providers.append("gemini_grounded")
+
+
+async def _build_brief(q: QuestionSnapshot, clock: Clock,
+                       cfg: BriefWriterConfig) -> tuple[list[LlmCall], list[str], ResearchItem | None, str | None]:
+    """(calls, errors, new brief item or None, failure or None). Never raises."""
     if _post_writer is _REAL_POST_WRITER:
         if is_replay(clock):
-            out.errors.append(f"exp013 brief_writer skipped: clock {today_str(clock)} is earlier than today (live grounded "
-                              "search would see today's web: future leak)")
-            return
+            return [], [f"exp013 brief_writer skipped: clock {today_str(clock)} is earlier than today (live grounded search "
+                        "would see today's web: future leak)"], None, None
         if not os.getenv("GEMINI_API_KEY"):
-            out.errors.append("exp013 brief_writer skipped: GEMINI_API_KEY not set")
-            return
+            return [], ["exp013 brief_writer skipped: GEMINI_API_KEY not set"], None, None
+    errors: list[str] = []
     prompt = writer_prompt(q, today_str(clock))
     limit = max_output_tokens(prompt, cfg)
     call = LlmCall(purpose="exp013_brief_writer", provider="gemini", model=cfg.model,
                    params={"tools": ["google_search"], "thinking_level": cfg.thinking_level, "max_output_tokens": limit},
                    prompt=prompt, requested_at=clock.now(), extra={"prompt_version": cfg.prompt_version})
-    out.calls.append(call)
     start = time.monotonic()
     try:
         data = await asyncio.to_thread(_post_writer, cfg.model, prompt, cfg.thinking_level, limit)
@@ -406,23 +433,17 @@ async def _brief_writer(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, 
         })
         call.extra.update(link_check(text, [s.get("uri") for s in sources]))
         if call.extra["over_cap"]:
-            out.errors.append(f"exp013 brief_writer over cap: ${call.cost_usd:.4f} > ${cfg.max_cost_usd_per_q:.2f}")
+            errors.append(f"exp013 brief_writer over cap: ${call.cost_usd:.4f} > ${cfg.max_cost_usd_per_q:.2f}")
         if not text.strip():
             raise RuntimeError(f"empty Gemini response (finishReason={cand.get('finishReason')})")
     except Exception as e:
         call.error = f"{type(e).__name__}: {e}"
         call.latency_s = time.monotonic() - start
-        raise
+        return [call], errors, None, call.error
     call.latency_s = time.monotonic() - start
     source_list = "\n".join(f"- {s.get('title')}" for s in sources if s.get("title"))
     item = ResearchItem(source="gemini_grounded", text=text + (f"\n\nSources consulted:\n{source_list}" if source_list else ""))
-    idx = [n for n, i in enumerate(out.items) if i.source == "gemini_grounded"]
-    if idx:  # replace the live brief in place, so the rest of the prompt is unchanged
-        out.items[idx[0]] = item
-        out.items = [i for n, i in enumerate(out.items) if n not in idx[1:]]
-    else:
-        out.items.append(item)
-        out.providers.append("gemini_grounded")
+    return [call], errors, item, None
 
 
 # ------------------------------------------------------------------------------------------------------------- D: news
@@ -481,19 +502,19 @@ async def _asknews_search(params: dict[str, Any], min_interval_s: float) -> list
 _REAL_ASKNEWS = _asknews_search
 
 
-async def _news_call(out: ResearchBundle, clock: Clock, label: str, params: dict[str, Any], credits: int, source: str,
-                     min_interval_s: float, prompt_version: str) -> list[ResearchItem]:
+async def _news_call(calls: list[LlmCall], errors: list[str], clock: Clock, label: str, params: dict[str, Any], credits: int,
+                     source: str, min_interval_s: float, prompt_version: str) -> list[ResearchItem]:
     call = LlmCall(purpose="exp013_news", provider="asknews", model=f"news/search:{label}",
                    params={k: v for k, v in params.items() if k != "query"}, prompt=params["query"], requested_at=clock.now(),
                    extra={"asknews_calls": 1, "asknews_credits": credits, "prompt_version": prompt_version})
-    out.calls.append(call)
+    calls.append(call)
     start = time.monotonic()
     try:
         articles = await _asknews_search(params, min_interval_s)
     except Exception as e:
         call.error = f"{type(e).__name__}: {e}"
         call.latency_s = time.monotonic() - start
-        out.errors.append(f"exp013 news {label} failed: {call.error}")
+        errors.append(f"exp013 news {label} failed: {call.error}")
         return []
     call.latency_s = time.monotonic() - start
     call.extra["n_articles_returned"] = len(articles)
@@ -502,46 +523,64 @@ async def _news_call(out: ResearchBundle, clock: Clock, label: str, params: dict
 
 
 async def _news(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, cfg: NewsConfig, llm: LlmClient, cache: dict) -> None:
-    rcfg_interval = live_research_interval()
+    """Arms with the same NewsConfig (D and F) share one keyword call and one set of AskNews searches per question, so the
+    credits are spent once."""
+    key = ("news", cfg)
+    if key not in cache:
+        cache[key] = await _build_news(q, clock, cfg, llm)
+    calls, errors, latest, hist, fail = cache[key]
+    out.calls.extend(calls)
+    out.errors.extend(errors)
+    if fail:
+        raise StepFailed(fail)
+    if latest:  # the keyword results replace the live (full-sentence) AskNews items, in the same place
+        pos = next((n for n, i in enumerate(out.items) if i.source == "asknews_latest"), 0)
+        rest = [i for i in out.items if i.source != "asknews_latest"]
+        out.items = rest[:pos] + latest + rest[pos:]
+        if "asknews_latest" not in out.providers:
+            out.providers.insert(0, "asknews_latest")
+    if hist:  # after the latest-news items, before the Gemini brief
+        last = max((n for n, i in enumerate(out.items) if i.source == "asknews_latest"), default=-1)
+        out.items = out.items[:last + 1] + hist + out.items[last + 1:]
+        out.providers.append(HISTORICAL)
+
+
+async def _build_news(q: QuestionSnapshot, clock: Clock, cfg: NewsConfig, llm: LlmClient):
+    """(calls, errors, keyword latest items, historical items, failure or None). Never raises."""
+    calls: list[LlmCall] = []
+    errors: list[str] = []
     if _asknews_search is _REAL_ASKNEWS:
         if is_replay(clock):
-            out.errors.append(f"exp013 news skipped: clock {today_str(clock)} is earlier than today (live news search would see "
-                              "today's news: future leak)")
-            return
+            return calls, [f"exp013 news skipped: clock {today_str(clock)} is earlier than today (live news search would see "
+                           "today's news: future leak)"], [], [], None
         if _asknews_creds() is None:
-            out.errors.append("exp013 news skipped: no AskNews credentials")
-            return
-    query = q.question_text
+            return calls, ["exp013 news skipped: no AskNews credentials"], [], [], None
+    interval = live_research_interval()
+    query, latest, hist = q.question_text, [], []
     if cfg.keywords:
-        kcall = await llm.complete(model=cfg.keyword_model, prompt=keyword_prompt(q), purpose="exp013_news_keywords",
-                                   max_tokens=cfg.keyword_max_tokens, reasoning_effort=cfg.keyword_reasoning_effort)
+        try:
+            kcall = await llm.complete(model=cfg.keyword_model, prompt=keyword_prompt(q), purpose="exp013_news_keywords",
+                                       max_tokens=cfg.keyword_max_tokens, reasoning_effort=cfg.keyword_reasoning_effort)
+        except Exception as e:
+            return calls, errors, [], [], f"keyword call failed: {type(e).__name__}: {e}"
         kcall.extra["prompt_version"] = cfg.prompt_version
-        out.calls.append(kcall)
+        calls.append(kcall)
         kw = parse_keywords(kcall.output) if not kcall.error else ""
         kcall.extra["keywords"] = kw
         if not kw:
-            raise RuntimeError(f"no keywords from {cfg.keyword_model}: {kcall.error or 'empty answer'}")
+            return calls, errors, [], [], f"no keywords from {cfg.keyword_model}: {kcall.error or 'empty answer'}"
         query = kw
-        latest = await _news_call(out, clock, "latest news (keywords)", {
+        latest = await _news_call(calls, errors, clock, "latest news (keywords)", {
             "query": kw, "n_articles": cfg.n_articles, "return_type": "dicts", "strategy": "latest news"},
-            CREDITS_LATEST, "asknews_latest", rcfg_interval, cfg.prompt_version)
-        if latest:  # the keyword results replace the live (full-sentence) AskNews items, in the same place
-            pos = next((n for n, i in enumerate(out.items) if i.source == "asknews_latest"), 0)
-            rest = [i for i in out.items if i.source != "asknews_latest"]
-            out.items = rest[:pos] + latest + rest[pos:]
-            if "asknews_latest" not in out.providers:
-                out.providers.insert(0, "asknews_latest")
+            CREDITS_LATEST, "asknews_latest", interval, cfg.prompt_version)
     if cfg.historical:
         now = clock.now()
-        hist = await _news_call(out, clock, "news knowledge (historical)", {
+        hist = await _news_call(calls, errors, clock, "news knowledge (historical)", {
             "query": query, "n_articles": cfg.historical_n_articles, "return_type": "dicts", "strategy": "news knowledge",
             "historical": True, "start_timestamp": int((now - timedelta(days=cfg.historical_lookback_days)).timestamp()),
             "end_timestamp": int(now.timestamp()), "hours_back": None},
-            CREDITS_HISTORICAL, HISTORICAL, rcfg_interval, cfg.prompt_version)
-        if hist:  # after the latest-news items, before the Gemini brief
-            last = max((n for n, i in enumerate(out.items) if i.source == "asknews_latest"), default=-1)
-            out.items = out.items[:last + 1] + hist + out.items[last + 1:]
-            out.providers.append(HISTORICAL)
+            CREDITS_HISTORICAL, HISTORICAL, interval, cfg.prompt_version)
+    return calls, errors, latest, hist, None
 
 
 def live_research_interval() -> float:

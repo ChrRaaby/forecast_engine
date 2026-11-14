@@ -61,7 +61,7 @@ class FollowupConfig:
 
 @dataclass(frozen=True)
 class SourceBlockConfig:
-    """EXP-013 arms B and E (B-80): fetch the page(s) the question resolves on and put a short, labelled block at the top of the
+    """EXP-013 arms B and F (B-80): fetch the page(s) the question resolves on and put a short, labelled block at the top of the
     brief. Fetch safety: only plain http(s) GETs of links written in the question's resolution criteria / fine print; no cookies,
     no credentials, public addresses only, same-host redirects only, timeout and size cap. The page text is data: only the
     extractor's short block (value, its date, a verified quote <= quote_max_chars, or NOT FOUND) reaches the forecasters."""
@@ -211,18 +211,22 @@ EXP008_ARMS: dict[str, BotConfig] = {
 # EXP-002 Tier 1 (live 2026-11-07): "cheap-old-prompt" is the cheap ensemble with the previous prompt, paired with "cheap" (new
 # prompt) on every question, so live can switch back if the new prompt turns out worse (review at ~150 resolved questions).
 EXP002_OLD_PROMPT_SHADOW = replace(DEFAULT_CONFIG, prompt_version="template-2026-09-26-old")
-SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS}
-# EXP-013 "research v2" (B-80): built 2026-11-12, switched OFF. Arms B-D are the cheap ensemble with one research change each, on
-# top of the live question's research (baseline = the "cheap" shadow); arm E is the live frontier roster with B's source block,
-# compared with the published live forecast. B and E share one fetch + extraction per question. To switch on (only with
-# Christian's OK and the frozen card docs/experiments/EXP-013-research-v2.md): add **EXP013_ARMS to SHADOW_CONFIGS.
+# EXP-013 "research v2" (B-80): built 2026-11-12, switched ON as shadows 2026-11-14 (Christian: one week as shadows, then the
+# full package goes live). Arms B-D are the cheap ensemble with one research change each, on top of the live question's research
+# (baseline = the "cheap" shadow). Arm F (replaces the earlier arm E, Christian 2026-11-14) is the live frontier roster with ALL
+# three changes together (source block on top of the stronger brief and the keyword + historical AskNews searches): the
+# candidate live setup, compared with the published live forecast. Per question, B and F share one fetch + extraction, C and F
+# one writer call, D and F one keyword call + AskNews searches (main.py `_run_shadows` cache), so nothing is paid twice.
+EXP013_FULL_RESEARCH = replace(TOURNAMENT_CONFIG.research, source_block=SourceBlockConfig(), brief_writer=BriefWriterConfig(),
+                               news=NewsConfig())
 EXP013_ARMS: dict[str, BotConfig] = {
     "exp013-b-source": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, source_block=SourceBlockConfig())),
     "exp013-c-writer": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, brief_writer=BriefWriterConfig())),
     "exp013-d-news": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, news=NewsConfig())),
-    "exp013-e-frontier-source": replace(TOURNAMENT_CONFIG, research=replace(TOURNAMENT_CONFIG.research,
-                                                                            source_block=SourceBlockConfig())),
+    "exp013-f-frontier-full": replace(TOURNAMENT_CONFIG, research=EXP013_FULL_RESEARCH),
 }
+SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS,
+                                        **EXP013_ARMS}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
