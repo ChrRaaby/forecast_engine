@@ -23,11 +23,11 @@ arms, card and analysis are not touched. Code: `forecast_engine/research_v2.py`,
   | E frontier + source (replaced by F, 2026-11-14) | `exp013-e-frontier-source` | The **live frontier roster** with arm B's resolution-source block, compared with the published live forecast (its own baseline). Added 2026-11-11 (Christian) so a win for B can go live without a second confirmation round | 5 frontier forecasts + B's extraction (shared with B) |
   | D news | `exp013-d-news` | AskNews is queried with keywords written by a cheap model instead of the full question sentence, and runs the historical ("news knowledge") search (last 150 days; amended 2026-11-12, see below) next to "latest news"; historical articles are tagged as such. Gemini brief as live. **Full arm D on every question (Christian, 2026-11-12)** | 1 cheap keyword call + 2 AskNews calls (~6 extra credits) |
 
-  Build details (fixed at freeze, helper model amended 2026-11-12): B/E extractor `openai/gpt-6-luna` (reasoning low), one call for all fetched pages, quote
+  Build details (fixed at freeze, helper model amended 2026-11-12 and 2026-11-15): B/E/F extractor `openai/gpt-6.1-terra` (reasoning low), one call for all fetched pages, quote
   checked against the page text (a quote not found on the page turns the block into NOT FOUND); public addresses only,
   same-host redirects (≤ 3), 2 MB read cap, 40,000 characters kept and stored in the record. B and E share one fetch +
   extraction per question. C: `gemini-3.8-flash`, thinking "low", records Google queries per call and flags brief links not
-  among the grounding sources (kept, marked for review). D: keyword writer `openai/gpt-6-luna` (reasoning low), 8 + 8 articles.
+  among the grounding sources (kept, marked for review). D: keyword writer `openai/gpt-6.1-terra` (reasoning low; GPT-6 Luna until 2026-11-15 01:24 UTC), 8 + 8 articles.
   Any failed step falls back to the live research for that part and the error is recorded; replays refuse live-web steps.
 
   Combinations are not arms. If more than one arm wins, the combination is what goes to the Tier 2 confirmation.
@@ -185,6 +185,19 @@ plumbing (the 365-day bug of 12 Nov was found only by a live call).
    to the old setup if either look fails that, or if the final look puts the CI entirely below 0. No other looks at scores.
    Questions forecast before and after the promotion are pooled (same two setups, roles swapped); the report also shows them
    split by phase.
+
+## Amendment 2026-11-15: helper model GPT-6 Luna → GPT-6.1 Terra (after switch-on, before any score was looked at)
+Decided by Christian 2026-11-14 ("terra for EXP-013"). EXP-013 was switched on 2026-11-14 ~20:15 UTC (PR #38, d4b923b). The
+source-block extractor (arms B, F) and the news keyword writer (arm D) moved from `openai/gpt-6-luna` to `openai/gpt-6.1-terra`
+in PR #40 (EXP-013 commit 25403bd, merged 2026-11-15 01:24:18 UTC, merge 4bab277; code version code-2026-11-15-merge).
+Reason: a pre-registered replacement check for gpt-5-mini on 977 stored polarity checks (roster thread, B-96; run
+`data/experiments/B-96/polarity-20261114T204601Z`) passed Terra (all flips caught, 2 false flags of 973) and failed Luna (11 false
+flags, some contradicting its own reasoning). Different task from extraction/keywords, so this is caution, not proof that Luna
+did badly here. Cost: Terra $1/$5 per M tokens (Luna $0.10/$0.50), about +$0.03 per question. New arm config hashes: B
+76e6c4634237, C aabd61c581b0, D c2d6fa167d8d, F d7d19c6f8464.
+**Analysis rule (fixed now, before any score is seen):** questions whose B/D/F records were made with the Luna helper (switch-on to
+01:24 UTC on 15 Nov, a handful at most) are kept in the main analysis; the report lists them and repeats the primary result
+without them as a check.
 
 ## Results (generated)
 ## Decision
