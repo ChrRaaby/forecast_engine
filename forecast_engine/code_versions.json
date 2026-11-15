@@ -56,5 +56,6 @@
   "58416882e502be53": {"label": "code-2026-11-14-exp013-terra", "note": "EXP-013 helper calls (source-block extractor, news keywords) on openai/gpt-6.1-terra instead of gpt-6-luna (Christian 2026-11-14; Luna failed the B-96 check); EXP-013 arm hashes change, live unchanged by this commit"},
   "82d74168ef1703e9": {"label": "code-2026-11-15-exp008-critic", "note": "EXP-008 card amendment (Christian 2026-11-15): follow-up critic on openai/gpt-6.1-terra instead of gpt-5-mini (shuts down 2026-12-11); EXP-008 arm hashes change; live unchanged by this commit"},
   "910881f24c0b7ae5": {"label": "code-2026-11-15-merge", "note": "Merge of B-96 Carbon challenger (PR #39) and Terra switch (PR #40); no change beyond the two"},
-  "6ddac2ebcf1daa70": {"label": "code-2026-11-15b", "note": "EXP-015: prompt variant range-calibrated-2026-11-14 registered (replay/shadow only); live prompt, configs and CONFIG_VERSION unchanged"}
+  "6ddac2ebcf1daa70": {"label": "code-2026-11-15b", "note": "EXP-015: prompt variant range-calibrated-2026-11-14 registered (replay/shadow only); live prompt, configs and CONFIG_VERSION unchanged"},
+  "3ffe803c6193056b": {"label": "code-2026-11-15c", "note": "Spiky counts S1: prompt variant per-value-discrete-2026-11-15 with its own answer path (core.forecast uses a variant's parse_answer/aggregate where it applies); replay/shadow only, live forecasts unchanged"}
 }

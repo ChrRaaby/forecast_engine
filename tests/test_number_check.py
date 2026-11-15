@@ -200,3 +200,89 @@ def test_bootstrap_is_seeded_and_clusters_by_post():
     p1, p2 = t.paired(rows, "all", reps=1000, seed=1015), t.paired(rows, "all", reps=1000, seed=1015)
     assert p1 == p2 and p1.n == 20 and p1.clusters == 10 and p1.mean_diff == pytest.approx(1.0)
     assert p1.ci_low < 1.0 < p1.ci_high
+
+
+# --------------------------------------------------------------------------- spiky counts S1: per-value answers
+S1 = "per-value-discrete-2026-11-15"
+
+
+class SpikyLlm:
+    """Live prompt: a wide percentile answer around 24. Per-value prompt: 80% on 24, 20% on 23."""
+
+    def __init__(self):
+        self.calls, self.prompts = 0, []
+
+    async def complete(self, *, model, prompt, purpose, max_tokens, reasoning_effort=None):
+        self.calls += 1
+        self.prompts.append(prompt)
+        if "The outcome will be one of these values" in prompt:
+            out = "23: 20%\n24: 80%"
+        else:
+            out = "\n".join(f"Percentile {p}: {v}" for p, v in zip((10, 20, 40, 60, 80, 90), (22, 22, 23, 24, 25, 26)))
+        return LlmCall(purpose=purpose, provider="fake", model=model, params={}, prompt=prompt,
+                       requested_at=datetime(2026, 11, 15, tzinfo=timezone.utc), output=out, cost_usd=0.001)
+
+
+def _discrete_record(qid, lo, hi, nlo, nhi):
+    """A live record of a discrete question, made by the live code (so its stored prompt rebuilds)."""
+    import asyncio
+    from dataclasses import replace as dc_replace
+
+    from forecast_engine.clock import FixedClock
+    from forecast_engine.core import forecast
+
+    q = dc_replace(vh.fixture_question("numeric", qid), question_type="discrete", lower_bound=lo, upper_bound=hi,
+                   nominal_lower_bound=nlo, nominal_upper_bound=nhi, open_upper_bound=True)
+    rec = asyncio.run(forecast(q, FixedClock(AS_OF), vh.fixture_bundle(AS_OF), DEFAULT_CONFIG, vh.FakeLlm()))
+    return {**json.loads(json.dumps(rec.to_dict())), "status": "ok", "published": True}
+
+
+def _s1_archive(tmp_path):
+    """Four discrete questions with values 22..26 (upper bound open) and one with 26 values (not in the arm)."""
+    runs = tmp_path / "runs" / "1" / "20261005T120000Z-tournament"
+    runs.mkdir(parents=True)
+    outcomes, scaling = [], []
+    for i in range(5):
+        qid = 71_000 + i
+        lo, hi, nlo, nhi, n = (21.5, 26.5, 22.0, 26.0, 5) if i < 4 else (-0.5, 25.5, 0.0, 25.0, 26)
+        rec = _discrete_record(qid, lo, hi, nlo, nhi)
+        (runs / f"q{qid}.json").write_text(json.dumps(rec), encoding="utf-8")
+        scaling.append({"question_id": qid, "range_min": lo, "range_max": hi, "type": "discrete", "zero_point": None,
+                        "inbound_outcome_count": n})
+        outcomes.append({"question_id": qid, "status": "resolved", "resolution": "24", "actual_resolve_time": "2026-10-20T00:00:00Z"})
+    out, sc, ledger = tmp_path / "outcomes.jsonl", tmp_path / "scaling.jsonl", tmp_path / "ledger.md"
+    out.write_text("".join(json.dumps(o) + "\n" for o in outcomes), encoding="utf-8")
+    sc.write_text("".join(json.dumps(s) + "\n" for s in scaling), encoding="utf-8")
+    ledger.write_text("| Date | x |\n|---|---|\n| 2026-10-07 | EXP-005 | r | w | 60 | $0.666 | $0.666 | $179.33 |\n",
+                      encoding="utf-8")
+    return tmp_path / "runs", out, sc, ledger
+
+
+def test_s1_scores_per_value_answers_on_discrete_questions_with_few_values(tmp_path, capsys):
+    runs, outcomes, sc, ledger = _s1_archive(tmp_path)
+    tool, llm = _tool(), SpikyLlm()
+    argv = ["--exp", "EXP-S", "--variant", S1, "--types", "discrete", "--max-values", "25", "--reps", "300"]
+    code = tool.run(tool.parser().parse_args(argv), llm, runs_dir=runs, outcomes_path=outcomes, scaling_path=sc,
+                    out_root=tmp_path / "out", ledger=ledger)
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "4 resolved number records picked (0 numeric, 4 discrete" in out and "skipped 1: more possible values" in out
+    assert llm.calls == 4 * 2 * MEMBERS
+    run_dir = next((tmp_path / "out" / "EXP-S").glob("*-screen"))
+    b = json.loads(next((run_dir / "records" / "B").glob("q*.json")).read_text(encoding="utf-8"))
+    assert b["aggregate"]["kind"] == "per_value" and b["prompt_version"] == S1
+    import csv
+    rows = list(csv.DictReader(open(run_dir / "scores.csv", encoding="utf-8")))
+    assert all(r["ok"] == "1" for r in rows)
+    pb = [float(r["p_true"]) for r in rows if r["arm"] == "B"]
+    pa_ = [float(r["p_true"]) for r in rows if r["arm"] == "A"]
+    assert all(x == pytest.approx(0.8 * (1 - 6 * 0.005) + 0.005) for x in pb) and max(pa_) < min(pb)
+    md = (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "Verdict (fast rule b): GO" in md and "mean probability on the true value" in md
+
+
+def test_types_and_max_values_filters(tmp_path, capsys):
+    llm = NumberLlm()
+    code, _ = _run(tmp_path, ["--dry-run", "--types", "numeric"], llm)
+    out = capsys.readouterr().out
+    assert code == 0 and "6 numeric, 0 discrete" in out and "question type not in --types" in out

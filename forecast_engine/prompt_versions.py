@@ -11,6 +11,9 @@ Adding a variant, in one commit:
   2. add it to VARIANTS below, under its version string;
   3. archive a frozen copy in evals/ and add it to `evals.prompt_archive.ARCHIVE` (the drift guard prints the hashes);
   4. register the new code fingerprint (tests/test_provenance.py prints the line for forecast_engine/code_versions.json).
+A variant may also bring its own answer format (2026-11-15, spiky counts S1): if its module defines `applies(q)`, `parse_answer(q,
+text)` and `aggregate(q, preds)`, `core.forecast` uses them for the questions where `applies` is true (see `answer_path`); its
+records then carry that variant's aggregate, which only the experiment tools read. Every other question is parsed as today.
 Making a variant the live prompt is a normal prompt change: edit prompts.py, set LIVE and `BotConfig.prompt_version` to the new
 version, bump CONFIG_VERSION (see evals/prompt_archive.py).
 """
@@ -19,7 +22,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from types import ModuleType
 
-from .prompt_variants import dates_yes_2026_11_07, range_calibrated_2026_11_14, template_2026_09_26_old
+from .prompt_variants import (
+    dates_yes_2026_11_07, per_value_discrete_2026_11_15, range_calibrated_2026_11_14, template_2026_09_26_old,
+)
 from .schema import QuestionSnapshot
 
 LIVE = "dates-yes-live-2026-11-07"  # what forecast_engine/prompts.py renders: the template + EXP-002 (live 2026-11-07)
@@ -31,6 +36,8 @@ VARIANTS: dict[str, ModuleType] = {
     template_2026_09_26_old.VERSION: template_2026_09_26_old,
     # EXP-015: live prompt with the numeric 10-90 range sentence replaced (binary and multiple choice unchanged)
     range_calibrated_2026_11_14.VERSION: range_calibrated_2026_11_14,
+    # spiky counts arm S1: probability per value on discrete questions with <= 25 values (own parser and aggregation)
+    per_value_discrete_2026_11_15.VERSION: per_value_discrete_2026_11_15,
 }
 
 PromptBuilder = Callable[[QuestionSnapshot, str, str], str]
@@ -46,6 +53,15 @@ def variant_builder(version: str) -> PromptBuilder:
             f"prompt_version {version!r} is neither the live prompt ({LIVE!r}) nor a registered variant "
             f"({sorted(VARIANTS) or 'none'}); see forecast_engine/prompt_versions.py")
     return VARIANTS[version].forecast_prompt
+
+
+def answer_path(version: str, q: QuestionSnapshot) -> ModuleType | None:
+    """The variant module whose own answer format applies to this question (it defines `applies`, `parse_answer` and
+    `aggregate`), or None: the live prompt and prompt-only variants are parsed and aggregated as today."""
+    mod = VARIANTS.get(version)
+    if mod is None or not hasattr(mod, "applies") or not mod.applies(q):
+        return None
+    return mod
 
 
 def known_versions() -> list[str]:

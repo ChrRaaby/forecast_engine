@@ -47,7 +47,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from evals import exp010, hosts, report  # noqa: E402
+from evals import exp010, hosts, report, scoring  # noqa: E402
 from evals import outcomes as oc  # noqa: E402
 from evals.asof import LeakageError  # noqa: E402
 from evals.model_release import IneligiblePair, check_eligible  # noqa: E402
@@ -57,6 +57,7 @@ from evals.replay import (  # noqa: E402
 from forecast_engine import prompt_versions  # noqa: E402
 from forecast_engine.config import DEFAULT_CONFIG, TOURNAMENT_CONFIG, BotConfig  # noqa: E402
 from forecast_engine.core import ForecastFailed  # noqa: E402
+from forecast_engine.prompt_variants import per_value_discrete_2026_11_15 as per_value  # noqa: E402
 
 
 def _load_tool(name: str):
@@ -80,7 +81,7 @@ LEVEL = 0.95
 GO_FLOOR = -2.0  # fast rule b (Christian 2026-11-14): go if mean Δ > 0 and the CI's lower end is above −2 baseline points
 ARMS = ("A", "B")
 SCORE_COLUMNS = ("question_id", "cluster_id", "question_type", "arm", "ok", "error", "baseline", "pit", "outside", "width",
-                 "members_ok", "members", "parse_failures", "call_failures", "cost_usd", "replayed_from")
+                 "p_true", "members_ok", "members", "parse_failures", "call_failures", "cost_usd", "replayed_from")
 
 SKIP_UNRESOLVED = "not resolved yet (or no outcome row)"
 SKIP_ANNULLED = "annulled or ambiguous"
@@ -92,6 +93,8 @@ SKIP_PROMPT = "prompt version not in evals/prompt_archive.py (integrity can't be
 SKIP_TAMPERED = "stored inputs don't rebuild the live prompt (integrity check)"
 SKIP_LEAK = "research dated after as_of (replay guard)"
 SKIP_RESOLVED_BEFORE = "resolved on or before --resolved-after"
+SKIP_TYPE = "question type not in --types"
+SKIP_MANY_VALUES = "more possible values than --max-values (or a continuous question)"
 
 
 def _live_cdf():
@@ -139,7 +142,8 @@ def is_published_live(path: Path, rec: dict[str, Any]) -> bool:
 
 
 def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], scaling: dict[int, dict[str, Any]], cfg: BotConfig,
-                 n: int, resolved_after: date | None = None) -> tuple[list[Job], Counter]:
+                 n: int, resolved_after: date | None = None, types: tuple[str, ...] = TYPES, max_values: int | None = None
+                 ) -> tuple[list[Job], Counter]:
     """(jobs, skip counts by reason). One record per question: the earliest published live one."""
     by_q: dict[int, list[tuple[Path, dict[str, Any]]]] = {}
     for path, rec in live_records(runs_dir):
@@ -150,6 +154,9 @@ def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], scaling: d
     jobs: list[Job] = []
     for qid in sorted(by_q):
         path, rec = min(by_q[qid], key=lambda x: (x[1]["as_of"], str(x[0])))
+        if rec["question"]["question_type"] not in types:
+            skips[SKIP_TYPE] += 1
+            continue
         row = outcomes.get(qid)
         res = str((row or {}).get("resolution") or "").strip().lower()
         if row is None or row.get("status") not in oc.SETTLED or not res:
@@ -165,6 +172,9 @@ def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], scaling: d
         axis = axis_for(rec, scaling)
         if axis is None:
             skips[SKIP_NO_AXIS] += 1
+            continue
+        if max_values is not None and (axis.question_type != "discrete" or axis.cdf_size - 1 > max_values):
+            skips[SKIP_MANY_VALUES] += 1
             continue
         loc = exp010.outcome_location(res, axis)
         if loc is None or math.isnan(loc):
@@ -211,6 +221,28 @@ def arm_configs(name: str, baseline_prompt: str, variant: str) -> dict[str, BotC
     return {"A": replace(base, prompt_version=baseline_prompt), "B": replace(base, prompt_version=variant)}
 
 
+def variant_scope(jobs: list[Job], variant: str, skips: Counter) -> list[Job]:
+    """A variant with its own answer format (it defines `applies` and `grid`) is tested only where it applies, and only where
+    the values it reads from the question text agree with the stored axis (values = cdf_size − 1)."""
+    from evals.replay import snapshot_from_dict
+    from forecast_engine import prompt_versions as pv
+
+    mod = pv.VARIANTS.get(variant)
+    if mod is None or not hasattr(mod, "applies"):
+        return jobs
+    kept = []
+    for j in jobs:
+        q = snapshot_from_dict(j.rec["question"])
+        g = mod.grid(q) if hasattr(mod, "grid") else None
+        if not mod.applies(q):
+            skips[f"the variant's answer format does not apply ({variant})"] += 1
+        elif g is not None and g[1] != j.axis.cdf_size - 1:
+            skips["the variant's values disagree with the stored axis"] += 1
+        else:
+            kept.append(j)
+    return kept
+
+
 # --------------------------------------------------------------------------- scoring one replayed record
 def width_10_90(points: list[tuple[float, float]], axis: exp010.Axis) -> float:
     """Distance between the aggregate's P10 and P90 on the question's axis (0..1 = the range; log axis for a log question)."""
@@ -227,7 +259,7 @@ def score_record(rec: dict[str, Any], failed: bool, job: Job, builder) -> dict[s
     cost = sum(float((f.get("call") or {}).get("cost_usd") or 0.0) for f in fs)
     row: dict[str, Any] = {
         "question_id": job.qid, "cluster_id": job.cluster, "question_type": job.qtype, "ok": 0, "error": "",
-        "baseline": "", "pit": "", "outside": "", "width": "", "members": len(fs),
+        "baseline": "", "pit": "", "outside": "", "width": "", "p_true": "", "members": len(fs),
         "members_ok": sum(1 for f in fs if f.get("prediction") is not None and not f.get("excluded")),
         "parse_failures": parse_fail, "call_failures": call_fail, "cost_usd": round(cost, 6),
     }
@@ -235,19 +267,36 @@ def score_record(rec: dict[str, Any], failed: bool, job: Job, builder) -> dict[s
     if failed or not agg:
         row["error"] = "no aggregate (forecast failed)"
         return row
-    points = [(float(p), float(v)) for p, v in agg]
-    try:
-        cdf = builder.build(job.axis, points)
-    except Exception as e:  # the live bot would not have submitted
-        row["error"] = f"CDF conversion failed: {type(e).__name__}"
-        return row
+    if per_value.is_per_value(agg):  # an arm that answers with a probability per value (spiky counts S1)
+        cdf = per_value.cdf_from_values(agg, job.axis.open_lower_bound, job.axis.open_upper_bound)
+        problems = exp010.cdf_problems(cdf, job.axis, builder.max_step(job.axis.cdf_size))
+        if problems:  # Metaculus would refuse it
+            row["error"] = f"per-value CDF breaks the limits: {problems[0]}"
+            return row
+        width = width_from_cdf(cdf)
+    else:
+        points = [(float(p), float(v)) for p, v in agg]
+        try:
+            cdf = builder.build(job.axis, points)
+        except Exception as e:  # the live bot would not have submitted
+            row["error"] = f"CDF conversion failed: {type(e).__name__}"
+            return row
+        try:
+            width = width_10_90(points, job.axis)
+        except (ValueError, ZeroDivisionError):
+            width = float("nan")
     s = exp010.score_cdf(cdf, job.location, job.axis, metrics=("baseline", "pit"))
-    try:
-        width = width_10_90(points, job.axis)
-    except (ValueError, ZeroDivisionError):
-        width = float("nan")
-    row.update(ok=1, baseline=s["baseline"], pit=s["pit"], outside=int(exp010.outside(s["pit"])), width=width)
+    n = len(cdf)
+    p_true = float(scoring.cdf_to_pmf(cdf, n)[scoring.resolution_bucket(job.location, n)])
+    row.update(ok=1, baseline=s["baseline"], pit=s["pit"], outside=int(exp010.outside(s["pit"])), width=width, p_true=p_true)
     return row
+
+
+def width_from_cdf(cdf: list[float]) -> float:
+    """10–90 width on the axis (0..1) read off a CDF; used for per-value answers, which have no declared percentiles."""
+    xs = np.linspace(0.0, 1.0, len(cdf))
+    c = np.maximum.accumulate(np.asarray(cdf, dtype=float))
+    return float(np.interp(0.9, c, xs) - np.interp(0.1, c, xs))
 
 
 # --------------------------------------------------------------------------- analysis
@@ -279,14 +328,14 @@ def paired(rows: list[dict[str, Any]], label: str, reps: int = REPS, seed: int =
     return Paired(label, len(both), len(set(clusters)), statistics.fmean(a), statistics.fmean(b), statistics.fmean(diffs), lo, hi)
 
 
-def verdict(p: Paired) -> str:
-    """Fast rule b (card EXP-015)."""
+def verdict(p: Paired, level: float = LEVEL) -> str:
+    """Fast rule b (cards EXP-015 and EXP-016)."""
     if p.n == 0 or math.isnan(p.ci_low):
         return "no paired questions: no verdict"
     if p.mean_diff > 0 and p.ci_low > GO_FLOOR:
-        return f"GO (mean Δ > 0 and the 95% CI's lower end {p.ci_low:+.2f} is above {GO_FLOOR:+.0f})"
+        return f"GO (mean Δ > 0 and the {level:.0%} CI's lower end {p.ci_low:+.2f} is above {GO_FLOOR:+.0f})"
     if p.ci_high < 0:
-        return "KILL (the 95% CI is wholly below 0)"
+        return f"KILL (the {level:.0%} CI is wholly below 0)"
     return "INCONCLUSIVE (keep today's prompt; one rerun on questions resolved after the run date)"
 
 
@@ -309,6 +358,22 @@ def arm_lines(rows: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def p_true_lines(rows: list[dict[str, Any]]) -> list[str]:
+    """Probability each arm put on the outcome's bucket (the true value, for a discrete question), on the paired questions."""
+    by: dict[int, dict[str, dict[str, Any]]] = {}
+    for r in rows:
+        by.setdefault(int(r["question_id"]), {})[r["arm"]] = r
+    both = [v for v in by.values() if int(v.get("A", {}).get("ok", 0)) and int(v.get("B", {}).get("ok", 0))]
+    out = []
+    for arm in ARMS:
+        ps = [float(v[arm]["p_true"]) for v in both if v[arm].get("p_true") not in ("", None)]
+        if ps:
+            low = sum(1 for p in ps if p < 0.02)
+            out.append(f"Arm {arm}: mean probability on the true value {statistics.fmean(ps):.3f}, median {statistics.median(ps):.3f}; "
+                       f"given < 2%: {low}/{len(ps)} ({low / len(ps):.0%}).")
+    return out
+
+
 def width_ratio(rows: list[dict[str, Any]]) -> tuple[float, int]:
     by: dict[int, dict[str, dict[str, Any]]] = {}
     for r in rows:
@@ -324,9 +389,9 @@ def width_ratio(rows: list[dict[str, Any]]) -> tuple[float, int]:
 
 
 def render(exp: str, variant: str, baseline: str, config: str, rows: list[dict[str, Any]], skips: Counter, pins: dict[str, str],
-           host_lines: list[str], spent: float, calls: int, reps: int = REPS, seed: int = SEED) -> str:
-    allp = paired(rows, "all", reps, seed)
-    split = [paired([r for r in rows if r["question_type"] == t], t, reps, seed) for t in TYPES]
+           host_lines: list[str], spent: float, calls: int, reps: int = REPS, seed: int = SEED, level: float = LEVEL) -> str:
+    allp = paired(rows, "all", reps, seed, level)
+    split = [paired([r for r in rows if r["question_type"] == t], t, reps, seed, level) for t in TYPES]
     ratio, n_ratio = width_ratio(rows)
 
     def prow(p: Paired) -> str:
@@ -337,11 +402,12 @@ def render(exp: str, variant: str, baseline: str, config: str, rows: list[dict[s
         f"# {exp} number check: {variant} (B) vs {baseline} (A)", "",
         f"Config {config}, polarity check off, both arms replayed now on frozen research. Metric: Metaculus baseline score of the "
         f"CDF the live builder would submit (higher is better), paired B − A, cluster bootstrap by post ({reps:,} reps, seed "
-        f"{seed}, {LEVEL:.0%} CI).", "",
-        f"**Verdict (fast rule b): {verdict(allp)}**", "",
-        "| Questions | N paired | Clusters | Mean A | Mean B | Mean Δ (B − A) | 95% CI |", "|---|---|---|---|---|---|---|",
+        f"{seed}, {level:.1%} CI).", "",
+        f"**Verdict (fast rule b): {verdict(allp, level)}**", "",
+        f"| Questions | N paired | Clusters | Mean A | Mean B | Mean Δ (B − A) | {level:.1%} CI |", "|---|---|---|---|---|---|---|",
         prow(allp), *(prow(p) for p in split), "",
         f"Median 10–90 width ratio B/A: {ratio:.3f} (n {n_ratio}).", "",
+        *p_true_lines(rows), "",
         "| Arm | Records | CDF built | No CDF | Parse failures (members) | Call failures (members) | Outside 10–90 (paired) | $ |",
         "|---|---|---|---|---|---|---|---|", *arm_lines(rows), "",
         f"Spend: ${spent:.4f} over {calls} calls.", "",
@@ -404,7 +470,12 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
     outcomes = oc.load_outcomes(outcomes_path)
     scaling = exp010.load_scaling(scaling_path)
     after = date.fromisoformat(args.resolved_after) if args.resolved_after else None
-    jobs, skips = pick_records(runs_dir, outcomes, scaling, cfgs["A"], args.n, after)
+    types = tuple(t.strip() for t in args.types.split(",")) if args.types else TYPES
+    if any(t not in TYPES for t in types):
+        print(f"--types takes {','.join(TYPES)}")
+        return 2
+    jobs, skips = pick_records(runs_dir, outcomes, scaling, cfgs["A"], args.n, after, types, args.max_values)
+    jobs = variant_scope(jobs, args.variant, skips)
     history = aa.call_costs(runs_dir)
     per_call = {f.model: max(history.get(f.model, aa.FALLBACK_CALL_USD), aa.MIN_CALL_USD) for f in cfgs["A"].forecasters}
     n_replays = len(jobs) * len(ARMS)
@@ -470,13 +541,14 @@ def run(args, llm=None, *, runs_dir: Path = aa.RUNS, outcomes_path: Path = aa.OU
         ledger_row()
         return 3
     md = render(args.exp, args.variant, args.baseline_prompt, args.config, rows, skips, pins, host_lines, capped.spent,
-                capped.calls, args.reps, args.seed)
+                capped.calls, args.reps, args.seed, args.level)
     md += f"\nManifest sha256 {man_sha} ({len(paths)} records, manifest.txt).\n"
     if problems:
         md += f"\n**{len(problems)} calls ran on another host; compared anyway (--allow-mixed-hosts).**\n"
     (run_dir / "report.md").write_text(md, encoding="utf-8", newline="\n")
-    p = paired(rows, "all", args.reps, args.seed)
-    print(f"B vs A: N {p.n}, baseline Δ {p.mean_diff:+.2f}, 95% CI [{p.ci_low:+.2f}, {p.ci_high:+.2f}]: {verdict(p)}")
+    p = paired(rows, "all", args.reps, args.seed, args.level)
+    print(f"B vs A: N {p.n}, baseline Δ {p.mean_diff:+.2f}, {args.level:.1%} CI [{p.ci_low:+.2f}, {p.ci_high:+.2f}]: "
+          f"{verdict(p, args.level)}")
     print(f"report: {run_dir / 'report.md'}")
     ledger_row()
     return 0
@@ -495,6 +567,9 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--reps", type=int, default=REPS, help=f"bootstrap replicates (default {REPS})")
     ap.add_argument("--seed", type=int, default=SEED, help=f"bootstrap seed (default {SEED})")
+    ap.add_argument("--level", type=float, default=LEVEL, help=f"CI level (default {LEVEL})")
+    ap.add_argument("--types", help="comma-separated question types to pick (default numeric,discrete)")
+    ap.add_argument("--max-values", type=int, help="discrete questions with at most this many possible values only (spiky counts S1)")
     ap.add_argument("--dry-run", action="store_true", help="pick records and estimate the cost; no model calls")
     ap.add_argument("--pin-hosts", action="append", metavar="MODEL=HOST",
                     help="serve MODEL only from OpenRouter host HOST, fallbacks off (B-93; repeatable)")
