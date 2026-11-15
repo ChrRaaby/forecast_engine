@@ -245,8 +245,15 @@ CHALLENGER_SHADOWS: dict[str, BotConfig] = {
     "challenger-gemini-4-carbon": replace(TOURNAMENT_CONFIG, forecasters=(ForecasterSpec("google/gemini-4-carbon"),),
                                           min_successful_forecasters=1),
 }
+# EXP-016 (B-98, F-24; Christian's OK 2026-11-15): spiky counts arm S1 as an unpublished shadow after an inconclusive screen.
+# The cheap ensemble with the per-value prompt variant, run ONLY on discrete questions with <= 25 possible values (main.py skips it
+# elsewhere via prompt_versions.skips_question); compared with the "cheap" shadow on the same questions. ~$0.03 per such question.
+# To stop it, remove **EXP016_SHADOWS.
+EXP016_SHADOWS: dict[str, BotConfig] = {
+    "exp016-s1-per-value": replace(DEFAULT_CONFIG, prompt_version="per-value-discrete-2026-11-15"),
+}
 SHADOW_CONFIGS: dict[str, BotConfig] = {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS,
-                                        **EXP013_ARMS, **CHALLENGER_SHADOWS}
+                                        **EXP013_ARMS, **CHALLENGER_SHADOWS, **EXP016_SHADOWS}
 # Wide mode (Cup + main site, ADR-0007) uses Gemini search only, to keep AskNews credits (Pro plan, ~600/month) for tournament
 # questions and backtest archive searches (Christian, 2026-10-03).
 WIDE_CONFIG = replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, providers=("gemini_grounded",)))
