@@ -80,6 +80,6 @@ wording ("one rerun"); for this card the inconclusive branch is the one below.
 ## Decision
 
 **Inconclusive** under fast rule b (mean Δ +1.53 > 0, but the CI's lower end −5.83 is below −2). Per the card: today's answer
-format stays live and S1 is to run on as an unpublished shadow arm on new discrete questions. That shadow needs a small build
-first (a shadow config naming this variant, and checking that the shadow writer stores a per-value aggregate): not built, waits
-for Christian's OK (follow-up F-24). As expected from the power note, 22 questions only rule out a very large loss.
+format stays live and S1 is to run on as an unpublished shadow arm on new discrete questions. Shadow built on Christian's OK
+(2026-11-15, follow-up F-24): `exp016-s1-per-value` in `SHADOW_CONFIGS`, cheap roster + this variant, run only on discrete
+questions with ≤ 25 values (skipped elsewhere), unpublished; compared later with the `cheap` shadow on the same questions. As expected from the power note, 22 questions only rule out a very large loss.

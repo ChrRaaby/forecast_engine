@@ -30,3 +30,5 @@ Done (PR 2, part S)
 Scored runs (Christian's go, 2026-11-15 evening; both PRs merged on his OK)
 - EXP-015: N 102, Δ −0.36 baseline points, 95% CI −5.36 to +4.14: inconclusive; $1.67. Today's prompt stays; stand-alone rerun (F-23) dropped by Christian, the wording becomes an extra arm in part H.
 - EXP-016: N 22, Δ +1.53, 95% CI −5.83 to +9.05: inconclusive; $0.42. Shadow arm per the card waits for a build (F-24).
+- F-24 built (Christian's OK): shadow `exp016-s1-per-value` runs the per-value arm on discrete questions with <= 25 values only
+  (code-2026-11-15-exp016-shadow); EXP-010 loader and the monitor handle per-value records. Live forecasts unchanged.

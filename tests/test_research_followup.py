@@ -113,10 +113,10 @@ def test_exp008_switched_on_as_shadow_arms_only():
     never carry the follow-up step."""
     from forecast_engine.config import EXP002_OLD_PROMPT_SHADOW
 
-    from forecast_engine.config import CHALLENGER_SHADOWS, EXP013_ARMS
+    from forecast_engine.config import CHALLENGER_SHADOWS, EXP013_ARMS, EXP016_SHADOWS
 
     assert SHADOW_CONFIGS == {"cheap": DEFAULT_CONFIG, "cheap-old-prompt": EXP002_OLD_PROMPT_SHADOW, **EXP008_ARMS, **EXP013_ARMS,
-                              **CHALLENGER_SHADOWS}
+                              **CHALLENGER_SHADOWS, **EXP016_SHADOWS}
     assert TOURNAMENT_CONFIG.research.followup is None and DEFAULT_CONFIG.research.followup is None
 
 
