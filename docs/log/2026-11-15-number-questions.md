@@ -26,3 +26,7 @@ Done (PR 2, part S)
   to 90-110%, member mean, 0.5% floor, CDF from the values); `core.forecast` uses a variant's own answer path where it applies
   (code-2026-11-15c, live forecasts unchanged). Number tool gains `--types`, `--max-values`, `--level`, probability on the true
   value. Dry run N 22, est. $0.54, cap $3. Card frozen in PR 2.
+
+Scored runs (Christian's go, 2026-11-15 evening; both PRs merged on his OK)
+- EXP-015: N 102, Δ −0.36 baseline points, 95% CI −5.36 to +4.14: inconclusive; $1.67. Today's prompt stays; rerun F-23.
+- EXP-016: N 22, Δ +1.53, 95% CI −5.83 to +9.05: inconclusive; $0.42. Shadow arm per the card waits for a build (F-24).
