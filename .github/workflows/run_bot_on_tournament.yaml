@@ -45,6 +45,8 @@ jobs:
         env:
           METACULUS_TOKEN: ${{ secrets.METACULUS_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # B-85: published forecasts only (season total read from this key's usage); shadows use OPENROUTER_API_KEY
+          OPENROUTER_LIVE_KEY: ${{ secrets.OPENROUTER_LIVE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ASKNEWS_CLIENT_ID: ${{ secrets.ASKNEWS_CLIENT_ID }}
           ASKNEWS_SECRET: ${{ secrets.ASKNEWS_SECRET }}
