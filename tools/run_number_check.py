@@ -9,9 +9,9 @@ picks binary records only.
     poetry run python tools/run_number_check.py --exp EXP-015 --variant range-calibrated-2026-11-14 \\
         --pin-hosts deepseek/deepseek-v4.1-flash=<host>
 
-Records: one per question, the published live one (status ok, not a shadow, not a test run; the earliest if a question was
-published more than once), resolved (not annulled), with every model in the config released before the record's as_of (T1), and
-passing the replay guards (research dated before as_of; stored inputs rebuild the stored prompt). The question's axis (bounds,
+Records: one per question, the published live tournament one (status ok, run dir "<time>-tournament": no wide-mode run,
+shadow or test run; the earliest if a question was published more than once), resolved (not annulled), with every model in the
+config released before the record's as_of (T1), and passing the replay guards (research dated before as_of; stored inputs rebuild the stored prompt). The question's axis (bounds,
 zero point, bucket count) comes from the record's `submitted.axis` (records since B-71), else from the scaling file that
 `tools/exp010.py --fetch-scaling` writes (data/outcomes/scaling.jsonl), checked against the record's bounds. A record with
 neither, or whose resolution is not a number on its axis, is dropped and counted.
@@ -73,6 +73,7 @@ OUT = DATA / "experiments"
 SCALING = exp010.SCALING
 CONFIGS = {"frontier": TOURNAMENT_CONFIG, "cheap": DEFAULT_CONFIG}
 TYPES = ("numeric", "discrete")
+LIVE_RUN_SUFFIX = "-tournament"  # live tournament runs only: not "-wide", "-tournament-shadow-*" or "-test_questions"
 REPS = 10_000
 SEED = 1015
 LEVEL = 0.95
@@ -132,8 +133,9 @@ def axis_for(rec: dict[str, Any], scaling: dict[int, dict[str, Any]]) -> exp010.
 
 
 def is_published_live(path: Path, rec: dict[str, Any]) -> bool:
-    return ("-shadow-" not in path.parent.name and "test_questions" not in path.parent.name and rec.get("status") == "ok"
-            and rec.get("published") is not False)
+    """A published forecast of the live tournament run (run dir "<time>-tournament"). Wide-mode runs (stopped 2026-10-08, a different
+    question mix), shadows and test-question runs are left out (EXP-015 card, 2026-11-15)."""
+    return (path.parent.name.endswith(LIVE_RUN_SUFFIX) and rec.get("status") == "ok" and rec.get("published") is not False)
 
 
 def pick_records(runs_dir: Path, outcomes: dict[int, dict[str, Any]], scaling: dict[int, dict[str, Any]], cfg: BotConfig,

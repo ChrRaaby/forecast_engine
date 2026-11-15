@@ -61,7 +61,7 @@ def _record(qid, qtype="numeric", axis=False):
 
 def _archive(tmp_path, n=12):
     """n published numeric/discrete records (half with submitted.axis, half via the scaling file), plus: one without any axis,
-    one annulled, one unresolved, one shadow record and one test-questions record (never picked)."""
+    one annulled, one unresolved, one shadow record, one wide-mode record and one test-questions record (never picked)."""
     runs = tmp_path / "runs" / "1" / "20261005T120000Z-tournament"
     runs.mkdir(parents=True)
     outcomes, scaling = [], []
@@ -82,6 +82,10 @@ def _archive(tmp_path, n=12):
     shadow = tmp_path / "runs" / "1" / "20261005T120000Z-tournament-shadow-cheap"
     shadow.mkdir()
     (shadow / "q70000.json").write_text(json.dumps({**_record(70_000, axis=True), "status": "shadow"}), encoding="utf-8")
+    wide = tmp_path / "runs" / "1" / "20261005T120000Z-wide"  # wide mode: published, but not a tournament run (left out)
+    wide.mkdir()
+    (wide / "q79998.json").write_text(json.dumps(_record(79_998, axis=True)), encoding="utf-8")
+    outcomes.append({"question_id": 79_998, "status": "resolved", "resolution": "50", "actual_resolve_time": "2026-10-20T00:00:00Z"})
     test_q = tmp_path / "runs" / "1" / "20261005T120000Z-test_questions"
     test_q.mkdir()
     (test_q / "q79999.json").write_text(json.dumps(_record(79_999, axis=True)), encoding="utf-8")

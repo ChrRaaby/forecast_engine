@@ -9,9 +9,10 @@ Done (PR 1, part P)
   prompt differs only by that sentence.
 - `tools/run_number_check.py`: number mode of the prompt check (resolved numeric/discrete published records, both arms fresh on
   the cheap roster, DeepSeek pinned, scored on the CDF the live builder would submit, cluster bootstrap 10,000 / seed 1015).
-- `evals.exp010 --fetch-scaling` stored 54 more question axes ($0), so all 111 resolved number questions now have one.
-- Dry run: N 111 (53 numeric, 58 discrete), est. $2.74, cap $5. Card frozen in the PR.
+- `evals.exp010 --fetch-scaling` stored 54 more question axes ($0), so every resolved number question now has one.
+- Dry run: N 102 tournament questions (49 numeric, 53 discrete), est. $2.52, cap $5; wide-mode records left out (card author).
+  Card frozen in the PR.
 
 Next
-- Christian: merge PR 1, then "go" in the thread for the scored run (~$2.74).
+- Christian: merge PR 1, then "go" in the thread for the scored run (~$2.52).
 - Part S in its own PR (S2 grid count first, then S1 per-value prompt for discrete questions).

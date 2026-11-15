@@ -21,15 +21,16 @@ rule b). Backlog B-97. Code: prompt variant `forecast_engine/prompt_variants/ran
   - Arm A = live prompt `dates-yes-live-2026-11-07`; arm B = variant `range-calibrated-2026-11-14`. Binary and multiple-choice
     prompts render byte-identical to the live prompt (tests/test_prompt_variant_range.py). Same members, aggregation (median),
     CDF builder, research. Polarity check off in both arms (it only touches binary questions).
-- **Question set:** every resolved numeric/discrete question with a published live record whose stored research replays; one
-  record per question (the earliest published one); frozen research. Dry run 2026-11-15 on the PC archive:
-  **N = 111 (53 numeric, 58 discrete), 111 clusters (one per Metaculus post)**, manifest sha256 `49fd402dbf0856f7`.
-  Records: 102 tournament, 9 wide-mode (both published live); era by roster: 80 frontier, 31 cheap; as_of 2026-10-03 to
-  2026-11-03; 49 numeric/discrete questions not resolved yet were left out; no record failed the T1 release-date check or the
-  replay guards. Axes: all 111 from `data/outcomes/scaling.jsonl` (54 rows fetched 2026-11-15 with
-  `evals.exp010 --fetch-scaling`, $0); none has `submitted.axis` yet (B-71 records are not resolved). Questions resolving
-  between this dry run and the scored run join the set (the tool picks every eligible record at run time); the run's
-  manifest is stored with its report. DEV split (no HOLDOUT is touched).
+- **Question set:** every resolved numeric/discrete question with a published live **tournament** record whose stored research
+  replays; one record per question (the earliest published one); frozen research. Wide-mode records (published live until
+  2026-10-08) are left out: they are a different question mix (card author, 2026-11-15, before any run; the first dry run with
+  them gave N 111). Dry run 2026-11-15 on the PC archive: **N = 102 (49 numeric, 53 discrete), 102 clusters (one per Metaculus
+  post)**, manifest sha256 `415905627405234d`. Era by roster: 80 frontier, 22 cheap; as_of 2026-10-05 to 2026-11-03; numeric/
+  discrete tournament questions not resolved yet are left out; no record failed the T1 release-date check or the replay guards.
+  Axes: all 102 from `data/outcomes/scaling.jsonl` (54 rows fetched 2026-11-15 with `evals.exp010 --fetch-scaling`, $0); none has
+  `submitted.axis` yet (B-71 records are not resolved). Questions resolving between this dry run and the scored run join the set
+  (the tool picks every eligible record at run time); the run's manifest is stored with its report. DEV split (no HOLDOUT is
+  touched).
 - **Evaluation models + release dates:** cheap roster `DEFAULT_CONFIG`: `openai/gpt-6-luna`, `google/gemini-3.5-flash-lite`,
   `deepseek/deepseek-v4.1-flash`; release dates re-checked with `evals/model_release.py` at freeze (the tool refuses a record
   made before a member's release, T1): 0 records dropped. DeepSeek pinned to one OpenRouter host (B-93):
@@ -44,7 +45,7 @@ rule b). Backlog B-97. Code: prompt variant `forecast_engine/prompt_variants/ran
   the pair and counted per arm.
 - **Expected effect & MDE:** expected Δ small and positive (+1 to +3 points, judgement). The protocol §5 noise table covers
   binary log score only, so k is not read off it. EXP-010 post-processing had SD(Δ) ≈ 13–14 points; a fresh replay of two
-  prompts adds model noise, so assume SD(Δ) ≈ 20: MDE ≈ 2.8 × 20 / √111 ≈ 5 points. A true effect of +2 is therefore
+  prompts adds model noise, so assume SD(Δ) ≈ 20: MDE ≈ 2.8 × 20 / √102 ≈ 5.5 points. A true effect of +2 is therefore
   undetectable at this N in the strict sense; the decision rule below is built for that (it does not ask for a CI above 0).
 - **Arms:** m = 1 candidate arm, 95% CI (cluster bootstrap, 10,000 reps, seed 1015). Both arms make 3 forecasting calls per
   question; no compute-matched control needed.
@@ -52,7 +53,7 @@ rule b). Backlog B-97. Code: prompt variant `forecast_engine/prompt_variants/ran
   below is the confirmation.
 - **Rerun:** first run. Inconclusive → one rerun on questions resolved after the run date.
 - **Repeats k:** 1. Both arms run fresh at the same moment (no reused baseline, so no T11 drift caveat).
-- **Cost estimate:** dry run: 222 record replays × $0.0082 × 1.5 safety = **$2.74** (666 cheap calls); hard cap **$5**
+- **Cost estimate:** dry run: 204 record replays × $0.0082 × 1.5 safety = **$2.52** (612 cheap calls); hard cap **$5**
   (`--max-cost 5`). Spend goes to the budget ledger automatically.
 - **Decision rule (Christian 2026-11-14, fast rule b):**
   - **Go live** on the frontier bot if mean Δ > 0 and the lower end of the 95% CI is above −2 baseline points; today's prompt is
