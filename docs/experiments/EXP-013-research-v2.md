@@ -199,5 +199,20 @@ did badly here. Cost: Terra $1/$5 per M tokens (Luna $0.10/$0.50), about +$0.03 
 01:24 UTC on 15 Nov, a handful at most) are kept in the main analysis; the report lists them and repeats the primary result
 without them as a check.
 
+## Amendment 2026-11-15 (2): source-block fixes after the first records (no score looked at)
+Decided by Christian 2026-11-15. PR #43, merged 2026-11-15 ~20:10 UTC (3ca7bf1). Published forecast unchanged.
+1. **Metaculus links skipped:** the source block takes the next real link instead of Metaculus's own pages (9% of questions had
+   only such a link; free link check of 234 questions since 15 Oct).
+2. **Quote check per line:** the extractor's quote is checked line by line with formatting forgiven (quotes, dashes, spaces,
+   thousands separators, "4.2 %"); a changed digit still fails, and every number in the reported value must appear in the
+   verified quote. Cause found: on Wikipedia the extractor joined three page lines into one quote, so a correct value was
+   refused. On the first 4 records the new check would have accepted 1 of 4 NOT FOUNDs.
+3. **Record flags corrected:** "over cap" counts tokens only (as decided 2026-11-12); "unsourced links" compares cited sites with
+   Google's source titles. Flags only, no effect on forecasts.
+**Analysis rule (fixed now):** questions before 3ca7bf1 are kept; the report gives arm B/F's "value found" rate and the primary
+result separately before and after this change as a check. Link check (plain download, per question): readable with numbers
+≤ 50%, blocked/error 15%, index pages 10%, JavaScript-only 9%, Metaculus-only 9%, no link 5%, PDF 2%, so B and F test the idea
+on roughly half the questions. Gemini URL reading and a researcher step stay for December (Christian).
+
 ## Results (generated)
 ## Decision
