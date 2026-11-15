@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from types import ModuleType
 
-from .prompt_variants import dates_yes_2026_11_07, template_2026_09_26_old
+from .prompt_variants import dates_yes_2026_11_07, range_calibrated_2026_11_14, template_2026_09_26_old
 from .schema import QuestionSnapshot
 
 LIVE = "dates-yes-live-2026-11-07"  # what forecast_engine/prompts.py renders: the template + EXP-002 (live 2026-11-07)
@@ -29,6 +29,8 @@ VARIANTS: dict[str, ModuleType] = {
     dates_yes_2026_11_07.VERSION: dates_yes_2026_11_07,  # EXP-002 (B-09b): scheduled resolution date + "resolves YES" wording
     # the live prompt before EXP-002 went live (= archived "template-2026-09-26"): the Tier 1 old-prompt shadow
     template_2026_09_26_old.VERSION: template_2026_09_26_old,
+    # EXP-015: live prompt with the numeric 10-90 range sentence replaced (binary and multiple choice unchanged)
+    range_calibrated_2026_11_14.VERSION: range_calibrated_2026_11_14,
 }
 
 PromptBuilder = Callable[[QuestionSnapshot, str, str], str]

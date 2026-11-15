@@ -53,6 +53,7 @@ from forecast_engine.schema import QuestionSnapshot, ResearchBundle, ResearchIte
 
 from . import frozen_prompts_dates_yes_2026_11_07 as _dates_yes_2026_11_07
 from . import frozen_prompts_dates_yes_live_2026_11_07 as _dates_yes_live_2026_11_07
+from . import frozen_prompts_range_calibrated_2026_11_14 as _range_calibrated_2026_11_14
 from . import frozen_prompts_template_2026_09_26 as _t2026_09_26
 from . import frozen_prompts_template_2026_09_26_old as _t2026_09_26_old
 
@@ -92,6 +93,12 @@ ARCHIVE: dict[str, ArchivedTemplate] = {t.version: t for t in (
         "template-2026-09-26-old", _t2026_09_26_old,
         file_sha256="77f0469862557d22c51b8162b76d91d1d47bcb889c6763919b295644a4c774dd",
         live_sha256="298b7461f27e0f259cd9997aa49b3becc6d427d53d9b3e3643ad0e62946b1a71",
+    ),
+    # EXP-015 experimental variant: replay/shadow arms only. live_sha256 is its variant_fingerprint().
+    ArchivedTemplate(
+        "range-calibrated-2026-11-14", _range_calibrated_2026_11_14,
+        file_sha256="e50cf3494a876fda54790e3b17b0e064dddcb2dd2affb00afd2b65a1799f4886",
+        live_sha256="bc62d006ddb9fa6ebee7b6a4beb8e64dc5c8445d0d2eb5844352218ff1930fc3",
     ),
 )}
 
