@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
 
-CONFIG_VERSION = "frontier-2026-11-07"  # EXP-002 live: dates + "resolves YES" prompt (was frontier-2026-10-08)
+CONFIG_VERSION = "frontier-2026-11-14"  # B-96: polarity check on GPT-6.1 Terra (was frontier-2026-11-07: EXP-002 dates + "resolves YES" prompt)
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,9 @@ class FollowupConfig:
     """
 
     critic_mode: str = "gaps"
-    critic_model: str = "openai/gpt-5-mini"  # OpenRouter id; checked by tools/check_models.py
+    # OpenRouter id; checked by tools/check_models.py. GPT-6.1 Terra from 2026-11-15 (EXP-008 card amendment, Christian): gpt-5-mini,
+    # the critic from switch-on, shuts down 2026-12-11; Terra is OpenAI's named successor and passed the B-96 polarity check.
+    critic_model: str = "openai/gpt-6.1-terra"
     critic_max_tokens: int = 4000
     critic_reasoning_effort: str = "low"
     rounds: int = 1
@@ -71,9 +73,10 @@ class SourceBlockConfig:
     max_bytes: int = 2_000_000  # read at most this much of a response
     max_text_chars: int = 40_000  # page text kept (stored in the record and shown to the extractor)
     max_redirects: int = 3
-    # one cheap call per question, all fetched pages together. GPT-6 Luna (in the cheap roster): $0.10/$0.50 per M, no expiry on
-    # OpenRouter; replaced gpt-5-mini (expires 2026-12-11) before switch-on (Christian, 2026-11-12)
-    extractor_model: str = "openai/gpt-6-luna"
+    # one call per question, all fetched pages together. GPT-6.1 Terra ($1/$5 per M) from 2026-11-14 (Christian, "terra for
+    # EXP-013"): GPT-6 Luna, used since switch-on, failed the B-96 polarity replacement check (tools/polarity_swap_check.py,
+    # 11/973 false flags, several contradicting its own reason); gpt-5-mini before that (shut down 2026-12-11)
+    extractor_model: str = "openai/gpt-6.1-terra"
     extractor_max_tokens: int = 3000
     extractor_reasoning_effort: str = "low"
     quote_max_chars: int = 300
@@ -113,7 +116,7 @@ class NewsConfig:
 
     keywords: bool = True
     historical: bool = True
-    keyword_model: str = "openai/gpt-6-luna"  # was gpt-5-mini (expires 2026-12-11), Christian 2026-11-12
+    keyword_model: str = "openai/gpt-6.1-terra"  # Terra from 2026-11-14 (Christian; Luna failed the B-96 check); Luna before
     keyword_max_tokens: int = 2000
     keyword_reasoning_effort: str = "low"
     n_articles: int = 8
@@ -158,7 +161,10 @@ class BotConfig:
     min_successful_forecasters: int = 2
     # Binary polarity check (2026-10-05): an auditor reads each binary member's text; members answering for NO are excluded.
     # Not a forecaster, so it doesn't share the live models' rate limits. None turns the check off.
-    polarity_check_model: str | None = "openai/gpt-5-mini"
+    # B-96 (Christian, 2026-11-14): GPT-6.1 Terra replaces gpt-5-mini, which OpenAI shuts down on 2026-12-11 (OpenAI's named
+    # successor). Pre-registered check on 977 stored checks + 2 known flips (tools/polarity_swap_check.py, run
+    # polarity-20261114T204601Z): every flag caught, 2/973 false flags (both 52-55% coin-flip answers), 0 failures; GPT-6 Luna failed.
+    polarity_check_model: str | None = "openai/gpt-6.1-terra"
     research: ResearchConfig = field(default_factory=ResearchConfig)
     prompt_version: str = "dates-yes-live-2026-11-07"  # template c16d91f + EXP-002 (live 2026-11-07); was "template-2026-09-26"
 

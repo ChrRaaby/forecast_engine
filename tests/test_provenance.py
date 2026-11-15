@@ -24,15 +24,19 @@ from tests.test_tournament import _bot
 # arms' hashes changed once, deliberately, at switch-on (2026-11-07: max_gaps 2, cap $0.15; they had never run before). All hashes
 # changed again, deliberately, at the EXP-002 go-live (2026-11-07: prompt_version dates-yes-live-2026-11-07; CONFIG_VERSION
 # frontier-2026-11-07); before it: default c18ebdd3d1ef, tournament 11fb02f5ac67, wide 9785b336fd21, EXP-008 2bff94ed1964 /
-# fbf036dba41f / fd32a398cdda.
+# fbf036dba41f / fd32a398cdda. All changed again, deliberately, with the B-96 polarity checker swap (2026-11-14: gpt-5-mini ->
+# gpt-6.1-terra; CONFIG_VERSION frontier-2026-11-14); before it: default e7407e584599, tournament 550e5902f141, wide 94e6c663a494,
+# EXP-008 6d8b6e4496ed / ba71edc3760a / f69ba9a46922, cheap-old-prompt cdd81dd8ebb6.
+# EXP-008 arms changed once more with the critic amendment (2026-11-15: critic gpt-5-mini -> gpt-6.1-terra); before it
+# 8fbc538e35c3 / c433e7a9467f / a3cba8219872.
 CONFIG_HASHES = {
-    "default": ("e7407e584599", DEFAULT_CONFIG),
-    "tournament": ("550e5902f141", TOURNAMENT_CONFIG),
-    "wide": ("94e6c663a494", WIDE_CONFIG),
-    "exp008-b-gaps": ("6d8b6e4496ed", EXP008_ARMS["exp008-b-gaps"]),
-    "exp008-c-against": ("ba71edc3760a", EXP008_ARMS["exp008-c-against"]),
-    "exp008-d-control": ("f69ba9a46922", EXP008_ARMS["exp008-d-control"]),
-    "cheap-old-prompt": ("cdd81dd8ebb6", SHADOW_CONFIGS["cheap-old-prompt"]),
+    "default": ("714ff99803b1", DEFAULT_CONFIG),
+    "tournament": ("f3c50c57f8d1", TOURNAMENT_CONFIG),
+    "wide": ("19ba975f2f40", WIDE_CONFIG),
+    "exp008-b-gaps": ("8c4994f4f24f", EXP008_ARMS["exp008-b-gaps"]),
+    "exp008-c-against": ("356fe2183b98", EXP008_ARMS["exp008-c-against"]),
+    "exp008-d-control": ("a6f01cf6b06d", EXP008_ARMS["exp008-d-control"]),
+    "cheap-old-prompt": ("cd5e67c675c1", SHADOW_CONFIGS["cheap-old-prompt"]),
 }
 # sha256 of polarity.PROMPT per POLARITY_PROMPT_VERSION. Append only; an edit to the prompt needs a new version line.
 POLARITY_PROMPTS = {"polarity-2026-10-05": "47c159d42ce86248de2976cf2c0b7c57079944daa6f1afba7b34201072cbc653"}

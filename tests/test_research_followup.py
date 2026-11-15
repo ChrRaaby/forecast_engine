@@ -102,8 +102,8 @@ def test_off_by_default_and_live_hashes_unchanged():
     """The follow-up field must not move any existing config's hash, version or record (hashes as on main 532bdfb; changed on
     purpose at the EXP-002 go-live 2026-11-07, see tests/test_provenance.py)."""
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
-        "e7407e584599", "550e5902f141", "94e6c663a494")
-    assert CONFIG_VERSION == "frontier-2026-11-07"
+        "714ff99803b1", "f3c50c57f8d1", "19ba975f2f40")
+    assert CONFIG_VERSION == "frontier-2026-11-14"
     for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, SHADOW_CONFIGS["cheap"]):
         assert cfg.research.followup is None and "followup" not in cfg.to_dict()["research"]
 
@@ -171,7 +171,7 @@ def test_gaps_mode_one_critic_call_one_search_per_gap_and_a_labelled_section():
     b = _bundle()
     out = _run(_cfg(critic_mode="gaps", max_cost_usd_per_q=1.0), llm, search, b)
     critic = llm.purposes("research_followup_critic")
-    assert len(critic) == 1 and BRIEF in critic[0][2] and "MISSING" in critic[0][2] and critic[0][1] == "openai/gpt-5-mini"
+    assert len(critic) == 1 and BRIEF in critic[0][2] and "MISSING" in critic[0][2] and critic[0][1] == "openai/gpt-6.1-terra"
     assert len(search.prompts) == 2 and "committee chair" in search.prompts[0] and "past votes" in search.prompts[1]
     assert "Today is 2026-05-01." in search.prompts[0] and "Today is 2026-05-01." in critic[0][2]
     new = [i for i in out.items if i.source == rf.SOURCE]
