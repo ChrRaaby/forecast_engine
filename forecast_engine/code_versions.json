@@ -51,5 +51,6 @@
     "label": "code-2026-11-14",
     "note": "EXP-013 SWITCHED ON as shadows: arms B, C, D (cheap) and F (frontier roster + all three research changes; replaces arm E); arms share each paid step per question (fetch, writer, AskNews); live configs, hashes and CONFIG_VERSION unchanged"
   },
-  "7397eda509868a9f": {"label": "code-2026-11-14-terra", "note": "B-96: polarity check on openai/gpt-6.1-terra (gpt-5-mini shuts down 2026-12-11); CONFIG_VERSION frontier-2026-11-14; all config hashes change (polarity_check_model)"}
+  "7397eda509868a9f": {"label": "code-2026-11-14-terra", "note": "B-96: polarity check on openai/gpt-6.1-terra (gpt-5-mini shuts down 2026-12-11); CONFIG_VERSION frontier-2026-11-14; all config hashes change (polarity_check_model)"},
+  "58416882e502be53": {"label": "code-2026-11-14-exp013-terra", "note": "EXP-013 helper calls (source-block extractor, news keywords) on openai/gpt-6.1-terra instead of gpt-6-luna (Christian 2026-11-14; Luna failed the B-96 check); EXP-013 arm hashes change, live unchanged by this commit"}
 }
