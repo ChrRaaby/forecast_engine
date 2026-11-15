@@ -102,10 +102,14 @@ async def apply(q: QuestionSnapshot, bundle: ResearchBundle, clock: Clock, cfg: 
 
 # ------------------------------------------------------------------------------------------------------ B/E: source block
 def resolution_links(q: QuestionSnapshot, max_links: int) -> list[str]:
-    """http(s) links written in the resolution criteria and fine print, in order, deduplicated, at most `max_links`."""
+    """http(s) links written in the resolution criteria and fine print, in order, deduplicated, at most `max_links`. Links to
+    metaculus.com are skipped (FAQ / definitions pages, never the data source; they answer 403), so the next real link is used."""
     out: list[str] = []
     for m in URL_RE.finditer(f"{q.resolution_criteria}\n{q.fine_print}"):
         url = m.group(0).rstrip(".,;:!?*_")
+        host = (urlsplit(url).hostname or "").lower()
+        if host == "metaculus.com" or host.endswith(".metaculus.com"):
+            continue
         if url not in out:
             out.append(url)
     return out[:max_links]
@@ -213,8 +217,26 @@ def extract_prompt(q: QuestionSnapshot, pages: list[tuple[str, str]], today: str
                                    pages=blocks, quote_max=quote_max)
 
 
+_TYPO = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-", "−": "-",
+                       " ": " ", " ": " ", " ": " "})
+
+
 def _norm(s: str) -> str:
-    return " ".join(html.unescape(s).split()).lower()
+    """Text as compared by the quote check: entities decoded, typographic quotes/dashes and odd spaces made plain, thousands
+    separators dropped (3,687,537 = 3687537), no space before %, whitespace collapsed, lower case. Applied to the page and the
+    quote alike, so it can only forgive formatting, never add words or digits."""
+    s = html.unescape(s).translate(_TYPO)
+    s = re.sub(r"(?<=\d)[,  ](?=\d{3}\b)", "", s)
+    s = re.sub(r"(?<=\d)\s+%", "%", s)
+    return " ".join(s.split()).lower()
+
+
+def _value_in_quote(value: str, quote: str) -> bool:
+    """Every number in the reported value must appear in the verified quote, so a real quote cannot carry an invented value.
+    A value without digits (e.g. a name) passes on the quote check alone."""
+    nums = re.findall(r"\d+(?:\.\d+)?", _norm(value))
+    q = _norm(quote)
+    return all(re.search(rf"(?<![\d.]){re.escape(n)}(?![\d])", q) for n in nums)
 
 
 def parse_extraction(output: str) -> dict | None:
@@ -233,16 +255,22 @@ def render_block(fetched_at: datetime, links: list[str], fetches: list[dict], ex
     """(title, text) of the source block. Only short, length-capped fields of the extraction reach the text."""
     title = f"Resolution source, fetched {fetched_at.strftime('%Y-%m-%d %H:%M UTC')}"
     ex = extraction or {}
-    quote = " ".join(str(ex.get("quote") or "").split())[:cfg.quote_max_chars]
+    # The extractor may copy separate lines of a page (a heading, a table header, a row) into one quote: each line must be on the
+    # page word for word; they are shown joined by " … ".
+    parts = [" ".join(ln.split()) for ln in str(ex.get("quote") or "").splitlines() if ln.strip()]
+    quote = " … ".join(parts)[:cfg.quote_max_chars]
     url = str(ex.get("url") or "")[:300]
-    page = pages.get(url) or " ".join(pages.values())
-    if ex.get("found") is True and quote and _norm(quote) in _norm(page):
-        value = " ".join(str(ex.get("value") or "").split())[:200]
+    page = _norm(pages.get(url) or " ".join(pages.values()))
+    value = " ".join(str(ex.get("value") or "").split())[:200]
+    quote_ok = bool(parts) and all(_norm(p) in page for p in parts)
+    if ex.get("found") is True and quote_ok and _value_in_quote(value, quote):
         date = " ".join(str(ex.get("value_date") or "no date shown").split())[:60]
         shown = url if url in pages else (links[0] if links else "")
         return title, f"Source: {shown}\nLatest value: {value} (date: {date})\nQuote from the page: \"{quote}\""
-    if ex.get("found") is True:
+    if ex.get("found") is True and not quote_ok:
         why = "the extracted quote is not on the fetched page"
+    elif ex.get("found") is True:
+        why = "the extracted value is not in the quote"
     elif ex.get("found") is False:
         why = " ".join(str(ex.get("why") or "value not shown on the page").split())[:200]
     else:
@@ -332,17 +360,29 @@ def writer_prompt(q: QuestionSnapshot, today: str) -> str:
 BRIEF_URL_RE = re.compile(r"https?://[^\s<>\"'\]\[)(,]+", re.I)
 
 
-def link_check(text: str, source_uris: list[str | None]) -> dict[str, Any]:
-    """Links the brief cites that are not among the grounding sources Google returned. Recorded and flagged, never removed: Flash
-    sometimes runs no search, and then any link in the brief comes from the model's memory. Google often returns its own redirect
-    URLs as sources, so an unmatched link is a flag for review, not proof that the link is made up."""
+def _site(host_or_title: str) -> str:
+    return (host_or_title or "").strip().lower().removeprefix("www.").rstrip("/.")
+
+
+def link_check(text: str, sources: list[dict]) -> dict[str, Any]:
+    """Links the brief cites whose website is not among the grounding sources Google returned. Recorded and flagged, never
+    removed: Flash sometimes runs no search, and then a link can come from the model's memory. Google returns its sources as its
+    own redirect URLs (vertexaisearch.cloud.google.com) with the website name as the title, so a cited link counts as sourced when
+    its host matches a source title or a source URL's host (subdomains allowed either way). A flag is for review, not proof."""
     cited = []
     for m in BRIEF_URL_RE.finditer(text or ""):
         url = m.group(0).rstrip(".,;:!?*_")
         if url not in cited:
             cited.append(url)
-    sources = {u.rstrip("/") for u in source_uris if u}
-    unmatched = [u for u in cited if u.rstrip("/") not in sources]
+    sites = {_site(s.get("title") or "") for s in sources}
+    sites |= {_site(urlsplit(s.get("uri") or "").hostname or "") for s in sources}
+    sites -= {"", "vertexaisearch.cloud.google.com"}
+
+    def sourced(url: str) -> bool:
+        host = _site(urlsplit(url).hostname or "")
+        return bool(host) and any(host == x or host.endswith("." + x) or x.endswith("." + host) for x in sites)
+
+    unmatched = [u for u in cited if not sourced(u)]
     return {"links_in_brief": len(cited), "links_not_in_sources": unmatched, "unsourced_links": bool(unmatched)}
 
 
@@ -428,12 +468,13 @@ async def _build_brief(q: QuestionSnapshot, clock: Clock,
             "thinking_tokens": thinking, "token_cost_usd": token_cost, "grounding_fee_usd": fee, "search_queries": queries,
             "sources": [{"title": s.get("title"), "uri": s.get("uri")} for s in sources],
             "cost_note": "tokens at list price + grounding fee per search query at list price (free tier ignored)",
-            "over_cap": call.cost_usd > cfg.max_cost_usd_per_q,
+            # the cap counts tokens only (Christian, 2026-11-12); Google's search fee is recorded above, not capped
+            "over_cap": token_cost > cfg.max_cost_usd_per_q,
             "n_search_queries": len(queries), "no_search": not queries,
         })
-        call.extra.update(link_check(text, [s.get("uri") for s in sources]))
+        call.extra.update(link_check(text, sources))
         if call.extra["over_cap"]:
-            errors.append(f"exp013 brief_writer over cap: ${call.cost_usd:.4f} > ${cfg.max_cost_usd_per_q:.2f}")
+            errors.append(f"exp013 brief_writer over cap: tokens ${token_cost:.4f} > ${cfg.max_cost_usd_per_q:.2f}")
         if not text.strip():
             raise RuntimeError(f"empty Gemini response (finishReason={cand.get('finishReason')})")
     except Exception as e:

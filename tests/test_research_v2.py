@@ -277,9 +277,12 @@ def test_writer_replaces_the_live_brief_in_place(monkeypatch):
 
 def test_writer_over_cap_is_flagged_and_failure_keeps_the_live_brief(monkeypatch):
     cfg = replace(DEFAULT_CONFIG.research, brief_writer=BriefWriterConfig())
-    monkeypatch.setattr(rv, "_post_writer", lambda *a: _gemini(n_queries=5))
+    monkeypatch.setattr(rv, "_post_writer", lambda *a: _gemini(n_queries=5))  # 5 Google queries: fee $0.07, tokens < $0.02
     out = _apply(cfg, FakeLlm())
-    assert out.calls[-1].extra["over_cap"] and "over cap" in out.errors[-1]
+    assert out.calls[-1].extra["over_cap"] is False and not any("over cap" in e for e in out.errors)  # cap = tokens only
+    monkeypatch.setattr(rv, "_post_writer", lambda *a: _gemini(tokens_out=8000))  # (1000 x 1.50 + 8500 x 7.50) / 1M = $0.0653
+    out = _apply(cfg, FakeLlm())
+    assert out.calls[-1].extra["over_cap"] and "over cap: tokens $0.0653" in out.errors[-1]
 
     def boom(*a):
         raise RuntimeError("Gemini HTTP 500: synthetic")
@@ -451,3 +454,69 @@ def test_exp013_helper_models_have_no_known_expiry():
         r = c.research
         assert (r.source_block is None or r.source_block.extractor_model == "openai/gpt-6.1-terra")
         assert (r.news is None or r.news.keyword_model == "openai/gpt-6.1-terra")
+
+
+# --- fixes after the first live records (2026-11-15) -----------------------------------------------------------------------
+
+def test_metaculus_links_are_skipped_for_the_next_real_link():
+    q = replace(Q, resolution_criteria="Per the [FAQ](https://www.metaculus.com/faq/#definitions) and https://metaculus.com/x, "
+                "the index at https://stats.example.org/index", fine_print="See https://stats.example.org/notes and https://c.example.org")
+    assert rv.resolution_links(q, 2) == ["https://stats.example.org/index", "https://stats.example.org/notes"]
+
+
+def test_quote_copied_from_separate_lines_is_checked_line_by_line(monkeypatch):
+    page = ("<html><body><h1>Index report (October 2026)</h1><p>Prepared by the made-up office.</p><table><tr><th>Rank</th>"
+            "<th>Index</th></tr><tr><td>1</td><td>4.2</td></tr></table></body></html>")
+    monkeypatch.setattr(rv, "_http_get", FakeGet({"https://stats.example.org/index": page}))
+    ok = "Index report (October 2026)\nRank Index\n1 4.2"
+    out = _apply(_src_cfg(), FakeLlm(extraction=_found(quote=ok)))
+    assert 'Quote from the page: "Index report (October 2026) … Rank Index … 1 4.2"' in out.items[0].text
+    bad = "Index report (October 2026)\n1 9.9"  # one line not on the page: still refused
+    out = _apply(_src_cfg(), FakeLlm(extraction=_found(quote=bad)))
+    assert out.items[0].text.startswith("NOT FOUND / not retrievable: the extracted quote is not on the fetched page")
+
+
+def test_link_check_matches_websites_through_google_redirect_sources():
+    redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc"
+    sources = [{"title": "reuters.com", "uri": redirect}, {"title": "www.bls.gov", "uri": redirect + "2"}]
+    text = ("Jobs 4.1% (source: https://www.bls.gov/news.release/empsit.nr0.htm, 2026-11-07); rate 3.75% "
+            "(source: https://www.reuters.com/markets/x, 2026-11-05); poll 51% (source: https://made-up.example.com/p, 2026-11-01).")
+    x = rv.link_check(text, sources)
+    assert x["links_in_brief"] == 3 and x["links_not_in_sources"] == ["https://made-up.example.com/p"] and x["unsourced_links"]
+    assert rv.link_check("(source: https://data.bls.gov/x)", sources)["unsourced_links"] is False  # subdomain of a source site
+    assert rv.link_check("(source: https://vertexaisearch.cloud.google.com/x)", sources)["unsourced_links"] is True
+
+
+def test_real_case_wikipedia_top25_quote_from_three_lines(monkeypatch):
+    """Live record q46731 (2026-11-15): the extractor joined a heading, a table header and a table row; each is on the page."""
+    page = ("<h2>Most Popular Wikipedia Articles of the Week (November 1 to 7, 2026)</h2><p>[ edit source ] Prepared with "
+            "commentary by several editors.</p><table><tr><th>Rank</th><th>Article</th><th>Class</th><th>Views</th><th>Image</th>"
+            "<th>Notes/about</th></tr><tr><td>1</td><td>Abdul El-Sayed</td><td></td><td>3,687,537</td><td></td>"
+            "<td>The first of a list ...</td></tr></table>")
+    monkeypatch.setattr(rv, "_http_get", FakeGet({"https://stats.example.org/index": page}))
+    quote = ("Most Popular Wikipedia Articles of the Week (November 1 to 7, 2026) \n Rank Article Class Views Image Notes/about \n"
+             " 1 Abdul El-Sayed 3,687,537")
+    ex = "x\n" + json.dumps({"found": True, "url": "https://stats.example.org/index", "value": "3,687,537 views",
+                             "value_date": "November 1 to 7, 2026", "quote": quote})
+    out = _apply(_src_cfg(), FakeLlm(extraction=ex))
+    assert "Latest value: 3,687,537 views (date: November 1 to 7, 2026)" in out.items[0].text
+
+
+def test_formatting_is_forgiven_but_not_digits(monkeypatch):
+    page = "<p>Unemployment rate — 4.2 % in October; payrolls rose 151 000.</p>"
+    monkeypatch.setattr(rv, "_http_get", FakeGet({"https://stats.example.org/index": page}))
+    ok = "x\n" + json.dumps({"found": True, "url": "https://stats.example.org/index", "value": "4.2%", "value_date": "October",
+                             "quote": "Unemployment rate - 4.2% in October; payrolls rose 151,000."})
+    assert "Latest value: 4.2%" in _apply(_src_cfg(), FakeLlm(extraction=ok)).items[0].text
+    changed = ok.replace("4.2% in October", "4.3% in October")  # one digit different: refused
+    assert _apply(_src_cfg(), FakeLlm(extraction=changed)).items[0].text.startswith(
+        "NOT FOUND / not retrievable: the extracted quote is not on the fetched page")
+
+
+def test_a_real_quote_cannot_carry_an_invented_value(monkeypatch):
+    monkeypatch.setattr(rv, "_http_get", FakeGet())
+    ex = "x\n" + json.dumps({"found": True, "url": "https://stats.example.org/index", "value": "9.9", "value_date": "Oct",
+                             "quote": QUOTE})
+    text = _apply(_src_cfg(), FakeLlm(extraction=ex)).items[0].text
+    assert text.startswith("NOT FOUND / not retrievable: the extracted value is not in the quote") and "9.9" not in text
+    assert rv._value_in_quote("4.2 points", QUOTE) and not rv._value_in_quote("42", QUOTE)  # whole numbers only
