@@ -50,5 +50,6 @@
   "c507cd3490623c22": {
     "label": "code-2026-11-14",
     "note": "EXP-013 SWITCHED ON as shadows: arms B, C, D (cheap) and F (frontier roster + all three research changes; replaces arm E); arms share each paid step per question (fetch, writer, AskNews); live configs, hashes and CONFIG_VERSION unchanged"
-  }
+  },
+  "6ade07262ed4aef7": {"label": "code-2026-11-14b", "note": "B-96: Gemini 4 Carbon frontier challenger shadow (CHALLENGER_SHADOWS); unpublished, live forecast unchanged"}
 }
