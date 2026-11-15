@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import sys
 import time
 from datetime import timedelta
@@ -56,6 +57,7 @@ from forecast_engine.config import (  # noqa: E402
     TOURNAMENT_MAX_RUN_COST_USD,
     TOURNAMENT_SEASON,
     TOURNAMENT_SEASON_CAP_USD,
+    TOURNAMENT_SEASON_SPEND_BEFORE_LIVE_KEY_USD,
     BotConfig,
 )
 from forecast_engine.core import ForecastFailed, forecast  # noqa: E402
@@ -199,6 +201,7 @@ class EngineBot(ForecastBot):
         run_id: str = "",
         run_info: provenance.RunInfo | None = None,
         max_concurrent: int = 3,
+        live_llm: LlmClient | None = None,
     ) -> None:
         super().__init__(
             publish_reports_to_metaculus=publish,
@@ -207,6 +210,8 @@ class EngineBot(ForecastBot):
             enable_summarize_research=False,
         )
         self.clock, self.cfg, self.llm, self.writer = clock, cfg, llm, writer
+        # B-85: the published forecast runs on the live key's client; shadows and experiments keep `llm` (the old key)
+        self.live_llm = live_llm or llm
         self.max_run_cost_usd = max_run_cost_usd
         self.retries = retries
         # ADR-0009: `cfg` (frontier) is charged to the season budget; once it's used up, `fallback_cfg` (cheap) takes over.
@@ -238,9 +243,12 @@ class EngineBot(ForecastBot):
                                     cfg: BotConfig, prov: dict | None, start: float) -> ForecastReport:
         """The live forecast on `research`, then (with --publish) the post to Metaculus; every outcome writes the live record."""
         try:
-            record = await forecast(snapshot, self.clock, research, cfg, self.llm)
+            record = await forecast(snapshot, self.clock, research, cfg, self.live_llm)
         except ForecastFailed as e:
             self._charge(cfg, e.record.cost_usd)
+            if _key_limit_hit(e.record):
+                logger.error("the live OpenRouter key refused the calls (credit limit reached?): live forecasts fail until the key "
+                             "limit is raised; shadows and experiments run on the other key")
             self._write(self.writer, e.record, prov, published=False, status="failed")
             self._count_failure(question)
             raise
@@ -368,6 +376,12 @@ class EngineBot(ForecastBot):
         raise NotImplementedError
 
 
+def _key_limit_hit(record: ForecastRecord) -> bool:
+    """True if every forecaster call was refused for credit/limit reasons (OpenRouter answers 402/403 at a key's limit)."""
+    errs = [f.call.error or "" for f in record.forecasters]
+    return bool(errs) and all(re.search(r"40[23]|credit|limit", e, re.I) for e in errs)
+
+
 def question_forecastable(q: MetaculusQuestion, clock: Clock) -> tuple[bool, str]:
     state = q.state.value if q.state is not None else None
     return guards.forecastable(state, q.close_time, q.resolution_string, clock.now())
@@ -454,7 +468,18 @@ def main() -> int:
     # ADR-0009: FutureEval + MiniBench get the frontier ensemble (season-capped, cheap shadow); everything else stays cheap.
     run_cfg = {"tournament": TOURNAMENT_CONFIG, "wide": WIDE_CONFIG}.get(args.mode, DEFAULT_CONFIG)
     tournament_live = args.mode == "tournament" and args.publish
-    season = SeasonSpend(TOURNAMENT_SEASON, TOURNAMENT_SEASON_CAP_USD) if tournament_live else None
+    # B-85: published forecasts (and only they) use the live key; without the secret (PC dry runs, old setups) all use one key
+    live_key = os.getenv("OPENROUTER_LIVE_KEY") if args.publish else None
+    if args.publish and not live_key:
+        logger.warning("OPENROUTER_LIVE_KEY not set: published forecasts run on OPENROUTER_API_KEY and the season total comes from "
+                       "the cache file")
+    if tournament_live and live_key:
+        season = SeasonSpend.from_live_key(TOURNAMENT_SEASON, TOURNAMENT_SEASON_CAP_USD, live_key,
+                                           TOURNAMENT_SEASON_SPEND_BEFORE_LIVE_KEY_USD)
+    else:
+        season = SeasonSpend(TOURNAMENT_SEASON, TOURNAMENT_SEASON_CAP_USD) if tournament_live else None
+    if season:
+        logger.info(f"Season {season.season}: ${season.spent_usd:.2f} of ${season.cap_usd:.0f} (source: {season.source})")
     if season and season.exhausted:
         logger.warning(f"Season budget used (${season.spent_usd:.2f} of ${season.cap_usd:.0f}): cheap config takes over")
     run_info = provenance.gather_run_info(run_id, args.mode, args.publish)
@@ -470,6 +495,7 @@ def main() -> int:
         clock=clock,
         cfg=run_cfg,
         llm=OpenRouterClient(clock),
+        live_llm=OpenRouterClient(clock, api_key=live_key) if live_key else None,
         writer=RecordWriter(run_id),
         run_info=run_info,
         publish=args.publish,

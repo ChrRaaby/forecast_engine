@@ -201,6 +201,11 @@ TOURNAMENT_CONFIG = replace(
 # tournament questions fall back to DEFAULT_CONFIG instead of going silent.
 TOURNAMENT_SEASON = "fall-2026"
 TOURNAMENT_SEASON_CAP_USD = 300.0
+# B-85 (Christian, 2026-11-14, option 2): published forecasts run on their own OpenRouter key (OPENROUTER_LIVE_KEY, created
+# 2026-11-15, limit $300 total); the season total is this figure + that key's usage. It is the live frontier spend before the key:
+# all non-shadow records of the frontier configs this season (tournament hashes 11fb02f5ac67 / f3c50c57f8d1 / 550e5902f141), 259
+# forecasts, from the archive synced 2026-11-15 19:54 UTC (runs between that sync and the switch-over, cents, are not included).
+TOURNAMENT_SEASON_SPEND_BEFORE_LIVE_KEY_USD = 31.15
 # EXP-008 research desk (B-64, card v2, pre-registered at switch-on): shadow arms, each the cheap ensemble with a research
 # follow-up step on top of the live question's research; arm A (baseline) is the "cheap" shadow below. Cost setting (Christian,
 # 2026-11-07, after the B-70 pilot): at most 2 follow-up searches per arm, grounding fee counted at list price, cap $0.15/q.
