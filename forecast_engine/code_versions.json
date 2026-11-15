@@ -51,7 +51,9 @@
     "label": "code-2026-11-14",
     "note": "EXP-013 SWITCHED ON as shadows: arms B, C, D (cheap) and F (frontier roster + all three research changes; replaces arm E); arms share each paid step per question (fetch, writer, AskNews); live configs, hashes and CONFIG_VERSION unchanged"
   },
+  "6ade07262ed4aef7": {"label": "code-2026-11-14b", "note": "B-96: Gemini 4 Carbon frontier challenger shadow (CHALLENGER_SHADOWS); unpublished, live forecast unchanged"},
   "7397eda509868a9f": {"label": "code-2026-11-14-terra", "note": "B-96: polarity check on openai/gpt-6.1-terra (gpt-5-mini shuts down 2026-12-11); CONFIG_VERSION frontier-2026-11-14; all config hashes change (polarity_check_model)"},
   "58416882e502be53": {"label": "code-2026-11-14-exp013-terra", "note": "EXP-013 helper calls (source-block extractor, news keywords) on openai/gpt-6.1-terra instead of gpt-6-luna (Christian 2026-11-14; Luna failed the B-96 check); EXP-013 arm hashes change, live unchanged by this commit"},
-  "82d74168ef1703e9": {"label": "code-2026-11-15-exp008-critic", "note": "EXP-008 card amendment (Christian 2026-11-15): follow-up critic on openai/gpt-6.1-terra instead of gpt-5-mini (shuts down 2026-12-11); EXP-008 arm hashes change; live unchanged by this commit"}
+  "82d74168ef1703e9": {"label": "code-2026-11-15-exp008-critic", "note": "EXP-008 card amendment (Christian 2026-11-15): follow-up critic on openai/gpt-6.1-terra instead of gpt-5-mini (shuts down 2026-12-11); EXP-008 arm hashes change; live unchanged by this commit"},
+  "910881f24c0b7ae5": {"label": "code-2026-11-15-merge", "note": "Merge of B-96 Carbon challenger (PR #39) and Terra switch (PR #40); no change beyond the two"}
 }
