@@ -170,7 +170,7 @@ def test_gaps_mode_one_critic_call_one_search_per_gap_and_a_labelled_section():
     b = _bundle()
     out = _run(_cfg(critic_mode="gaps", max_cost_usd_per_q=1.0), llm, search, b)
     critic = llm.purposes("research_followup_critic")
-    assert len(critic) == 1 and BRIEF in critic[0][2] and "MISSING" in critic[0][2] and critic[0][1] == "openai/gpt-5-mini"
+    assert len(critic) == 1 and BRIEF in critic[0][2] and "MISSING" in critic[0][2] and critic[0][1] == "openai/gpt-6.1-terra"
     assert len(search.prompts) == 2 and "committee chair" in search.prompts[0] and "past votes" in search.prompts[1]
     assert "Today is 2026-05-01." in search.prompts[0] and "Today is 2026-05-01." in critic[0][2]
     new = [i for i in out.items if i.source == rf.SOURCE]

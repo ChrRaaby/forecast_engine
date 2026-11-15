@@ -100,7 +100,7 @@ def test_switched_on_as_shadows_live_hashes_unchanged():
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
         "714ff99803b1", "f3c50c57f8d1", "19ba975f2f40")
     assert {n: c.config_hash() for n, c in EXP008_ARMS.items()} == {
-        "exp008-b-gaps": "8fbc538e35c3", "exp008-c-against": "c433e7a9467f", "exp008-d-control": "a3cba8219872"}
+        "exp008-b-gaps": "8c4994f4f24f", "exp008-c-against": "356fe2183b98", "exp008-d-control": "a6f01cf6b06d"}
     assert CONFIG_VERSION == "frontier-2026-11-14"
     others = [c for n, c in SHADOW_CONFIGS.items() if n not in EXP013_ARMS]
     for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, *others):  # live, and the shadows that read the live research

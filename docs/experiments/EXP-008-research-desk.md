@@ -128,6 +128,17 @@ shadow arms, `forecast_engine/research_followup.py`)._
 publish waits for the three arms (estimated 1–3 minutes, not measured); the existing re-check before publishing still refuses
 closed questions.
 
+## Amendment: critic model (2026-11-15)
+OpenAI shuts down `gpt-5-mini`, the follow-up critic of arms B and C, on 2026-12-11 (OpenAI deprecations page; OpenRouter
+expiration date). **Christian chose (2026-11-15): swap the critic to `openai/gpt-6.1-terra`** (OpenAI's named successor; it
+passed the B-96 replacement check on 977 stored polarity checks, `tools/polarity_swap_check.py`) **and log the date**, instead of
+stopping arms B and C on 2026-12-11. Arm D (control) has no critic and arm A no follow-up step, so only B and C change.
+- Switch time: the merge of the B-96 Terra switch PR (commit and UTC time to be recorded here when it lands).
+- Analysis: the pre-registered analysis runs as planned on all questions; the report adds a sensitivity line restricted to
+  questions forecast before the switch time. A different conclusion between the two is reported, not resolved by choosing one.
+- Cost: Terra is $1/$5 per M tokens vs $0.25/$2; the critic is one short call per arm per question, so the change is a fraction
+  of a cent per question (estimate), inside the $0.15/q cap.
+
 ## Changes from v1 (2026-10-07)
 - Added arm D, the compute-matched control (protocol §5, 2026-10-19); adoption needs a win over A and D.
 - Bonferroni level for m = 2 candidates (97.5%); multi-round arm E considered and left out (reason above).

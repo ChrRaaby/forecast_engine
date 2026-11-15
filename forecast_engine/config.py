@@ -35,7 +35,9 @@ class FollowupConfig:
     """
 
     critic_mode: str = "gaps"
-    critic_model: str = "openai/gpt-5-mini"  # OpenRouter id; checked by tools/check_models.py
+    # OpenRouter id; checked by tools/check_models.py. GPT-6.1 Terra from 2026-11-15 (EXP-008 card amendment, Christian): gpt-5-mini,
+    # the critic from switch-on, shuts down 2026-12-11; Terra is OpenAI's named successor and passed the B-96 polarity check.
+    critic_model: str = "openai/gpt-6.1-terra"
     critic_max_tokens: int = 4000
     critic_reasoning_effort: str = "low"
     rounds: int = 1

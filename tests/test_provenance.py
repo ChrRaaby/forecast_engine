@@ -27,13 +27,15 @@ from tests.test_tournament import _bot
 # fbf036dba41f / fd32a398cdda. All changed again, deliberately, with the B-96 polarity checker swap (2026-11-14: gpt-5-mini ->
 # gpt-6.1-terra; CONFIG_VERSION frontier-2026-11-14); before it: default e7407e584599, tournament 550e5902f141, wide 94e6c663a494,
 # EXP-008 6d8b6e4496ed / ba71edc3760a / f69ba9a46922, cheap-old-prompt cdd81dd8ebb6.
+# EXP-008 arms changed once more with the critic amendment (2026-11-15: critic gpt-5-mini -> gpt-6.1-terra); before it
+# 8fbc538e35c3 / c433e7a9467f / a3cba8219872.
 CONFIG_HASHES = {
     "default": ("714ff99803b1", DEFAULT_CONFIG),
     "tournament": ("f3c50c57f8d1", TOURNAMENT_CONFIG),
     "wide": ("19ba975f2f40", WIDE_CONFIG),
-    "exp008-b-gaps": ("8fbc538e35c3", EXP008_ARMS["exp008-b-gaps"]),
-    "exp008-c-against": ("c433e7a9467f", EXP008_ARMS["exp008-c-against"]),
-    "exp008-d-control": ("a3cba8219872", EXP008_ARMS["exp008-d-control"]),
+    "exp008-b-gaps": ("8c4994f4f24f", EXP008_ARMS["exp008-b-gaps"]),
+    "exp008-c-against": ("356fe2183b98", EXP008_ARMS["exp008-c-against"]),
+    "exp008-d-control": ("a6f01cf6b06d", EXP008_ARMS["exp008-d-control"]),
     "cheap-old-prompt": ("cd5e67c675c1", SHADOW_CONFIGS["cheap-old-prompt"]),
 }
 # sha256 of polarity.PROMPT per POLARITY_PROMPT_VERSION. Append only; an edit to the prompt needs a new version line.
