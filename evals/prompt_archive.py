@@ -53,6 +53,7 @@ from forecast_engine.schema import QuestionSnapshot, ResearchBundle, ResearchIte
 
 from . import frozen_prompts_dates_yes_2026_11_07 as _dates_yes_2026_11_07
 from . import frozen_prompts_dates_yes_live_2026_11_07 as _dates_yes_live_2026_11_07
+from . import frozen_prompts_per_value_discrete_2026_11_15 as _per_value_discrete_2026_11_15
 from . import frozen_prompts_range_calibrated_2026_11_14 as _range_calibrated_2026_11_14
 from . import frozen_prompts_template_2026_09_26 as _t2026_09_26
 from . import frozen_prompts_template_2026_09_26_old as _t2026_09_26_old
@@ -99,6 +100,12 @@ ARCHIVE: dict[str, ArchivedTemplate] = {t.version: t for t in (
         "range-calibrated-2026-11-14", _range_calibrated_2026_11_14,
         file_sha256="e50cf3494a876fda54790e3b17b0e064dddcb2dd2affb00afd2b65a1799f4886",
         live_sha256="bc62d006ddb9fa6ebee7b6a4beb8e64dc5c8445d0d2eb5844352218ff1930fc3",
+    ),
+    # Spiky counts arm S1 experimental variant: replay/shadow arms only. live_sha256 is its variant_fingerprint().
+    ArchivedTemplate(
+        "per-value-discrete-2026-11-15", _per_value_discrete_2026_11_15,
+        file_sha256="80588c208ed73af9873acf56db3055077e608364cd4e2852b86d83f0780a683d",
+        live_sha256="d25c4a29097a9d0ce7473bc9aba70aa514b5b17f71acc022ffbac5f4274dc1d6",
     ),
 )}
 

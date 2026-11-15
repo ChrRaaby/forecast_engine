@@ -15,4 +15,14 @@ Done (PR 1, part P)
 
 Next
 - Christian: merge PR 1, then "go" in the thread for the scored run (~$2.52).
-- Part S in its own PR (S2 grid count first, then S1 per-value prompt for discrete questions).
+- Christian: merge PR 2 after PR 1, then "go" for EXP-016 (~$0.54).
+
+Done (PR 2, part S)
+- S2 snap-to-grid: counted first, from the question texts: about 1 of 53 resolved numeric questions (AWS growth, a whole-percent
+  figure) has a published grid step >= 1/100 of its range; prices, rates and counts are published in small steps. Dropped by the
+  card author (2026-11-15). forecasting-tools' CDF limits read for the record: per-bucket cap 0.2 x 200/N x 0.95, min step 0.01/N,
+  open-bound mass >= 0.001.
+- B-98 / EXP-016 (S1): variant `per-value-discrete-2026-11-15` (value list prompt, "value: probability" parser that must add up
+  to 90-110%, member mean, 0.5% floor, CDF from the values); `core.forecast` uses a variant's own answer path where it applies
+  (code-2026-11-15c, live forecasts unchanged). Number tool gains `--types`, `--max-values`, `--level`, probability on the true
+  value. Dry run N 22, est. $0.54, cap $3. Card frozen in PR 2.

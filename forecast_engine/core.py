@@ -40,7 +40,8 @@ async def forecast(
                 reasoning_effort=f.reasoning_effort,
             ) for f in cfg.forecasters]
     )
-    outputs = [_parse(q, call, cfg) for call in calls]
+    answer = prompt_versions.answer_path(cfg.prompt_version, q)  # None for the live prompt and for prompt-only variants
+    outputs = [_parse(q, call, cfg, answer) for call in calls]
     flags: list[str] = []
     if q.question_type == "binary" and cfg.polarity_check_model:
         flags = await _check_polarity(q, outputs, llm, cfg.polarity_check_model)
@@ -65,7 +66,9 @@ async def forecast(
 
     if cfg.aggregation != "median":
         raise ValueError(f"unknown aggregation {cfg.aggregation!r}")
-    if q.question_type == "binary":
+    if answer is not None:  # an experimental variant with its own answer format (replay/shadow only, ADR-0012)
+        record.aggregate = answer.aggregate(q, ok)
+    elif q.question_type == "binary":
         record.aggregate = parsing.median_binary(ok)
     elif q.question_type == "multiple_choice":
         record.aggregate = parsing.median_multiple_choice(ok)
@@ -90,12 +93,14 @@ async def _check_polarity(q: QuestionSnapshot, outputs: list[ForecasterOutput], 
     return flags
 
 
-def _parse(q: QuestionSnapshot, call, cfg: BotConfig) -> ForecasterOutput:
+def _parse(q: QuestionSnapshot, call, cfg: BotConfig, answer=None) -> ForecasterOutput:
     out = ForecasterOutput(model=call.model, call=call)
     if call.error:
         return out
     try:
-        if q.question_type == "binary":
+        if answer is not None:
+            out.prediction = answer.parse_answer(q, call.output)
+        elif q.question_type == "binary":
             out.prediction = parsing.parse_binary(call.output, cfg.binary_clip)
         elif q.question_type == "multiple_choice":
             out.prediction = parsing.parse_multiple_choice(call.output, q.options)
