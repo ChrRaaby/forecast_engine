@@ -89,7 +89,8 @@ Secondary: the new wording made ranges narrower (median 10–90 width B/A 0.83);
 
 ## Decision
 
-**Inconclusive** under fast rule b (mean Δ −0.36 ≤ 0; the CI is not wholly below 0). Today's prompt stays live. One rerun on
-numeric/discrete questions resolved after 2026-11-15 (follow-up F-23). Reading (judgement): the prompt did what it said (narrower,
+**Inconclusive** under fast rule b (mean Δ −0.36 ≤ 0; the CI is not wholly below 0). Today's prompt stays live. The card's one
+rerun was **dropped by Christian on 2026-11-15**: the wording is instead tested as an extra arm ("history table + the new
+sentence") next to the history table in part H, on that card. Reading (judgement): the prompt did what it said (narrower,
 better-calibrated ranges) but that did not move the score at this N; the numeric/discrete split points opposite ways and both
 CIs are wide, so it is not evidence for either.
