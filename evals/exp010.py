@@ -113,6 +113,7 @@ DROP_UNREADABLE = "unreadable record file"
 DROP_STATUS = "not a submitted or shadow forecast (status failed / refused)"
 DROP_NO_AGGREGATE = "no aggregate forecast stored"
 DROP_DUPLICATE = "later record of the same question and source (the earliest is kept)"
+DROP_PER_VALUE = "per-value answer (EXP-016 shadow), not percentiles"
 DROP_UNRESOLVED = "not resolved yet (or no outcome row)"
 DROP_ANNULLED = "annulled or ambiguous"
 DROP_NOT_FRESH = report.DROP_NOT_FRESH
@@ -415,6 +416,9 @@ def load_cases(runs_dir: Path = RUNS, outcomes_path: Path = OUTCOMES, scaling_pa
             dropped[DROP_STATUS] += 1
             continue
         agg = rec.get("aggregate")
+        if isinstance(agg, dict):  # EXP-016's per-value shadow: no declared percentiles to sharpen
+            dropped[DROP_PER_VALUE] += 1
+            continue
         if not agg or len(agg) < 2:
             dropped[DROP_NO_AGGREGATE] += 1
             continue

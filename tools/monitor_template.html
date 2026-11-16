@@ -133,6 +133,11 @@ function predText(type, p) {
     const top = Object.entries(p).sort((a, b) => b[1] - a[1]);
     return top.slice(0, 2).map(([k, v]) => `${k} ${pct(v)}`).join(", ") + (top.length > 2 ? ", …" : "");
   }
+  if (!Array.isArray(p) && typeof p === "object") {  // EXP-016 per-value answers: {kind, labels, probabilities} or {label: p}
+    const d = p.kind === "per_value" ? Object.fromEntries(p.labels.map((l, i) => [l, p.probabilities[i]])) : p;
+    const top = Object.entries(d).sort((a, b) => b[1] - a[1]);
+    return top.slice(0, 2).map(([k, v]) => `${k}: ${pct(v)}`).join(", ") + (top.length > 2 ? ", …" : "");
+  }
   const at = (q) => p.find((x) => Math.abs(x[0] - q) < 1e-9)?.[1];
   const p10 = at(0.1), p90 = at(0.9), p40 = at(0.4), p60 = at(0.6);
   const mid = p40 != null && p60 != null ? (p40 + p60) / 2 : null;

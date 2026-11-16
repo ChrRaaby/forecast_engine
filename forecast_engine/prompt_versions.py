@@ -64,5 +64,13 @@ def answer_path(version: str, q: QuestionSnapshot) -> ModuleType | None:
     return mod
 
 
+def skips_question(version: str, q: QuestionSnapshot) -> bool:
+    """True if a config with this prompt version should not run on this question at all: its variant has its own answer format
+    (`applies`) and that format does not apply here (e.g. EXP-016's shadow on a binary question). The live prompt and prompt-only
+    variants never skip."""
+    mod = VARIANTS.get(version)
+    return mod is not None and hasattr(mod, "applies") and not mod.applies(q)
+
+
 def known_versions() -> list[str]:
     return [LIVE, *VARIANTS]

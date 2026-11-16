@@ -42,7 +42,7 @@ from forecasting_tools.data_models.data_organizer import DataOrganizer  # noqa: 
 from forecasting_tools.data_models.forecast_report import ForecastReport  # noqa: E402
 from forecasting_tools.data_models.multiple_choice_report import PredictedOption  # noqa: E402
 
-from forecast_engine import guards, parsing, provenance, research_followup, research_v2  # noqa: E402
+from forecast_engine import guards, parsing, prompt_versions, provenance, research_followup, research_v2  # noqa: E402
 from forecast_engine.clock import Clock, SystemClock  # noqa: E402
 from forecast_engine.config import (  # noqa: E402
     CONFIG_VERSION,
@@ -331,6 +331,8 @@ class EngineBot(ForecastBot):
         for name, scfg in self.shadows.items():
             if scfg.config_hash() == live_cfg.config_hash():
                 continue  # the live forecast already is this config (e.g. after the season fallback)
+            if prompt_versions.skips_question(scfg.prompt_version, snapshot):
+                continue  # EXP-016: a variant with its own answer format runs only where that format applies
             writer = self._shadow_writers.get(name)
             if writer is None:
                 writer = self._shadow_writers[name] = RecordWriter(f"{self.run_id}-shadow-{name}")
