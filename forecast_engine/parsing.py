@@ -116,10 +116,18 @@ def parse_numeric(text: str, unit: str = "", allow_point: bool = False) -> list[
     return [(p / 100.0, v) for p, v in zip(PERCENTILES, ordered)]
 
 
+# A currency written before the number: "R$0.40", "US$ 12", "HK$7.8", "¥150", "₹83", "BRL 0.40", "-$5" (B-99, 2026-11-16: the
+# cheap forecasters wrote "R$0.40" on a Brazilian-real question and the answer was thrown away). Only known prefixes are stripped;
+# a lone letter before "$" (e.g. "M$") is not, since it could be a magnitude. Currency words after the number were already fine.
+_CURRENCY_PREFIX = re.compile(
+    r"^(-?)\s*(?:(?:R|US|C|CA|A|AU|NZ|HK|S|NT|MX)\$|[$€£¥₹₩₽]|(?:USD|EUR|GBP|BRL|JPY|CNY|RMB|INR|CHF|CAD|AUD|MXN|KRW|RUB)\s+)\s*"
+)
+
+
 def _parse_number(raw: str, unit: str) -> float:
     s = re.sub(r"\(.*?\)", "", raw)  # drop "(lowest number value)" etc.
     s = s.replace("*", "").replace('"', "").replace("−", "-").strip()
-    s = re.sub(r"^[$€£]", "", s).strip()
+    s = _CURRENCY_PREFIX.sub(r"\1", s, count=1).strip()
     m = re.match(r"^(-?\s*[$€£]?\s*[\d,]*\.?\d+)\s*(.*)$", s)
     if not m:
         raise ParseError(f"not a number: {raw.strip()!r}")
