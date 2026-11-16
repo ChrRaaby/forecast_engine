@@ -520,3 +520,45 @@ def test_a_real_quote_cannot_carry_an_invented_value(monkeypatch):
     text = _apply(_src_cfg(), FakeLlm(extraction=ex)).items[0].text
     assert text.startswith("NOT FOUND / not retrievable: the extracted value is not in the quote") and "9.9" not in text
     assert rv._value_in_quote("4.2 points", QUOTE) and not rv._value_in_quote("42", QUOTE)  # whole numbers only
+
+
+# --- fixes after the interim check (2026-11-16) ----------------------------------------------------------------------------
+
+def _block(page, value, quote):
+    ex = {"found": True, "url": "https://stats.example.org/index", "value": value, "value_date": "Nov 13, 2026", "quote": quote}
+    _, text = rv.render_block(datetime(2026, 11, 16, tzinfo=timezone.utc), ["https://stats.example.org/index"],
+                              [{"url": "https://stats.example.org/index"}], ex,
+                              {"https://stats.example.org/index": rv.page_text(page, "text/html", 40000)},
+                              SourceBlockConfig())
+    return text
+
+
+@pytest.mark.parametrize("row, value", [
+    ("Nov 13, 2026 169.91 170.00 158.39 162.85 162.85 363,819,700", "162.85 USD"),  # live record, rejected before the fix
+    ("Nov 13, 2026 140.17 142.24 136.64 139.11 139.11 77,314,900", "139.11"),       # live record, rejected before the fix
+])
+def test_real_stock_table_rows_keep_their_numbers_apart(row, value):
+    page = f"<table><tr><td>Date</td><td>Open</td><td>High</td><td>Low</td><td>Close</td><td>Adj</td><td>Volume</td></tr>" \
+           f"<tr>{''.join(f'<td>{c}</td>' for c in row.replace('Nov 13, 2026', 'Nov_13,_2026').split())}</tr></table>"
+    page = page.replace("Nov_13,_2026", "Nov 13, 2026")
+    assert _block(page, value, row).startswith("Source: ")
+    assert rv._norm("158.39 162.85") == "158.39 162.85" and rv._norm("363,819,700") == "363819700"
+    assert rv._norm("151 000 and 2 500 000") == "151000 and 2500000"
+
+
+def test_real_value_without_its_number_in_the_quote_is_still_refused():
+    """Live record 2026-11-16: value '0 reported on the tracker ...' with a quote that has no 0 (correctly refused)."""
+    quote = "It enters the trial once national approvals are in place. It is recommended together with Moderna's mRNA-1469"
+    text = _block(f"<p>{quote}; more text.</p>", "0 reported on the tracker; both candidates recommended", quote)
+    assert text.startswith("NOT FOUND / not retrievable: the extracted value is not in the quote")
+
+
+def test_links_copied_from_the_question_are_not_flagged():
+    question = "Will the close exceed $160? Resolves per https://finance.yahoo.com/quote/XYZ/history/ on Nov 20."
+    redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc"
+    text = ("Close 162.85 (source: https://finance.yahoo.com/quote/XYZ/history/, 2026-11-13); target 180 "
+            "(source: https://made-up.example.com/t, 2026-11-10); index 4.1 (source: https://www.bls.gov/x, 2026-11-07).")
+    x = rv.link_check(text, [{"title": "bls.gov", "uri": redirect}], question)
+    assert x["links_in_brief"] == 3 and x["links_from_question"] == 1
+    assert x["links_not_in_sources"] == ["https://made-up.example.com/t"] and x["unsourced_links"]
+    assert rv.link_check(text.split("; target")[0], [], question)["unsourced_links"] is False
