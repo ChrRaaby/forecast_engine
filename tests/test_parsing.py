@@ -112,3 +112,23 @@ def test_fit_to_bounds_clamps_open_and_closed():
     assert [v for _, v in out] == [230000.0, 250000, 250000]
     out, clipped = parsing.fit_to_bounds([(0.1, 1.0), (0.9, 2.0)], 0, 10, False, False)
     assert not clipped
+
+
+@pytest.mark.parametrize("raw, value", [
+    ("R$0.40", 0.40), ("R$ 5.10", 5.10), ("US$ 12", 12.0), ("HK$7.8", 7.8), ("C$1,250.5", 1250.5), ("-$5", -5.0),
+    ("¥150", 150.0), ("₹83.2", 83.2), ("BRL 0.40", 0.40), ("$1,234.5", 1234.5), ("€3", 3.0), ("0.40 BRL", 0.40),
+])
+def test_currency_before_the_number_is_accepted(raw, value):
+    """B-99 (2026-11-16): the cheap forecasters answered "R$0.40" on question 46824 and lost the member."""
+    assert parsing._parse_number(raw, "") == pytest.approx(value)
+
+
+@pytest.mark.parametrize("raw", ["R$ 1.2 million", "US$3bn", "M$5", "USD12", "R$ 1.5e3"])
+def test_currency_does_not_weaken_the_magnitude_and_number_checks(raw):
+    with pytest.raises(ParseError):
+        parsing._parse_number(raw, "")
+
+
+def test_real_answer_with_reais_parses():
+    text = "\n".join(f"Percentile {p}: R${v}" for p, v in zip(parsing.PERCENTILES, ("0.38", "0.40", "0.42", "0.43", "0.45", "0.47")))
+    assert [v for _, v in parsing.parse_numeric(text, "BRL")] == pytest.approx([0.38, 0.40, 0.42, 0.43, 0.45, 0.47])
