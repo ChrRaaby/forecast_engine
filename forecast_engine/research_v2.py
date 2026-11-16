@@ -222,11 +222,13 @@ _TYPO = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-
 
 
 def _norm(s: str) -> str:
-    """Text as compared by the quote check: entities decoded, typographic quotes/dashes and odd spaces made plain, thousands
-    separators dropped (3,687,537 = 3687537), no space before %, whitespace collapsed, lower case. Applied to the page and the
-    quote alike, so it can only forgive formatting, never add words or digits."""
-    s = html.unescape(s).translate(_TYPO)
-    s = re.sub(r"(?<=\d)[,  ](?=\d{3}\b)", "", s)
+    """Text as compared by the quote check: entities decoded, thousands separators dropped (3,687,537 and 3 687 537 written with
+    thin or no-break spaces = 3687537), typographic quotes/dashes and odd spaces made plain, no space before %, whitespace
+    collapsed, lower case. Applied to the page and the quote alike, so it can only forgive formatting, never add words or digits.
+    A plain space is never a thousands separator: in a table row "158.39 162.85" it separates two numbers (live case 2026-11-16)."""
+    s = html.unescape(s)
+    s = re.sub(r"(?<=\d)[,\u2009\u202f\u00a0](?=\d{3}(?!\d))", "", s)
+    s = s.translate(_TYPO)
     s = re.sub(r"(?<=\d)\s+%", "%", s)
     return " ".join(s.split()).lower()
 
@@ -364,26 +366,36 @@ def _site(host_or_title: str) -> str:
     return (host_or_title or "").strip().lower().removeprefix("www.").rstrip("/.")
 
 
-def link_check(text: str, sources: list[dict]) -> dict[str, Any]:
-    """Links the brief cites whose website is not among the grounding sources Google returned. Recorded and flagged, never
-    removed: Flash sometimes runs no search, and then a link can come from the model's memory. Google returns its sources as its
-    own redirect URLs (vertexaisearch.cloud.google.com) with the website name as the title, so a cited link counts as sourced when
-    its host matches a source title or a source URL's host (subdomains allowed either way). A flag is for review, not proof."""
-    cited = []
+def _links(text: str) -> list[str]:
+    out: list[str] = []
     for m in BRIEF_URL_RE.finditer(text or ""):
         url = m.group(0).rstrip(".,;:!?*_")
-        if url not in cited:
-            cited.append(url)
+        if url not in out:
+            out.append(url)
+    return out
+
+
+def link_check(text: str, sources: list[dict], question_text: str = "") -> dict[str, Any]:
+    """Links the brief cites whose website is neither among the grounding sources Google returned nor linked in the question.
+    Recorded and flagged, never removed: Flash sometimes runs no search, and then a link can come from the model's memory. Google
+    returns its sources as its own redirect URLs (vertexaisearch.cloud.google.com) with the website name as the title, so a cited
+    link counts as sourced when its host matches a source title or a source URL's host (subdomains allowed either way). Links the
+    question itself gives (e.g. the Yahoo Finance page it resolves on) are copied, not invented: counted apart, never flagged
+    (2026-11-16). A flag is for review, not proof."""
+    cited = _links(text)
     sites = {_site(s.get("title") or "") for s in sources}
     sites |= {_site(urlsplit(s.get("uri") or "").hostname or "") for s in sources}
     sites -= {"", "vertexaisearch.cloud.google.com"}
+    question_sites = {_site(urlsplit(u).hostname or "") for u in _links(question_text)} - {""}
 
-    def sourced(url: str) -> bool:
+    def matches(url: str, pool: set[str]) -> bool:
         host = _site(urlsplit(url).hostname or "")
-        return bool(host) and any(host == x or host.endswith("." + x) or x.endswith("." + host) for x in sites)
+        return bool(host) and any(host == x or host.endswith("." + x) or x.endswith("." + host) for x in pool)
 
-    unmatched = [u for u in cited if not sourced(u)]
-    return {"links_in_brief": len(cited), "links_not_in_sources": unmatched, "unsourced_links": bool(unmatched)}
+    from_question = [u for u in cited if matches(u, question_sites) and not matches(u, sites)]
+    unmatched = [u for u in cited if not matches(u, sites) and u not in from_question]
+    return {"links_in_brief": len(cited), "links_from_question": len(from_question), "links_not_in_sources": unmatched,
+            "unsourced_links": bool(unmatched)}
 
 
 def max_output_tokens(prompt: str, cfg: BriefWriterConfig) -> int:
@@ -472,7 +484,8 @@ async def _build_brief(q: QuestionSnapshot, clock: Clock,
             "over_cap": token_cost > cfg.max_cost_usd_per_q,
             "n_search_queries": len(queries), "no_search": not queries,
         })
-        call.extra.update(link_check(text, sources))
+        question = "\n".join((q.question_text, q.background_info, q.resolution_criteria, q.fine_print))
+        call.extra.update(link_check(text, sources, question))
         if call.extra["over_cap"]:
             errors.append(f"exp013 brief_writer over cap: tokens ${token_cost:.4f} > ${cfg.max_cost_usd_per_q:.2f}")
         if not text.strip():
