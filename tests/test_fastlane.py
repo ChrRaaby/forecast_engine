@@ -247,27 +247,57 @@ def test_guards_fail_closed_on_missing_or_corrupt_state(tmp_path, monkeypatch):
     bad.write_text("{not json", encoding="utf-8")
     with pytest.raises(GuardStop):
         SpendGuard(state_path=bad, init_ok=True).start(date(2026, 11, 20))
-    a = AskNewsGuard(base_used=0, state_path=tmp_path / "none2.json", today=date(2026, 11, 20), init_ok=False)
+    a = _news(tmp_path, state="none2.json", init_ok=False)
     assert not a.allow(1)
-    assert not AskNewsGuard(base_used=0, state_path=bad, today=date(2026, 11, 20), init_ok=True).allow(1)
+    assert _news(tmp_path, state="ok.json").allow(1)
+    assert not _news(tmp_path, state="bad.json").allow(1)
 
 
-def test_asknews_guard_keeps_the_live_bots_credits(tmp_path):
-    day = date(2026, 11, 20)  # period 30 Oct - 29 Nov: 10 days left, 60 credits held for the live bot
-    mk = lambda used, n: AskNewsGuard(base_used=used, state_path=tmp_path / f"{n}.json", today=day, init_ok=True)
-    assert mk(597, "a").allow(1)
-    assert mk(1689, "b").allow(1) and not mk(1690, "c").allow(1)  # 1,750 - 60
-    assert not mk(10000, "d").allow(1)  # unknown usage: no AskNews
+def _usage(path, **kw):
+    d = {"as_of": "2026-11-23", "renews": "2026-11-29", "period_used": 891, "plan_credits": 500, "wallet_usd": 21.42,
+         "usd_per_credit": 0.0092, **kw}
+    path.write_text(json.dumps(d), encoding="utf-8")
+    return path
+
+
+def _news(tmp_path, state="a.json", today=date(2026, 11, 23), init_ok=True, usage=None, **kw):
+    return AskNewsGuard(usage_path=_usage(tmp_path / f"usage-{state}", **(usage or {})), state_path=tmp_path / state, today=today,
+                        init_ok=init_ok, **kw)
+
+
+def test_asknews_guard_uses_a_dated_reading_and_fails_closed(tmp_path):
+    assert _news(tmp_path, "ok.json").allow(1)
+    assert "renewed" in _news(tmp_path, "r.json", today=date(2026, 11, 29)).why_not()
+    assert "days old" in _news(tmp_path, "o.json", today=date(2026, 12, 1), usage={"renews": "2026-12-29"}).why_not()
+    assert "future" in _news(tmp_path, "f.json", today=date(2026, 11, 22)).why_not()
+    missing = AskNewsGuard(usage_path=tmp_path / "nope.json", state_path=tmp_path / "m.json", today=date(2026, 11, 23), init_ok=True)
+    assert "no readable" in missing.why_not()
+    for bad in ({"wallet_usd": "x"}, {"usd_per_credit": 0}, {"as_of": "soon"}, {"wallet_usd": -1}):
+        assert not _news(tmp_path, "b.json", usage=bad).allow(1)
+
+
+def test_asknews_guard_holds_back_two_weeks_of_other_use_and_counts_its_own(tmp_path):
+    # reserve 14 * 42 = 588, one day of other use 42: exactly 631 credits left are needed for one more
+    mk = lambda credits, n, **kw: _news(tmp_path, n, usage={"wallet_usd": float(credits), "usd_per_credit": 1.0}, **kw)
+    assert mk(631, "e.json").allow(1) and not mk(630, "e2.json").allow(1)
+    assert not mk(631, "e3.json", today=date(2026, 11, 24)).allow(1)  # a day later 42 more are assumed used
+    g = mk(633, "e4.json")
+    g.take(1)
+    assert g.allow(1)  # its own credit since the reading is subtracted: 633 - 1 - 42 - 1 = 589
+    g.take(1)
+    assert g.allow(1) and not g.allow(2)
+    with_plan = _news(tmp_path, "p.json", usage={"period_used": 100, "wallet_usd": 231.0, "usd_per_credit": 1.0})
+    assert with_plan.allow(1)  # 400 plan credits left + 231 in the wallet
 
 
 def test_asknews_guard_caps_and_counts_skips(tmp_path):
-    g = AskNewsGuard(base_used=0, state_path=tmp_path / "a.json", today=date(2026, 11, 20), daily_cap=3, total_cap=5, init_ok=True)
+    g = _news(tmp_path, daily_cap=3, total_cap=5)
     for _ in range(3):
         assert g.allow(1)
         g.take(1)
     assert not g.allow(1)
     g.skip(1)
-    g.today = date(2026, 11, 21)
+    g.today = date(2026, 11, 24)
     assert g.allow(1) and g.allow(2) and not g.allow(3)  # total cap 5, 3 used
     assert json.loads((tmp_path / "a.json").read_text())["skipped"] == 1 and g.skipped_run == 1
 
@@ -302,14 +332,14 @@ def test_run_questions_records_flags_private_prices_and_counts_asknews_skips(tmp
     _no_keys(monkeypatch)
     qs = picker.pick([_event(i, [_market(400 + i, price=0.3 + i / 100)]) for i in range(3)], NOW)
     spend = SpendGuard(cap_usd=80.0, state_path=tmp_path / "s.json", init_ok=True)
-    news = AskNewsGuard(base_used=10000, state_path=tmp_path / "a.json", today=date(2026, 11, 16), init_ok=True)
+    news = _news(tmp_path)
     llm = _Llm()
     out = asyncio.run(run.run_questions(qs, ("cheap",), FixedClock(NOW), llm, spend, news, root=tmp_path))
-    assert out["questions"] == 3 and out["records"] == 3 and out["asknews_credits"] == 0 and out["asknews_skipped"] == 3
+    assert out["questions"] == 3 and out["records"] == 3 and out["asknews_credits"] == 3 and out["asknews_skipped"] == 0
     recs = sorted((tmp_path / "forecasts").glob("*-fast-cheap/q*.json"))
     rec = json.loads(recs[0].read_text(encoding="utf-8"))
     assert rec["status"] == "fastlane" and rec["published"] is False and rec["provenance"]["role"] == "fastlane"
-    assert any("AskNews skipped" in f for f in rec["flags"])
+    assert any("research incomplete" in f for f in rec["flags"])  # no keys in tests: said on the record, not hidden
     # the market price lives only in the private file: not in any record, pick row or prompt
     prices = [json.loads(l) for l in (tmp_path / "market_prices.jsonl").read_text().splitlines()]
     assert len(prices) == 3 and all(0.3 <= p["price_at_pick"] <= 0.33 for p in prices)
@@ -318,7 +348,29 @@ def test_run_questions_records_flags_private_prices_and_counts_asknews_skips(tmp
     assert "price_at_pick" not in (tmp_path / "picks.jsonl").read_text()
     assert not any("0.31" in p or "0.32" in p for p in llm.prompts)
     assert json.loads((tmp_path / "s.json").read_text())["ledger_usd"] > 0  # saved after the questions
+    assert json.loads((tmp_path / "a.json").read_text())["total"] == 3
+
+
+def test_question_is_skipped_not_degraded_when_asknews_is_refused(tmp_path, monkeypatch):
+    _no_keys(monkeypatch)
+    qs = picker.pick([_event(i, [_market(700 + i)]) for i in range(3)], NOW)
+    llm, news = _Llm(), _news(tmp_path, today=date(2026, 11, 29))
+    out = asyncio.run(run.run_questions(qs, ("cheap",), FixedClock(NOW), llm, SpendGuard(state_path=tmp_path / "s.json", init_ok=True),
+                                        news, root=tmp_path))
+    assert out["questions"] == 0 and out["records"] == 0 and out["asknews_skipped"] == 3 and "renewed" in out["asknews_why"]
+    assert llm.prompts == [] and run.load_picks(tmp_path) == []  # nothing spent, and the questions can be picked again
     assert json.loads((tmp_path / "a.json").read_text())["skipped"] == 3
+
+
+def test_run_stops_before_picking_without_a_usage_reading(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_LIVE_KEY", raising=False)
+    monkeypatch.setenv("FASTLANE_ON", "1")
+    (tmp_path / "data/fastlane").mkdir(parents=True)
+    (tmp_path / "data/fastlane/spend.json").write_text('{"ledger_usd": 0}')
+    (tmp_path / "data/fastlane/asknews.json").write_text("{}")
+    assert run.main(["--run", "--go"]) == 0  # no network in tests: it must stop before any request
+    assert "stopped before picking: no readable AskNews usage reading" in capsys.readouterr().out
 
 
 def test_ledger_counts_research_step_cost_once(tmp_path, monkeypatch):
@@ -338,7 +390,7 @@ def test_ledger_counts_research_step_cost_once(tmp_path, monkeypatch):
     qs = picker.pick([_event(1, [_market(600)])], NOW)
     spend = SpendGuard(state_path=tmp_path / "s.json", init_ok=True)
     out = asyncio.run(run.run_questions(qs, ("cheap",), FixedClock(NOW), _Llm(), spend,
-                                        AskNewsGuard(base_used=10000, state_path=tmp_path / "a.json", init_ok=True),
+                                        _news(tmp_path),
                                         root=tmp_path, max_run_usd=5.0))
     rec = json.loads(next((tmp_path / "forecasts").glob("*-fast-cheap/q*.json")).read_text(encoding="utf-8"))
     true_cost = rec["cost_usd"]  # the record's own total: research step 0.5 + forecasters + polarity check
@@ -360,7 +412,7 @@ def test_run_questions_numeric_series_question(tmp_path, monkeypatch):
     qs = [q for q in series.make_questions(_feed, NOW, n=12) if q.meta["family"] == "weather"][:1]
     out = asyncio.run(run.run_questions(qs, ("cheap",), FixedClock(NOW), NumLlm(),
                                         SpendGuard(state_path=tmp_path / "s.json", init_ok=True),
-                                        AskNewsGuard(base_used=10000, state_path=tmp_path / "a.json", init_ok=True), root=tmp_path))
+                                        _news(tmp_path), root=tmp_path))
     assert out["records"] == 1 and out["failed"] == 0
 
 
@@ -372,6 +424,6 @@ def test_run_questions_stops_at_run_cost_cap(tmp_path, monkeypatch):
     _no_keys(monkeypatch)
     qs = picker.pick([_event(i, [_market(500 + i)]) for i in range(5)], NOW)
     out = asyncio.run(run.run_questions(qs, ("cheap",), FixedClock(NOW), _Llm(), SpendGuard(state_path=tmp_path / "s.json", init_ok=True),
-                                        AskNewsGuard(base_used=10000, state_path=tmp_path / "a.json", init_ok=True), root=tmp_path,
+                                        _news(tmp_path), root=tmp_path,
                                         max_run_usd=0.02))
     assert out["stopped"] and out["questions"] < 5

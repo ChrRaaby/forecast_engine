@@ -2,7 +2,8 @@
 
 --pick-only   fetch candidates and write the list to data/fastlane/dryrun/<date>.json. No model call, no spend. (Step 3 dry run.)
 --run --go    pick, research, forecast with every arm, write records. Needs FASTLANE_ON=1 in the environment as well, so a stray
-              command or a workflow without the switch cannot spend. Guards: $80 cap on the lane's own ledger, AskNews guard; both fail closed (first run needs FASTLANE_INIT=1).
+              command or a workflow without the switch cannot spend. Guards: $80 cap on the lane's own ledger, AskNews guard; both fail closed.
+              A question the AskNews guard refuses is skipped and counted, so all forecast questions have the same research.
 --resolve     look up outcomes of closed questions (no model call).
 --report      counts only (picked / resolved / voided / open, records per arm, AskNews and spend). No scores until the
               paired log-score analysis exists.
@@ -17,7 +18,6 @@ import json
 import logging
 import os
 import sys
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -87,7 +87,7 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
     run_info = provenance.gather_run_info(run_id, "fastlane", False)
     writers = {a: RecordWriter(f"{run_id}-fast-{a}", root=root / "forecasts") for a in arms}
     summary = {"questions": 0, "records": 0, "failed": 0, "usd": 0.0, "asknews_credits": 0, "asknews_skipped": 0,
-               "odds_scrubbed_questions": 0, "stopped": None}
+               "odds_scrubbed_questions": 0, "research_incomplete": 0, "stopped": None}
     for fq in qs:
         if summary["usd"] >= max_run_usd:
             summary["stopped"] = f"run cost cap ${max_run_usd:g}"
@@ -95,16 +95,23 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
         snap, base = fq.snapshot, SHADOW_CONFIGS[arms[0]]
         degraded: list[str] = []
         wants_news = "asknews_latest" in base.research.providers
-        use_news = wants_news and news.allow(1)
-        if use_news:
-            news.take(1)
-            summary["asknews_credits"] += 1
-        elif wants_news:  # never silent: counted here and in the state file, flagged on every record of the question
+        why = news.why_not(1) if wants_news else None
+        if why:  # no forecast on a different research package: skip the question, count it, say why; it can be picked again
             news.skip(1)
             summary["asknews_skipped"] += 1
-            degraded.append("fastlane: AskNews skipped by the credit guard; research is Gemini only")
-        providers = tuple(p for p in base.research.providers if p != "asknews_latest" or use_news)
-        research = await gather_research(snap, clock, replace(base.research, providers=providers))
+            summary["asknews_why"] = why
+            continue
+        if wants_news:
+            news.take(1)
+            summary["asknews_credits"] += 1
+        research = await gather_research(snap, clock, base.research)
+        extra = sum(c.extra.get("asknews_calls", 0) for c in research.calls) - 1
+        if wants_news and extra > 0:  # the provider retried after a rate limit: that attempt may be billed too
+            news.take(extra)
+            summary["asknews_credits"] += extra
+        if research.errors:
+            degraded.append(f"fastlane: research incomplete ({len(research.errors)} provider error(s))")
+            summary["research_incomplete"] += 1
         charged = {id(c) for c in research.calls}
         spend.add(research.cost_usd, _google_queries(research.calls))
         summary["usd"] += research.cost_usd
@@ -210,7 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     except GuardStop as e:
         print(f"stopped: {e}")
         return 0
-    news = AskNewsGuard(base_used=int(os.getenv("ASKNEWS_PERIOD_USED", "10000")))  # unknown usage = no AskNews
+    news = AskNewsGuard()
+    why = news.why_not(1)
+    if why:
+        print(f"stopped before picking: {why}")
+        return 0
     qs = collect(http_get, clock.now(), n_series=a.series, cfg=picker.PickerConfig(max_picks=a.max_picks))
     try:
         summary = asyncio.run(run_questions(qs, arms, clock, OpenRouterClient(clock), spend, news, max_run_usd=a.max_run_usd))

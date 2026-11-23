@@ -9,10 +9,11 @@ Dollars: the lane runs on the EXPERIMENTS OpenRouter key (OPENROUTER_API_KEY; ne
 stop rule; the lane's ledger is: every record's cost (OpenRouter-reported) plus Google's grounding fee at list price ($0.014 per
 search query, counted even inside the free tier, the same way as EXP-008).
 
-AskNews: Christian added a $25 wallet on 2026-11-16 (about 1,250 credits at $0.02) and asked for full coverage. The plan allows 500 a
-month and 597 were used on 2026-11-16 (his usage page). The live bot comes first: a credit is taken only if, after it, the period's
-total stays under plan + wallet minus a reserve of `live_per_day` credits for each remaining day of the period. A refusal is counted
-(`skipped`), never silent: the runner flags the question's records and reports the count.
+AskNews: the lane wants an AskNews search for every question (Christian, 2026-11-16) but the account is shared with the live bot, the
+shadow arms and experiments, which come first. The guard works from a dated reading of Christian's usage page (`asknews_usage.json`),
+adds `burn_per_day` for each day since, subtracts what the lane itself took, and holds back `reserve_days` of everyone else's use.
+A missing, unreadable, future, over-a-week-old or previous-period reading answers no. When the answer is no the question is skipped
+and counted, so every forecast question has the same research package.
 """
 from __future__ import annotations
 
@@ -20,9 +21,8 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from math import ceil
 from pathlib import Path
-
-from evals.asknews_budget import BudgetConfig, billing_period
 
 STATE_DIR = Path("data/fastlane")
 LANE_ENDS = date(2027, 1, 31)
@@ -95,16 +95,42 @@ class SpendGuard:
         _write(self.state_path, st)
 
 
+@dataclass(frozen=True)
+class AskNewsUsage:
+    """One reading of the AskNews usage page."""
+
+    as_of: date
+    renews: date  # first day of the next billing period: this reading is worthless from then on
+    period_used: int
+    plan_credits: int
+    wallet_usd: float
+    usd_per_credit: float
+
+    @classmethod
+    def load(cls, path: Path) -> "AskNewsUsage | None":
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+            u = cls(date.fromisoformat(d["as_of"]), date.fromisoformat(d["renews"]), int(d["period_used"]), int(d["plan_credits"]),
+                    float(d["wallet_usd"]), float(d["usd_per_credit"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        return u if u.usd_per_credit > 0 and u.wallet_usd >= 0 and u.period_used >= 0 else None
+
+    @property
+    def credits_left(self) -> int:
+        return max(0, self.plan_credits - self.period_used) + int(self.wallet_usd / self.usd_per_credit)
+
+
 @dataclass
 class AskNewsGuard:
-    """Say yes or no to AskNews credits. `base_used` = credits used by everything else this period (the usage page, via
-    ASKNEWS_PERIOD_USED); the lane adds its own count on top. Unknown or unreadable state answers no, and counts the refusal."""
+    """Say yes or no to AskNews credits; every reason to say no is in `why`."""
 
-    base_used: int
-    cfg: BudgetConfig = field(default_factory=lambda: BudgetConfig(plan_credits=500, wallet_credits=1250, allow_overage=True))
-    live_per_day: int = 6  # live bot: ~4 a day on average, more on batch days (Nov 2: 46)
+    usage_path: Path = STATE_DIR / "asknews_usage.json"
+    burn_per_day: float = 42.0  # everyone else: 597 -> 891 credits from 16 to 23 Nov 2026 (usage page)
+    reserve_days: int = 14
+    max_age_days: int = 7
     daily_cap: int = 60
-    total_cap: int = 1100  # wallet-sized: 280 questions + later arms; the real stop is the period limit below
+    total_cap: int = 400  # 280 calibration questions + slack; raise only with Christian's OK
     state_path: Path = STATE_DIR / "asknews.json"
     today: date | None = None
     init_ok: bool = field(default_factory=init_allowed)
@@ -123,16 +149,34 @@ class AskNewsGuard:
         st = self._state() or {}
         return int(st.get("total", 0)), int(st.get("by_day", {}).get(self._day().isoformat(), 0))
 
-    def allow(self, credits: int = 1) -> bool:
-        if self._state() is None:
-            return False
+    def why_not(self, credits: int = 1) -> str | None:
+        """None = allowed, otherwise the reason."""
+        st, day = self._state(), self._day()
+        if st is None:
+            return "AskNews state file missing or unreadable"
+        u = AskNewsUsage.load(self.usage_path)
+        if u is None:
+            return "no readable AskNews usage reading"
+        age = (day - u.as_of).days
+        if age < 0:
+            return f"AskNews usage reading is dated in the future ({u.as_of})"
+        if age > self.max_age_days:
+            return f"AskNews usage reading is {age} days old (limit {self.max_age_days})"
+        if day >= u.renews:
+            return f"AskNews period renewed on {u.renews}: a new reading is needed"
         total, today_n = self.used_by_lane()
-        if total + credits > self.total_cap or today_n + credits > self.daily_cap:
-            return False
-        _, end = billing_period(self._day(), self.cfg.anchor_day)
-        days_left = max(1, (end - self._day()).days)
-        limit = self.cfg.plan_credits + (self.cfg.wallet_credits if self.cfg.allow_overage else 0)
-        return self.base_used + total + credits + self.live_per_day * days_left <= limit
+        if total + credits > self.total_cap:
+            return f"lane total cap of {self.total_cap} credits"
+        if today_n + credits > self.daily_cap:
+            return f"lane daily cap of {self.daily_cap} credits"
+        since = sum(int(n) for d, n in st.get("by_day", {}).items() if date.fromisoformat(d) >= u.as_of)
+        # the days since the reading count as full days, today included
+        left = u.credits_left - ceil(self.burn_per_day * (age + 1)) - since - credits
+        need = ceil(self.burn_per_day * self.reserve_days)
+        return None if left >= need else f"only {left} credits would be left; {need} are held back for the live bot and shadows"
+
+    def allow(self, credits: int = 1) -> bool:
+        return self.why_not(credits) is None
 
     def take(self, credits: int = 1) -> None:
         """Record spend before the call (it counts even if the call fails)."""

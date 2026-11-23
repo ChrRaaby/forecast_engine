@@ -3,9 +3,10 @@
 Polymarket titles go word for word into the research searches, so a news article or Gemini's own summary may quote the market's
 odds. Odds in the brief would turn the screen into "does the bot copy the market". `scrub_bundle` removes, from a copy of the bundle:
   - whole items from prediction-market / betting hosts,
-  - every sentence that names a market venue or quotes odds / implied probabilities.
-It errs on the side of deleting too much ("odds of rain" goes too). What was removed is counted and returned for the record; the
-removed text itself is not kept (AskNews text is licensed). It never raises.
+  - every line that names a market venue or betting, and every other sentence that quotes odds / implied probabilities.
+It errs on the side of deleting too much ("odds of rain" goes too), but it is pattern-based: unusual wording can get through.
+It cleans what the forecasters read. The raw provider output stays in the record's `research.calls` (audit trail, private archive
+only), so a stored record can still contain odds; never feed `research.calls` to a model.
 """
 from __future__ import annotations
 
