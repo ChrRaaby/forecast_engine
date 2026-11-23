@@ -223,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stopped before picking: {why}")
         return 0
     qs = collect(http_get, clock.now(), n_series=a.series, cfg=picker.PickerConfig(max_picks=a.max_picks))
+    saved = True
     try:
         summary = asyncio.run(run_questions(qs, arms, clock, OpenRouterClient(clock), spend, news, max_run_usd=a.max_run_usd))
     except GuardStop as e:
@@ -232,8 +233,9 @@ def main(argv: list[str] | None = None) -> int:
             spend.save()
         except GuardStop as e:  # state unreadable: say so, don't mask the run's own outcome
             print(f"spend state not saved: {e}")
+            saved = False
     print(json.dumps(summary, indent=1))
-    return 0
+    return 0 if saved else 1  # non-zero keeps the workflow's RUNNING marker, so nothing spends until a person has looked
 
 
 if __name__ == "__main__":

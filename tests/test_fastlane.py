@@ -373,6 +373,26 @@ def test_run_stops_before_picking_without_a_usage_reading(tmp_path, monkeypatch,
     assert "stopped before picking: no readable AskNews usage reading" in capsys.readouterr().out
 
 
+def test_run_fails_when_the_spend_state_cannot_be_saved(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_LIVE_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setenv("FASTLANE_ON", "1")
+    monkeypatch.setattr(run.AskNewsGuard, "why_not", lambda self, credits=1: None)
+    monkeypatch.setattr(run, "collect", lambda *a, **k: [])
+    lane = tmp_path / "data/fastlane"
+    lane.mkdir(parents=True)
+    (lane / "spend.json").write_text('{"ledger_usd": 0}')
+    assert run.main(["--run", "--go"]) == 0
+
+    async def lose_state(*a, **k):
+        (lane / "spend.json").write_text("{broken")
+        return {}
+
+    monkeypatch.setattr(run, "run_questions", lose_state)
+    assert run.main(["--run", "--go"]) == 1
+
+
 def test_ledger_counts_research_step_cost_once(tmp_path, monkeypatch):
     """A research step that makes a paid call (EXP-013 writer) is charged once in the ledger, not twice."""
     _no_keys(monkeypatch)
