@@ -46,10 +46,11 @@ class Limits:
         ("d7d19c6f8464", 0.19, 0.22),  # frontier on the full research (ADR-0013)
     )
     season_cap: float = 300.0
-    # EXP-013 card: cheap arms B + C + D on a $60 line; frontier arm $57-68 to 31 January (0.12 per question)
+    # EXP-013: cheap arms B + C + D on a $60 line (card). Frontier arm: the card said $57-68 to 31 January ($0.12 per question); measured
+    # $0.166, and Christian accepted about $0.17 per question, up to about $124, on 2026-11-23.
     cheap_line: float = 60.0
-    frontier_arm_est: float = 68.0
-    frontier_arm_per_q: tuple[float, float] = (0.12, 0.15)
+    frontier_arm_est: float = 124.0
+    frontier_arm_per_q: tuple[float, float] = (0.17, 0.20)
     asknews_per_q: tuple[float, float] = (7.0, 9.0)
     asknews_burn: tuple[float, float] = (42.0, 52.5)  # credits/day, whole account, 16-23 Nov; warn 25% above
     wallet_floor: float = 5.0
@@ -245,9 +246,9 @@ def evaluate(facts: list[dict[str, Any]], season: list[tuple[str, float]], key_r
             spent = sum(f["forecasts"] for f in fr)
             proj, per_q = spent + spent / days * left, spent / len(fr)
             add("EXP-013 frontier arm", proj > lim.frontier_arm_est, f"EXP-013 frontier arm (F / frontier-old): ${spent:.2f} so far, "
-                f"projected ${proj:.0f} by {lim.horizon}; card estimate up to ${lim.frontier_arm_est:.0f}")
+                f"projected ${proj:.0f} by {lim.horizon}; accepted up to ${lim.frontier_arm_est:.0f}")
             add("EXP-013 frontier arm per question", per_q > lim.frontier_arm_per_q[1], f"EXP-013 frontier arm: ${per_q:.3f} per "
-                f"question ({len(fr)} questions); card estimate ${lim.frontier_arm_per_q[0]:.2f}, warn above ${lim.frontier_arm_per_q[1]:.2f}")
+                f"question ({len(fr)} questions); accepted ${lim.frontier_arm_per_q[0]:.2f}, warn above ${lim.frontier_arm_per_q[1]:.2f}")
     # 5 AskNews (our bookkeeping; live + shadows, plus the fast lane's own count)
     if live:
         ours = sum(f["credits"] for f in recent)

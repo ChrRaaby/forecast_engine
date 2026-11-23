@@ -67,9 +67,11 @@ def test_season_and_key_projections():
 
 
 def test_exp013_lines():
-    rows = [_fact("exp013-b-source", 9, 0.01, 0.005)] + [_fact("exp013-f-frontier-full", 5, 0.166, 0) for _ in range(5)]
+    rows = [_fact("exp013-b-source", 9, 0.01, 0.005)] + [_fact("exp013-f-frontier-full", 5, 0.21, 0) for _ in range(5)]
     x = _lines(rows)
     assert x["EXP-013 cheap arms"].status == "OK" and x["EXP-013 frontier arm per question"].status == "WARN"
+    at_accepted = rows[:1] + [_fact("exp013-frontier-old", 5, 0.17, 0) for _ in range(5)]
+    assert _lines(at_accepted)["EXP-013 frontier arm per question"].status == "OK"  # Christian accepted ~$0.17 (2026-11-23)
     assert _lines([_fact("exp013-c-writer", 9, 1.0, 0, gemini=12.0)])["EXP-013 cheap arms"].status == "WARN"
     both = [_fact("exp013-f-frontier-full", 9, 0.1, 0), _fact("exp013-frontier-old", 1, 0.1, 0), _fact("exp013-b-source", 9, 0, 0)]
     assert "(2 questions)" in _lines(both)["EXP-013 frontier arm per question"].text  # F and its successor are one line
