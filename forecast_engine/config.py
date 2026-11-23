@@ -9,7 +9,9 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
 
-CONFIG_VERSION = "frontier-2026-11-14"  # B-96: polarity check on GPT-6.1 Terra (was frontier-2026-11-07: EXP-002 dates + "resolves YES" prompt)
+# EXP-013 go-live (ADR-0013): the published tournament forecast uses the full research package (arm F as tested). Was
+# frontier-2026-11-14 (B-96: polarity check on GPT-6.1 Terra), before it frontier-2026-11-07 (EXP-002: dates + "resolves YES" prompt).
+CONFIG_VERSION = "frontier-2026-11-24"
 
 
 @dataclass(frozen=True)
@@ -186,7 +188,7 @@ DEFAULT_CONFIG = BotConfig()  # the cheap M1 ensemble: experiments, test runs, a
 # model, Christian). Roster confirmed by Christian 2026-10-07 (option A); list prices on OpenRouter that day, per M tokens in/out:
 # GPT-6.1 Sol $2/$10, Claude Sonnet 5.5 $2/$10, Gemini 3.1 Pro $2/$12, Grok 4.7 $2/$6, Qwen3.8 Max $2/$6. Gemini 3.1 Pro is
 # Google's newest Pro-tier model but dates from Feb 2026. Median of five, at least three must succeed.
-TOURNAMENT_CONFIG = replace(
+TOURNAMENT_BASE_CONFIG = replace(
     DEFAULT_CONFIG,
     forecasters=(
         ForecasterSpec("openai/gpt-6.1-sol"),
@@ -197,6 +199,15 @@ TOURNAMENT_CONFIG = replace(
     ),
     min_successful_forecasters=3,
 )
+# EXP-013 go-live (card amendment 2026-11-14 item 3, Christian's OK 2026-11-23; ADR-0013): the published tournament forecast uses
+# the frontier roster on the full research: today's base research plus the resolution-source block (incl. its NOT FOUND line), the
+# stronger brief and the keyword + historical AskNews searches. Exactly arm F as tested since 2026-11-14 (config hash
+# d7d19c6f8464, pinned in tests/test_go_live.py). gather_research() still gathers only the base; main.py adds the layers for the
+# published forecast and hands every shadow the base, so their baselines don't move. To switch back: TOURNAMENT_CONFIG =
+# TOURNAMENT_BASE_CONFIG (new CONFIG_VERSION).
+EXP013_FULL_RESEARCH = replace(TOURNAMENT_BASE_CONFIG.research, source_block=SourceBlockConfig(), brief_writer=BriefWriterConfig(),
+                               news=NewsConfig())
+TOURNAMENT_CONFIG = replace(TOURNAMENT_BASE_CONFIG, research=EXP013_FULL_RESEARCH)
 # Fall 2026 tournament budget for the frontier ensemble (ADR-0009), enforced in code (forecast_engine/spend.py). Once reached,
 # tournament questions fall back to DEFAULT_CONFIG instead of going silent.
 TOURNAMENT_SEASON = "fall-2026"
@@ -222,27 +233,25 @@ EXP008_ARMS: dict[str, BotConfig] = {
 # EXP-002 Tier 1 (live 2026-11-07): "cheap-old-prompt" is the cheap ensemble with the previous prompt, paired with "cheap" (new
 # prompt) on every question, so live can switch back if the new prompt turns out worse (review at ~150 resolved questions).
 EXP002_OLD_PROMPT_SHADOW = replace(DEFAULT_CONFIG, prompt_version="template-2026-09-26-old")
-# EXP-013 "research v2" (B-80): built 2026-11-12, switched ON as shadows 2026-11-14 (Christian: one week as shadows, then the
-# full package goes live). Arms B-D are the cheap ensemble with one research change each, on top of the live question's research
-# (baseline = the "cheap" shadow). Arm F (replaces the earlier arm E, Christian 2026-11-14) is the live frontier roster with ALL
-# three changes together (source block on top of the stronger brief and the keyword + historical AskNews searches): the
-# candidate live setup, compared with the published live forecast. Per question, B and F share one fetch + extraction, C and F
-# one writer call, D and F one keyword call + AskNews searches (main.py `_run_shadows` cache), so nothing is paid twice.
-EXP013_FULL_RESEARCH = replace(TOURNAMENT_CONFIG.research, source_block=SourceBlockConfig(), brief_writer=BriefWriterConfig(),
-                               news=NewsConfig())
+# EXP-013 "research v2" (B-80): shadows since 2026-11-14. Arms B-D are the cheap ensemble with one research change each, on top of
+# the question's base research (baseline = the "cheap" shadow). Since the go-live the full package is the published forecast (it
+# was arm F, "exp013-f-frontier-full") and the previous live setup, the frontier roster on the base research, runs on as
+# "exp013-frontier-old" (same comparison, roles swapped: "full research minus old"). Per question every paid research step is run
+# once and shared by the live forecast and the arms with the same settings (main.py: one cache per question).
 EXP013_ARMS: dict[str, BotConfig] = {
     "exp013-b-source": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, source_block=SourceBlockConfig())),
     "exp013-c-writer": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, brief_writer=BriefWriterConfig())),
     "exp013-d-news": replace(DEFAULT_CONFIG, research=replace(DEFAULT_CONFIG.research, news=NewsConfig())),
-    "exp013-f-frontier-full": replace(TOURNAMENT_CONFIG, research=EXP013_FULL_RESEARCH),
+    "exp013-frontier-old": TOURNAMENT_BASE_CONFIG,
 }
 # B-96 frontier challenger (Christian, 2026-11-14, roster review https://claude.ai/artifact/4Y1Y3zVQzbi3Aw8NcWSopo): Gemini 4
 # Carbon answers every tournament question beside the live roster's Gemini 3.1 Pro (Feb 2026 preview), on the live question's
-# research, never published. At the next swap window (early Feb 2027) the live median is recomputed with Carbon's answer in place
+# base research, never published (since the EXP-013 go-live: compare with "exp013-frontier-old", which reads the same base
+# research, not with the published forecast). At the next swap window (early Feb 2027) the live median is recomputed with Carbon's answer in place
 # of 3.1 Pro's on the same questions ($0). OpenRouter list price 2026-11-14: $2/$10 per M (intro; Google says $4/$20 later).
 # One member, so min_successful_forecasters=1. To stop it, remove **CHALLENGER_SHADOWS.
 CHALLENGER_SHADOWS: dict[str, BotConfig] = {
-    "challenger-gemini-4-carbon": replace(TOURNAMENT_CONFIG, forecasters=(ForecasterSpec("google/gemini-4-carbon"),),
+    "challenger-gemini-4-carbon": replace(TOURNAMENT_BASE_CONFIG, forecasters=(ForecasterSpec("google/gemini-4-carbon"),),
                                           min_successful_forecasters=1),
 }
 # EXP-016 (B-98, F-24; Christian's OK 2026-11-15): spiky counts arm S1 as an unpublished shadow after an inconclusive screen.
@@ -263,6 +272,9 @@ DEFAULT_MAX_QUESTIONS_PER_RUN = 20
 DEFAULT_MAX_RUN_COST_USD = 2.00
 # Frontier forecasts cost ~$0.3/question, so a 20-question tournament run needs more headroom; the season cap is the real limit.
 TOURNAMENT_MAX_RUN_COST_USD = 10.00
+# Shadow forecasts run side by side after the live post, at most this many at once over the whole run (one after another they took
+# a median 8 min per question, max 17, week of 2026-11-14).
+MAX_CONCURRENT_SHADOWS = 6
 # Wide mode (B-40): Metaculus Cup + a few main-site questions per run, to unlock outcomes for evaluation.
 DEFAULT_MAIN_SITE_PER_RUN = 2
 MAIN_SITE_HORIZON_DAYS = 90  # only questions scheduled to resolve within this many days (fast feedback)

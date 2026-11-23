@@ -28,8 +28,9 @@ def _setup(tmp_path, monkeypatch, *, research=None, live_fails=False, forecastab
     real_forecast = main.forecast
 
     async def fake_research(snapshot, clock, cfg):
-        events.append(("research", snapshot))
-        return research if research is not None else _bundle()
+        base = research if research is not None else _bundle()
+        events.append(("research", base))
+        return base
 
     async def logged_forecast(snapshot, clock, bundle, cfg, llm):
         role = "live" if cfg.config_hash() == LIVE else "shadow"
@@ -70,10 +71,11 @@ def _shadow(tmp_path):
 
 
 def _same_inputs(events):
-    """The shadow forecast used the very snapshot and research object the live forecast used."""
+    """The shadow forecast used the very snapshot of the live forecast and the very base research it was built on."""
+    base, = [e[1] for e in events if e[0] == "research"]
     (live_snap, live_bundle), = [e[1] for e in events if e[0] == "live"]
     (shadow_snap, shadow_bundle), = [e[1] for e in events if e[0] == "shadow"]
-    return shadow_snap is live_snap and shadow_bundle is live_bundle
+    return shadow_snap is live_snap and shadow_bundle is base and live_bundle is not base
 
 
 def test_publish_happens_before_any_shadow_forecast(tmp_path, monkeypatch):
@@ -88,9 +90,9 @@ def test_live_record_is_written_before_shadows_run(tmp_path, monkeypatch):
     bot, events = _setup(tmp_path, monkeypatch)
     real_run_shadows = bot._run_shadows
 
-    async def check_then_run(snapshot, research, cfg):
+    async def check_then_run(*args, **kw):
         assert _status(_live(tmp_path)) == "ok"  # the live record (published=True) exists before the first shadow starts
-        await real_run_shadows(snapshot, research, cfg)
+        await real_run_shadows(*args, **kw)
 
     bot._run_shadows = check_then_run
     asyncio.run(bot._run_individual_question(_question()))

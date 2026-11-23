@@ -126,6 +126,7 @@ PROMPT_VERSION_BY_CONFIG_VERSION: dict[str, str] = {
     "frontier-2026-10-08": "template-2026-09-26",
     "frontier-2026-11-07": "dates-yes-live-2026-11-07",  # EXP-002 live
     "frontier-2026-11-14": "dates-yes-live-2026-11-07",  # B-96 polarity checker swap; same forecast prompt
+    "frontier-2026-11-24": "dates-yes-live-2026-11-07",  # EXP-013 go-live (ADR-0013): more research, same forecast prompt
 }
 
 

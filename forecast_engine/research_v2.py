@@ -15,10 +15,11 @@ Three steps, each switched on by its own field of ResearchConfig (all None on ev
   live AskNews items), plus the historical ("news knowledge") search; historical items are labelled "asknews_historical", so a
   later look can tell which search an article came from. The Gemini brief stays as live.
 
-The shadow runner (main.py `_run_shadows`) calls this before the EXP-008 follow-up step. `cache` is one dict per question, shared
-by that question's arms: arms with the same settings for a step share its paid work (B and F one fetch + extraction, C and F one
-writer call, D and F one keyword call + AskNews searches); the shared calls are the same objects in each record (the runner
-charges them once), and a shared failure hits each arm alike.
+Since the go-live (ADR-0013) the published tournament forecast uses all three steps: main.py applies them to the question's base
+research before the live forecast, then hands the base research to every shadow. `cache` is one dict per question, shared by the
+live forecast and that question's arms: configs with the same settings for a step share its paid work (live and B one fetch +
+extraction, live and C one writer call, live and D one keyword call + AskNews searches), also when they run at the same time; the
+shared calls are the same objects in each record (the runner charges them once), and a shared failure hits each alike.
 
 Nothing here ever raises: a failed step leaves the copy as it was for that step (so the arm sees the baseline's text there),
 keeps the calls already paid for, and notes the error. Every network step is refused under a clock earlier than today (an offline
@@ -57,6 +58,11 @@ URL_RE = re.compile(r"https?://[^\s<>\"'\]\[)(]+", re.I)
 CREDITS_LATEST, CREDITS_HISTORICAL = 1, 5  # research/03; the historical price is to be checked before switch-on
 
 
+# A step that takes longer is dropped (the research then keeps the base text for it). Longest seen in the first week: writer 53 s,
+# fetch + extraction 26 s, news 33 s; the news step also waits its turn for AskNews's 12 s spacing when several questions run.
+STEP_TIMEOUT_S = {"source_block": 90.0, "brief_writer": 90.0, "news": 240.0}
+
+
 class StepFailed(RuntimeError):
     """A step's shared result was a failure (the reason is the message); raised in each arm that uses it."""
 
@@ -83,16 +89,24 @@ def without_source_block(b: ResearchBundle) -> ResearchBundle:
 
 async def apply(q: QuestionSnapshot, bundle: ResearchBundle, clock: Clock, cfg: ResearchConfig, llm: LlmClient,
                 cache: dict | None = None) -> ResearchBundle:
-    """A copy of `bundle` with the configured EXP-013 steps applied. `bundle` itself is never modified."""
+    """A copy of `bundle` with the configured EXP-013 steps applied. `bundle` itself is never modified.
+
+    The paid part of every step is started at once (they don't depend on each other) and shared through `cache`; the results are
+    then merged in a fixed order, so the text does not depend on which step finished first."""
     out = copy_bundle(bundle)
     cache = {} if cache is None else cache
-    for name, step, scfg in (("news", _news, cfg.news), ("brief_writer", _brief_writer, cfg.brief_writer),
-                             ("source_block", _source_block, cfg.source_block)):
-        if scfg is None:
-            continue
+    steps = [(name, step, scfg) for name, step, scfg in (("news", _news, cfg.news), ("brief_writer", _brief_writer, cfg.brief_writer),
+                                                         ("source_block", _source_block, cfg.source_block)) if scfg is not None]
+    builders = {"news": lambda c: _build_news(q, clock, c, llm), "brief_writer": lambda c: _build_brief(q, clock, c),
+                "source_block": lambda c: _build_source_block(q, clock, c, llm)}
+    for name, _, scfg in steps:
+        if (name, scfg) not in cache:
+            cache[(name, scfg)] = asyncio.ensure_future(asyncio.wait_for(builders[name](scfg), STEP_TIMEOUT_S[name]))
+    for name, step, scfg in steps:
         snapshot = (list(out.items), list(out.providers))
         try:
-            await step(q, out, clock, scfg, llm, cache)
+            # shield: an arm that is cancelled must not cancel the shared work of the others
+            step(out, await asyncio.shield(cache[(name, scfg)]))
         except Exception as e:  # never fail the forecast: undo this step's text, keep the paid calls, note the error
             out.items, out.providers = snapshot
             why = str(e) if isinstance(e, StepFailed) else f"{type(e).__name__}: {e}"
@@ -281,12 +295,8 @@ def render_block(fetched_at: datetime, links: list[str], fetches: list[dict], ex
     return title, f"NOT FOUND / not retrievable: {why}\nLinks tried: " + ", ".join(links)
 
 
-async def _source_block(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, cfg: SourceBlockConfig, llm: LlmClient,
-                        cache: dict) -> None:
-    key = ("source_block", cfg)
-    if key not in cache:
-        cache[key] = await _build_source_block(q, clock, cfg, llm)
-    calls, item, errors = cache[key]
+def _source_block(out: ResearchBundle, result: tuple) -> None:
+    calls, item, errors = result
     out.calls.extend(calls)
     out.errors.extend(errors)
     if item is not None:
@@ -423,13 +433,8 @@ def _post_writer(model: str, prompt: str, thinking_level: str | None, max_tokens
 _REAL_POST_WRITER = _post_writer
 
 
-async def _brief_writer(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, cfg: BriefWriterConfig, llm: LlmClient,
-                        cache: dict) -> None:
-    """Arms with the same BriefWriterConfig (C and F) share one writer call per question (same call and item objects)."""
-    key = ("brief_writer", cfg)
-    if key not in cache:
-        cache[key] = await _build_brief(q, clock, cfg)
-    calls, errors, item, fail = cache[key]
+def _brief_writer(out: ResearchBundle, result: tuple) -> None:
+    calls, errors, item, fail = result
     out.calls.extend(calls)
     out.errors.extend(errors)
     if fail:
@@ -576,13 +581,8 @@ async def _news_call(calls: list[LlmCall], errors: list[str], clock: Clock, labe
             for a in articles]
 
 
-async def _news(q: QuestionSnapshot, out: ResearchBundle, clock: Clock, cfg: NewsConfig, llm: LlmClient, cache: dict) -> None:
-    """Arms with the same NewsConfig (D and F) share one keyword call and one set of AskNews searches per question, so the
-    credits are spent once."""
-    key = ("news", cfg)
-    if key not in cache:
-        cache[key] = await _build_news(q, clock, cfg, llm)
-    calls, errors, latest, hist, fail = cache[key]
+def _news(out: ResearchBundle, result: tuple) -> None:
+    calls, errors, latest, hist, fail = result
     out.calls.extend(calls)
     out.errors.extend(errors)
     if fail:
