@@ -63,5 +63,6 @@
   "8b8e4d3529ad89d9": {"label": "code-2026-11-15-exp016-shadow", "note": "F-24: EXP-016 per-value arm switched on as unpublished shadow exp016-s1-per-value (cheap roster; runs only on discrete questions with <= 25 values); published configs, hashes and CONFIG_VERSION unchanged"},
   "7cbf8893a3f15273": {"label": "code-2026-11-16", "note": "B-99: number reader accepts a currency written before the number (R$, US$, HK$, ¥, ₹, BRL ...); 2,049 stored numeric/discrete answers re-read: 2,042 identical, 7 newly readable (all R$), 0 changed, 0 newly failing; CONFIG_VERSION unchanged"},
   "0186f51c02d8bd90": {"label": "code-2026-11-16b", "note": "EXP-013 interim-check fixes: a plain space is never a thousands separator in the quote/value check (2 stored stock-price values now accepted); links copied from the question text are not flagged as unsourced; live configs and CONFIG_VERSION unchanged"},
-  "110456b1b3482b16": {"label": "code-2026-11-16c", "note": "Merge: B-99 number reader (PR #47) + EXP-013 interim-check fixes (PR #48); no change beyond the two"}
+  "110456b1b3482b16": {"label": "code-2026-11-16c", "note": "Merge: B-99 number reader (PR #47) + EXP-013 interim-check fixes (PR #48); no change beyond the two"},
+  "53e119d7b5c0eb33": {"label": "code-2026-11-23", "note": "B-100: multiple-choice option names match regardless of typographic quotes/dashes/spaces (live 46881); 1,029 stored answers re-read: 1,024 identical, 5 newly readable, 0 changed; CONFIG_VERSION unchanged"}
 }
