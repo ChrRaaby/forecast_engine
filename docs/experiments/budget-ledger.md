@@ -22,6 +22,7 @@ Every run that spends money adds a row (tools append automatically). Costs are O
 | 2026-11-15 | EXP-016 | (planned) | number check per-value-discrete-2026-11-15 vs live prompt, 22 discrete tournament records (≤ 25 values) × 2 arms, cheap config, DeepSeek pinned; est. $0.54, **hard cap $3** (actual cost added as its own row by the tool after the run) | 0 | $0.000 | $11.158 | $168.84 |
 | 2026-11-15 | EXP-015 | 20261115T201603Z | number check range-calibrated-2026-11-14, 102 numeric/discrete records × 2 arms, cheap config, hosts pinned {'deepseek/deepseek-v4.1-flash': 'wafer'} | 612 | $1.670 | $12.828 | $167.17 |
 | 2026-11-15 | EXP-016 | 20261115T203650Z | number check per-value-discrete-2026-11-15, 22 numeric/discrete records × 2 arms, cheap config, hosts pinned {'deepseek/deepseek-v4.1-flash': 'wafer'} | 132 | $0.420 | $13.248 | $166.75 |
+| 2026-11-23 | F-18 | 20261123T222244Z | prompt check dates-yes-2026-11-07, 121 binary records (0 with reused arm A), cheap config | 726 | $1.726 | $14.974 | $165.03 |
 
 ## EXP-008 research desk: separate line, $50 from the $100 PoC
 
