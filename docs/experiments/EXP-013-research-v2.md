@@ -214,5 +214,23 @@ result separately before and after this change as a check. Link check (plain dow
 ≤ 50%, blocked/error 15%, index pages 10%, JavaScript-only 9%, Metaculus-only 9%, no link 5%, PDF 2%, so B and F test the idea
 on roughly half the questions. Gemini URL reading and a researcher step stay for December (Christian).
 
+## Amendment 2026-11-23: one-week plumbing check and promotion to live (no score looked at)
+**Plumbing check** (item 2 of the 2026-11-14 amendment), 87 questions per arm, 14 Nov 21:12 to 23 Nov 15:18 UTC (27 FutureEval,
+60 MiniBench); read-only, no scores. No research step failed and no record is missing; one whole-arm failure (arm C, question 46824,
+the "R$" number-reader bug fixed in PR #47). Source block: 109 links tried, 79% fetched, value found 17/87 (20%), roughly equal before
+and after PR #48. AskNews 7 credits per question on all 87, no refusals. Cost per question: B $0.016, C $0.022, D $0.012, F $0.184
+(F forecasts $0.166 against the $0.12 estimate). Arm C: mean 3.1 Google queries per brief; 15% of briefs show 0 recorded queries,
+so query counts and the "unsourced links" flag (53%) are lower bounds or rough signals only. Three arm F briefs read by eye:
+no clear invented values; dates attached to sources not verifiable.
+**Promotion** (decided by Christian 2026-11-23, "i agree with your recommendations"): PR #51 merged 2026-11-23 23:05 UTC
+(6830817), CONFIG_VERSION `frontier-2026-11-24`. The published forecast is arm F exactly as tested (same config hash),
+**including the NOT FOUND source-block line** (kept so live matches the tested arm and the first 87 questions pool). The previous
+live setup runs on as shadow `exp013-frontier-old`; ADR-0013. Research steps now run side by side and shadows run concurrently
+(max 6); neither changes any forecast. Arm D reuses the live D-news searches (identical inputs, no double AskNews cost).
+The decision rule of the 2026-11-14 amendment is unchanged.
+**Cost** (accepted by Christian 2026-11-23, "i accept the cost"): arm F / frontier comparison at about $0.17 per question, up to
+about $124 to 2027-01-31, replacing the card's $0.12 / $68 estimate. The cost watch (B-101, PR #52/#54) warns above $0.20 per
+question or past $124.
+
 ## Results (generated)
 ## Decision
