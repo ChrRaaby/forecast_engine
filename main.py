@@ -49,6 +49,7 @@ from forecast_engine.config import (  # noqa: E402
     DEFAULT_CONFIG,
     WIDE_CONFIG,
     DEFAULT_MAX_QUESTIONS_PER_RUN,
+    MAX_CONCURRENT_SHADOWS,
     DEFAULT_MAIN_SITE_PER_RUN,
     DEFAULT_MAX_RUN_COST_USD,
     MAIN_SITE_HORIZON_DAYS,
@@ -222,6 +223,7 @@ class EngineBot(ForecastBot):
         self.run_info = run_info  # provenance (design doc 2026-11-03): None only in tests that don't care
         self.spent_usd = 0.0
         self._sem = asyncio.Semaphore(max_concurrent)
+        self._shadow_sem = asyncio.Semaphore(MAX_CONCURRENT_SHADOWS)  # shadows of the whole run; never holds up a live question
 
     async def _run_individual_question(self, question: MetaculusQuestion) -> ForecastReport:
         async with self._sem:
@@ -231,13 +233,27 @@ class EngineBot(ForecastBot):
             snapshot = to_snapshot(question)
             cfg = self._live_cfg()
             prov = self._provenance(cfg, role="live" if cfg is self.cfg else "live-fallback", roster=provenance.roster_name(cfg))
-            research = await gather_research(snapshot, self.clock, cfg.research)
-            try:
-                return await self._forecast_and_publish(question, snapshot, research, cfg, prov, start)
-            finally:
-                # B-86: shadows run only once the live forecast is published or its failure/refusal is written, so their minutes
-                # never delay the live post; same snapshot and research as the live forecast; _run_shadows never raises
-                await self._run_shadows(snapshot, research, cfg)
+            base = await gather_research(snapshot, self.clock, cfg.research)
+            cache: dict = {}  # this question's paid research-v2 steps, shared by the live forecast and the shadows
+            research = await self._live_research(snapshot, base, cfg, cache)
+            live = asyncio.ensure_future(self._forecast_and_publish(question, snapshot, research, cfg, prov, start))
+            await asyncio.wait([live])
+        # B-86: shadows run only once the live forecast is published or its failure/refusal is written. ADR-0013: they run outside
+        # the live slot, so they don't hold up the next question either, and on the base research (what the live forecast read
+        # before the go-live), so their baselines don't move. _run_shadows never raises.
+        await self._run_shadows(snapshot, base, cfg, cache, paid=research.calls)
+        return live.result()
+
+    async def _live_research(self, snapshot: QuestionSnapshot, base: ResearchBundle, cfg: BotConfig, cache: dict) -> ResearchBundle:
+        """The research of the published forecast: the base plus the config's research-v2 steps (ADR-0013). A step that fails leaves
+        the base text in its place; the base bundle itself is never changed. Never raises."""
+        if not research_v2.active(cfg.research):
+            return base
+        try:
+            return await research_v2.apply(snapshot, base, self.clock, cfg.research, self.live_llm, cache)
+        except Exception as e:
+            logger.warning(f"full research failed on {snapshot.page_url}, forecasting on the base research: {type(e).__name__}: {e}")
+            return base
 
     async def _forecast_and_publish(self, question: MetaculusQuestion, snapshot: QuestionSnapshot, research: ResearchBundle,
                                     cfg: BotConfig, prov: dict | None, start: float) -> ForecastReport:
@@ -253,7 +269,8 @@ class EngineBot(ForecastBot):
             self._count_failure(question)
             raise
         self._charge(cfg, record.cost_usd)
-        if self.publish_reports_to_metaculus and research.is_empty:
+        # a source block alone (it can be just a NOT FOUND line) is not research: refuse as before
+        if self.publish_reports_to_metaculus and research_v2.without_source_block(research).is_empty:
             self._write(self.writer, record, prov, published=False, status="refused_no_research")
             raise RuntimeError(f"refusing to publish without research: {research.errors}")
 
@@ -319,26 +336,37 @@ class EngineBot(ForecastBot):
         if self.season and cfg is self.cfg:
             self.season.add(usd)
 
-    async def _run_shadows(self, snapshot: QuestionSnapshot, research: ResearchBundle, live_cfg: BotConfig) -> None:
-        """B-62: forecast with each shadow config on the live question's research; never publish, never raise.
+    async def _run_shadows(self, snapshot: QuestionSnapshot, research: ResearchBundle, live_cfg: BotConfig,
+                           cache: dict | None = None, paid: list | None = None) -> None:
+        """B-62: forecast with each shadow config on the question's base research; never publish, never raise.
 
-        A shadow whose research config has a follow-up step (B-17, EXP-008) forecasts on an enlarged copy of the live research; the
-        live bundle is not changed and not paid for twice. The copy is stored in the shadow record, so the forecast replays.
-        EXP-013 (B-80) research-v2 steps run the same way, before the follow-up step; arms with the same settings for a step share its
-        paid work per question (`cache`: fetch + extraction, writer call, AskNews searches), and each call is charged once (`charged`)."""
-        cache: dict = {}
-        charged = {id(c) for c in research.calls}  # the live research was paid for by the live forecast
-        for name, scfg in self.shadows.items():
+        A shadow whose research config has a follow-up step (B-17, EXP-008) forecasts on an enlarged copy of the base research; the
+        base bundle is not changed and not paid for twice. The copy is stored in the shadow record, so the forecast replays.
+        EXP-013 (B-80) research-v2 steps run the same way, before the follow-up step; configs with the same settings for a step share
+        its paid work per question (`cache`, filled by the live forecast first), and each call is charged once (`charged`; `paid` =
+        the live forecast's research calls). The shadows run side by side, at most MAX_CONCURRENT_SHADOWS at once over the run."""
+        cache = {} if cache is None else cache
+        charged = {id(c) for c in [*research.calls, *(paid or [])]}  # paid for by the live forecast
+        await asyncio.gather(*[self._run_shadow(name, scfg, snapshot, research, live_cfg, cache, charged)
+                               for name, scfg in self.shadows.items()])
+
+    async def _run_shadow(self, name: str, scfg: BotConfig, snapshot: QuestionSnapshot, research: ResearchBundle,
+                          live_cfg: BotConfig, cache: dict, charged: set[int]) -> None:
+        shadow_research = research
+        writer = prov = None
+        try:
             if scfg.config_hash() == live_cfg.config_hash():
-                continue  # the live forecast already is this config (e.g. after the season fallback)
+                return  # the live forecast already is this config (e.g. after the season fallback)
             if prompt_versions.skips_question(scfg.prompt_version, snapshot):
-                continue  # EXP-016: a variant with its own answer format runs only where that format applies
-            writer = self._shadow_writers.get(name)
-            if writer is None:
-                writer = self._shadow_writers[name] = RecordWriter(f"{self.run_id}-shadow-{name}")
-            prov = self._provenance(scfg, role="shadow", roster=name)
-            try:
-                shadow_research = research
+                return  # EXP-016: a variant with its own answer format runs only where that format applies
+            async with self._shadow_sem:
+                if self.spent_usd >= self.max_run_cost_usd:
+                    logger.warning(f"shadow {name} skipped on {snapshot.page_url}: run cost cap reached (${self.spent_usd:.2f})")
+                    return
+                writer = self._shadow_writers.get(name)
+                if writer is None:
+                    writer = self._shadow_writers[name] = RecordWriter(f"{self.run_id}-shadow-{name}")
+                prov = self._provenance(scfg, role="shadow", roster=name)
                 if research_v2.active(scfg.research):
                     shadow_research = await research_v2.apply(snapshot, shadow_research, self.clock, scfg.research, self.llm,
                                                               cache)
@@ -353,11 +381,11 @@ class EngineBot(ForecastBot):
                 rec = await forecast(snapshot, self.clock, shadow_research, scfg, self.llm)
                 self.spent_usd += rec.cost_usd - shadow_research.cost_usd
                 self._write(writer, rec, prov, published=False, status="shadow")
-            except ForecastFailed as e:
-                self.spent_usd += e.record.cost_usd - shadow_research.cost_usd
-                self._write(writer, e.record, prov, published=False, status="shadow_failed")
-            except Exception as e:  # a shadow must never take the live forecast down
-                logger.warning(f"shadow {name} failed on {snapshot.page_url}: {type(e).__name__}: {e}")
+        except ForecastFailed as e:
+            self.spent_usd += e.record.cost_usd - shadow_research.cost_usd
+            self._write(writer, e.record, prov, published=False, status="shadow_failed")
+        except Exception as e:  # a shadow must never take the live forecast down
+            logger.warning(f"shadow {name} failed on {snapshot.page_url}: {type(e).__name__}: {e}")
 
     def _count_failure(self, question: MetaculusQuestion) -> None:
         """B-61: forecasting failures repeat on every run, so they count towards the retry cap."""

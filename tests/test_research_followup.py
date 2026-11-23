@@ -102,8 +102,8 @@ def test_off_by_default_and_live_hashes_unchanged():
     """The follow-up field must not move any existing config's hash, version or record (hashes as on main 532bdfb; changed on
     purpose at the EXP-002 go-live 2026-11-07, see tests/test_provenance.py)."""
     assert (DEFAULT_CONFIG.config_hash(), TOURNAMENT_CONFIG.config_hash(), WIDE_CONFIG.config_hash()) == (
-        "714ff99803b1", "f3c50c57f8d1", "19ba975f2f40")
-    assert CONFIG_VERSION == "frontier-2026-11-14"
+        "714ff99803b1", "d7d19c6f8464", "19ba975f2f40")  # tournament: EXP-013 go-live (it was f3c50c57f8d1)
+    assert CONFIG_VERSION == "frontier-2026-11-24"
     for cfg in (DEFAULT_CONFIG, TOURNAMENT_CONFIG, WIDE_CONFIG, SHADOW_CONFIGS["cheap"]):
         assert cfg.research.followup is None and "followup" not in cfg.to_dict()["research"]
 
@@ -161,7 +161,9 @@ def test_live_question_makes_zero_follow_up_calls(tmp_path, monkeypatch):
     asyncio.run(bot._run_individual_question(question))
     assert not [c for c in bot.llm.calls if c[0].startswith("research_followup")]
     live = json.loads((tmp_path / "live" / "run" / f"q{Q.question_id}.json").read_text(encoding="utf-8"))
-    assert live["research"] == json.loads(json.dumps(_bundle().to_dict()))
+    # since the EXP-013 go-live the live research is the base plus the research-v2 steps; here (a past clock) every step that would
+    # reach the web is refused, so the items are the base's, untouched
+    assert live["research"]["items"] == json.loads(json.dumps(_bundle().to_dict()))["items"]
 
 
 # --- the step itself ------------------------------------------------------------------------------------------------------
@@ -436,12 +438,14 @@ def test_follow_up_record_passes_check_record_and_replays(tmp_path, monkeypatch)
     assert not check_record(rec)
 
 
-def test_b96_carbon_challenger_is_one_frontier_member_on_live_research():
-    """B-96 (2026-11-14): Gemini 4 Carbon runs as a one-member shadow with the live frontier settings; only the roster differs."""
+def test_b96_carbon_challenger_is_one_frontier_member_on_base_research():
+    """B-96 (2026-11-14): Gemini 4 Carbon runs as a one-member shadow with the frontier settings on the base research (what the live
+    forecast read before the EXP-013 go-live); only the roster differs from exp013-frontier-old, its comparison since then."""
     from dataclasses import replace
 
     from forecast_engine.config import CHALLENGER_SHADOWS
 
     c = CHALLENGER_SHADOWS["challenger-gemini-4-carbon"]
     assert [s.model for s in c.forecasters] == ["google/gemini-4-carbon"] and c.min_successful_forecasters == 1
-    assert replace(c, forecasters=TOURNAMENT_CONFIG.forecasters, min_successful_forecasters=3) == TOURNAMENT_CONFIG
+    old = SHADOW_CONFIGS["exp013-frontier-old"]
+    assert replace(c, forecasters=old.forecasters, min_successful_forecasters=3) == old

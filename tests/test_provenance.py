@@ -29,9 +29,12 @@ from tests.test_tournament import _bot
 # EXP-008 6d8b6e4496ed / ba71edc3760a / f69ba9a46922, cheap-old-prompt cdd81dd8ebb6.
 # EXP-008 arms changed once more with the critic amendment (2026-11-15: critic gpt-5-mini -> gpt-6.1-terra); before it
 # 8fbc538e35c3 / c433e7a9467f / a3cba8219872.
+# The tournament hash changed, deliberately, at the EXP-013 go-live (CONFIG_VERSION frontier-2026-11-24, ADR-0013): full research =
+# arm F as tested (d7d19c6f8464); the previous live setup f3c50c57f8d1 runs on as the shadow exp013-frontier-old.
 CONFIG_HASHES = {
     "default": ("714ff99803b1", DEFAULT_CONFIG),
-    "tournament": ("f3c50c57f8d1", TOURNAMENT_CONFIG),
+    "tournament": ("d7d19c6f8464", TOURNAMENT_CONFIG),
+    "exp013-frontier-old": ("f3c50c57f8d1", SHADOW_CONFIGS["exp013-frontier-old"]),
     "wide": ("19ba975f2f40", WIDE_CONFIG),
     "exp008-b-gaps": ("8c4994f4f24f", EXP008_ARMS["exp008-b-gaps"]),
     "exp008-c-against": ("356fe2183b98", EXP008_ARMS["exp008-c-against"]),
