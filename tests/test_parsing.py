@@ -132,3 +132,19 @@ def test_currency_does_not_weaken_the_magnitude_and_number_checks(raw):
 def test_real_answer_with_reais_parses():
     text = "\n".join(f"Percentile {p}: R${v}" for p, v in zip(parsing.PERCENTILES, ("0.38", "0.40", "0.42", "0.43", "0.45", "0.47")))
     assert [v for _, v in parsing.parse_numeric(text, "BRL")] == pytest.approx([0.38, 0.40, 0.42, 0.43, 0.45, 0.47])
+
+
+def test_options_with_typographic_characters_match_plain_answers():
+    """B-100: live question 46881 (2026-11-19): Qwen typed "Ben'imana" for the option "Ben’imana" and lost its vote. With two other
+    members lost for other reasons, only 2 of 5 were left and the forecast failed; the next run had to repeat it."""
+    opts = ("Ben’imana", "7–9", "“The World Before”", "Other outcome")
+    plain = "Ben'imana: 40\n7-9: 30\n\"The World Before\": 20\nOther outcome: 10"
+    same = "Ben’imana: 40%\n7–9: 30%\n“The World Before”: 20%\nOther outcome: 10%"
+    for text in (plain, same):
+        assert parsing.parse_multiple_choice(text, opts) == pytest.approx(dict(zip(opts, (0.4, 0.3, 0.2, 0.1))))
+
+
+def test_options_differing_only_in_typography_are_never_merged():
+    opts = ("A-B", "A–B")
+    got = parsing.parse_multiple_choice("A-B: 70\nA–B: 30", opts)
+    assert got == pytest.approx({"A-B": 0.7, "A–B": 0.3})

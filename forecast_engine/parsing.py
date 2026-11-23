@@ -61,11 +61,23 @@ def _mc_by_letter(text: str, options: tuple[str, ...] | list[str]) -> dict[str, 
     return raw
 
 
+# Option names carry typographic characters ("Ben’imana", "7–9") that models often retype as plain ones. Both sides are made plain
+# before matching, one character for one, so nothing is added or dropped (B-100; live question 46881, 2026-11-19).
+_PLAIN = str.maketrans({"‘": "'", "’": "'", "ʼ": "'", "“": '"', "”": '"', "‐": "-", "‑": "-",
+                        "‒": "-", "–": "-", "—": "-", "−": "-", " ": " ", " ": " ", " ": " "})
+
+
 def _mc_by_name(text: str, options: tuple[str, ...] | list[str]) -> dict[str, float]:
     raw: dict[str, float] = {}
-    for opt in options:
+    plain = [opt.translate(_PLAIN).lower() for opt in options]
+    if len(set(plain)) == len(plain):  # never merge two options that differ only in such characters
+        text = text.translate(_PLAIN)
+        names = [opt.translate(_PLAIN) for opt in options]
+    else:
+        names = list(options)
+    for opt, name in zip(options, names):
         pattern = (
-            r"^[\s\*\-#>]*(?:Option[_\s]*)?[\"'“”]?" + re.escape(opt) + r"[\"'“”]?\**\s*:\s*\**\s*"
+            r"^[\s\*\-#>]*(?:Option[_\s]*)?[\"'“”]?" + re.escape(name) + r"[\"'“”]?\**\s*:\s*\**\s*"
             r"([0-9]+(?:\.[0-9]+)?)\s*(%?)"
         )
         found = re.findall(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
