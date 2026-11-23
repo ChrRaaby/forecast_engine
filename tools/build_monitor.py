@@ -202,6 +202,17 @@ def openrouter_usage() -> dict | None:
         return None
 
 
+def cost_warnings() -> list[str]:
+    """B-101: compare real spend with the estimates (tools/cost_watch.py), save the report for the data push, show a Windows
+    notification for new warnings, and return the WARN lines for _sync.log. Never blocks the archive."""
+    try:
+        from tools import cost_watch
+
+        return [f"COST {x.text}" for x in cost_watch.run(save=True, notify=True) if x.status == "WARN"]
+    except Exception as e:
+        return [f"cost watch failed: {type(e).__name__}: {e}"]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=DEFAULT_REPO)
@@ -223,6 +234,8 @@ def main() -> int:
             print(f"outcomes: checked {c['checked']}, newly resolved {c['newly_resolved']}, newly scored {c['newly_scored']}, errors {c['errors']}")
         except Exception as e:  # never block the archive on the outcome refresh
             warnings.append(f"outcome refresh failed: {type(e).__name__}: {e}")
+    if args.sync_only:
+        warnings += cost_warnings()
     if not args.no_sync:
         try:
             print(push_archive())
