@@ -1,6 +1,6 @@
 # 0014: Researcher pilot: Playwright and pypdf outside the lock file
 
-- **Status:** Proposed (accepted with the B-102 pull request)
+- **Status:** Accepted (Christian merged PR #55, 2026-11-24)
 - **Date:** 2026-11-24
 
 ## Context

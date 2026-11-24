@@ -11,5 +11,6 @@ Done
   the JavaScript group is one short of 5 today.
 
 Next
-- Christian: merge, and when to run (early December suggested, several drawn questions have no figure before 28 to 30 November).
+- PR #55 merged on Christian's OK (2026-11-24). Run on 2026-12-03 (agreed): 6 of the 14 drawn questions have no final figure before
+  28 to 30 November. Draw again that day, show the list, then his "go" before any spend (F-25).
 - Untested until the paid run: the real answers of the Gemini loop and the OpenRouter `/responses` call.

@@ -27,7 +27,7 @@ repaired. A refused block is kept in the sheet with the reasons. R0/R1 keep EXP-
   `max_uses`, the only way to bound a one-call reader beforehand, is honoured by Anthropic only. Hence R3 = Sonnet 5.5 ($2/$10 per M,
   on the frontier roster). Opus 5.5 at twice the token price would likely pass $0.15 (estimate).
 - **Browser on the PC:** three of three JavaScript-only links gave the figure a person sees (Power BI 1,734 active cases at 22/11/2026;
-  Texas DMV "1-20 of 1507 rows"; Netflix 7,300,000 views for the week to 15 Nov), in 2 to 9 seconds.
+  Texas DMV "1-20 of 1507 rows"; Netflix 7,300,000 views for the week to 15 Nov), in 2 to 9 seconds (all three compared with a screenshot; pages chosen, not drawn).
 - **Classifier:** it was a throw-away script in the EXP-013 thread's temporary folder, now `evals/source_links.py`. It runs on any
   question. Two corrections: short JSON answers and ordinary text with brackets (Wikipedia) were called JavaScript-only. Rerun on
   the 22 JavaScript links of 15 Nov (now): 19 still JavaScript-only, 2 readable, 1 blocked.
