@@ -72,6 +72,26 @@ def test_picker_respects_max_picks_already_picked_tag_caps_and_is_deterministic(
     assert a == [q.key for q in picker.pick(list(reversed(events)), NOW)]
 
 
+def test_picker_drops_questions_about_market_odds():
+    about_odds = _market(1, title="Democratic 2028 presidential odds 64-66% on November 27?")
+    by_rules = _market(2) | {"description": "Resolves by the Polymarket price of the named market."}
+    plain = _market(3) | {"description": "This market resolves Yes if it happens. See Polymarket for help."}
+    got = picker.pick([_event(1, [about_odds]), _event(2, [by_rules]), _event(3, [plain])], NOW)
+    assert [q.meta["market_id"] for q in got] == ["3"]
+
+
+def test_picker_caps_a_theme_spread_over_many_events_but_not_broad_sections():
+    broad = ("politics", "elections", "global-elections", "international-election-props")
+    events = [_event(i, [_market(800 + i)], tags=(*broad, "spain")) for i in range(20)]
+    events += [_event(100 + i, [_market(900 + i)], tags=(*broad, "taiwan", "taiwan-elections")) for i in range(10)]
+    events += [_event(200 + i, [_market(950 + i)], tags=(*broad, f"topic-{i}")) for i in range(4)]
+    got = picker.pick(events, NOW)
+    spain = [q for q in got if "spain" in q.meta["tags"]]
+    taiwan = [q for q in got if "taiwan" in q.meta["tags"]]
+    assert len(spain) == 2 and len(taiwan) == 2
+    assert len(got) == 8  # the four unrelated topics share only broad sections, so all stay
+
+
 # ---- odds scrubber ----
 
 def test_scrub_removes_odds_and_market_mentions_and_keeps_news():

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
@@ -17,6 +18,7 @@ from typing import Any, Iterable
 from evals.markets import Market, market_from_polymarket, parse_time
 from forecast_engine.schema import QuestionSnapshot
 
+from .scrub import SENTENCE_RE
 from .types import POLYMARKET_ID_BASE, FastQuestion, GetJson
 
 GAMMA = "https://gamma-api.polymarket.com"
@@ -38,8 +40,15 @@ class PickerConfig:
     price_band: tuple[float, float] = (0.10, 0.90)
     # Price-strike ladders on crypto are what source B already makes from the feed, so source A leaves them out.
     exclude_tags: tuple[str, ...] = ("crypto", "bitcoin", "ethereum", "solana", "xrp", "crypto-prices")
-    # Families with many near-identical events: at most this many questions per run, so one family cannot fill the sample.
-    tag_caps: tuple[tuple[str, int], ...] = (("tweets-markets", 2), ("equities", 3), ("recurring", 4), ("rotten-tomatoes", 1))
+    # Every tag is a theme (spain, taiwan, nvda, ...): at most `per_theme` questions per run share one, because they resolve together.
+    # First seen 2026-11-23: 8 of 12 picks were the Spanish election and 3 Taiwan's, each in an event of its own.
+    per_theme: int = 2
+    tag_caps: tuple[tuple[str, int], ...] = (("recurring", 4), ("rotten-tomatoes", 1))  # exceptions to per_theme
+    # Sections and formats of the site, too broad to be a theme: not capped.
+    broad_tags: tuple[str, ...] = (
+        "politics", "elections", "global-elections", "world-elections", "international-election-props", "main-election", "world",
+        "geopolitics", "finance", "economy", "business", "tech", "pop-culture", "culture", "science", "all", "breaking-news",
+        "hide-from-new", "daily", "weekly", "monthly")
 
 
 def sports_tag_id(get: GetJson) -> str:
@@ -78,6 +87,9 @@ def _rank(key: str, salt: str) -> str:
     return hashlib.sha256(f"{salt}:{key}".encode()).hexdigest()
 
 
+ODDS_RULES_RE = re.compile(r"\bodds\b|\b(?:polymarket|kalshi|betting)\b[^.]{0,60}\b(?:price|probabilit)", re.I)
+
+
 def yes_price(raw: dict[str, Any]) -> float | None:
     """The market's YES price from the Gamma payload, or None if it is not there."""
     try:
@@ -103,6 +115,8 @@ def eligible(events: Iterable[dict[str, Any]], now: datetime, cfg: PickerConfig 
             m = market_from_polymarket(raw, ev)
             if m is None or m.end is None or not (lo <= m.end <= hi):
                 continue
+            if SENTENCE_RE.search(m.title) or ODDS_RULES_RE.search(m.rules or ""):
+                continue  # a question about a market's own odds would show the forecasters market prices
             p = yes_price(raw)
             if p is None or not (cfg.price_band[0] <= p <= cfg.price_band[1]):
                 continue
@@ -134,10 +148,10 @@ def pick(events: Iterable[dict[str, Any]], now: datetime, already: set[str] = fr
         ek = str(ev.get("id") or ev.get("slug"))
         if per_event.get(ek, 0) >= cfg.per_event:
             continue
-        capped = [t for t in {x.get("slug") for x in ev.get("tags") or []} if t in caps]
-        if any(per_tag.get(t, 0) >= caps[t] for t in capped):
+        themes = {x.get("slug") for x in ev.get("tags") or []} - set(cfg.broad_tags) - {None}
+        if any(per_tag.get(t, 0) >= caps.get(t, cfg.per_theme) for t in themes):
             continue
-        for t in capped:
+        for t in themes:
             per_tag[t] = per_tag.get(t, 0) + 1
         per_event[ek] = per_event.get(ek, 0) + 1
         picked.append((m, ev, p))
