@@ -355,3 +355,20 @@ def test_ledger_row_is_added_after_the_last_table_row(tmp_path):
     lines = led.read_text(encoding="utf-8").splitlines()
     i = next(n for n, ln in enumerate(lines) if "EXP-012" in ln)
     assert lines[i - 1].startswith("| 2026-11-07 | EXP-002") and "$1.250" in lines[i] and "$0.250" in lines[i]
+
+
+def test_kalshi_is_off_by_default_and_makes_no_call():
+    class NoNet:
+        def get(self, *a, **k):
+            raise AssertionError("no network call expected")
+
+    args = mm.argparse.Namespace(with_kalshi=False, refresh_index=False)
+    assert mm.kalshi_series_or_none(NoNet(), args) is None
+    # with no series, candidates() never touches Kalshi (Polymarket and Manifold switched off here to stay offline)
+    assert mk.candidates("Will the Fed cut rates?", AS_OF, NoNet(), None, venues=("kalshi",)) == []
+
+
+def test_with_kalshi_flag_loads_the_series_list(monkeypatch):
+    monkeypatch.setattr(mm.mk, "kalshi_series_index", lambda http, refresh=False: [{"ticker": "KXFED"}])
+    args = mm.argparse.Namespace(with_kalshi=True, refresh_index=False)
+    assert mm.kalshi_series_or_none(object(), args) == [{"ticker": "KXFED"}]
