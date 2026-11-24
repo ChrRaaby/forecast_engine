@@ -150,3 +150,8 @@ questions a month, ~3 matched questions a month would take about a year to reach
 a "market said X%" line in the weekly miss review for matched questions (B-72), no forecast change. The code
 (`evals/markets.py`, `tools/market_match.py`) stays for that review line. Reopen only as a new variant card, e.g. if a
 future tournament's questions match markets far more often.
+
+2026-11-24, Christian: **Kalshi price fetch switched off.** `tools/market_match.py` no longer downloads the Kalshi
+series list, searches Kalshi or fetches Kalshi trades unless run with `--with-kalshi`. Polymarket (and Manifold) are
+unchanged. Reason: B-13 is parked and the fast lane (EXP-017) uses Polymarket only, so Kalshi data has no current use.
+Reversible: pass `--with-kalshi`.

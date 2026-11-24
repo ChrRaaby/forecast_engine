@@ -8,7 +8,10 @@ Per record: candidates (markets created before and open at as_of, evals/markets.
 OpenRouter, temperature 0) -> grade A/B/none + polarity for each candidate -> price at as_of for the A/B ones only.
 The judge sees, per candidate, only title, rules text and end date: no price, volume, status or resolution notes (LK3). Prices
 are fetched after the judge has answered. This script never reads the question results file (LK4); the table is only written,
-not frozen, here. Spend is booked in docs/experiments/budget-ledger.md under EXP-012 (cap $5: the run stops above it).
+not frozen, here.
+Kalshi is OFF by default (Christian, 2026-11-24: B-13 parked, fast lane is Polymarket only): no Kalshi series list, search
+or trades are fetched unless --with-kalshi is passed. Polymarket and Manifold are unchanged.
+Spend is booked in docs/experiments/budget-ledger.md under EXP-012 (cap $5: the run stops above it).
 """
 from __future__ import annotations
 
@@ -219,7 +222,7 @@ def summarise_row(row: dict[str, Any]) -> None:
     row["market_venues"] = sorted({c["venue"] for c in a_priced}, key=mk.VENUE_ORDER.index)
 
 
-async def match_record(path: Path, rec: dict[str, Any], http: mk.Http, kalshi_series: Sequence[dict[str, Any]], judge: Judge,
+async def match_record(path: Path, rec: dict[str, Any], http: mk.Http, kalshi_series: Sequence[dict[str, Any]] | None, judge: Judge,
                        sem: asyncio.Semaphore) -> dict[str, Any]:
     q = rec["question"]
     as_of = mk.parse_time(rec["as_of"])
@@ -401,8 +404,7 @@ async def run(args: argparse.Namespace) -> int:
     if args.dry_run:
         return 0
     http = mk.Http()
-    kalshi_series = mk.kalshi_series_index(http, refresh=args.refresh_index)
-    print(f"Kalshi series index: {len(kalshi_series)} series")
+    kalshi_series = kalshi_series_or_none(http, args)
     judge = Judge()
     cached_before = len(judge.cache)
     sem = asyncio.Semaphore(CONCURRENCY)
@@ -451,12 +453,24 @@ def report_only() -> int:
     return 0
 
 
+def kalshi_series_or_none(http: mk.Http, args: argparse.Namespace) -> list[dict[str, Any]] | None:
+    """None (no Kalshi network call at all) unless --with-kalshi. With None, mk.candidates skips Kalshi, so no Kalshi
+    market is judged or priced."""
+    if not getattr(args, "with_kalshi", False):
+        print("Kalshi: off (pass --with-kalshi to include it)")
+        return None
+    series = mk.kalshi_series_index(http, refresh=args.refresh_index)
+    print(f"Kalshi series index: {len(series)} series")
+    return series
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, default=0, help="only the first N records (smoke test)")
     ap.add_argument("--max-cost", type=float, default=MAX_COST_USD)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--refresh-index", action="store_true", help="re-download the Kalshi series list")
+    ap.add_argument("--with-kalshi", action="store_true", help="also search and price Kalshi (off by default since 2026-11-24)")
+    ap.add_argument("--refresh-index", action="store_true", help="re-download the Kalshi series list (only with --with-kalshi)")
     ap.add_argument("--report-only", action="store_true")
     args = ap.parse_args()
     if args.report_only:
