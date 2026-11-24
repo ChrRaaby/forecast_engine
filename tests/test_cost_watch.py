@@ -8,6 +8,7 @@ import tools.build_monitor as bm
 import tools.cost_watch as cw
 
 NOW = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
+EVENING = datetime(2026, 11, 23, 22, 0).astimezone()  # 22:00 local, wherever the test runs
 LIVE_HASH = "d7d19c6f8464"
 
 
@@ -109,7 +110,7 @@ def test_notified_once_then_reminded_and_again_after_recovery(tmp_path, monkeypa
     monkeypatch.setattr(cw, "toast", lambda title, text: shown.append(text) or True)
     monkeypatch.setattr(cw, "openrouter_key", lambda: None)
     monkeypatch.setattr(cw, "evaluate", lambda *a, **k: [cw.Line("season cap", state["status"], "too much")])
-    go = lambda d: cw.run(True, True, NOW + timedelta(days=d), tmp_path, tmp_path)  # noqa: E731
+    go = lambda d: cw.run(True, True, EVENING + timedelta(days=d), tmp_path, tmp_path)  # noqa: E731
     go(0), go(1)
     assert len(shown) == 1  # told once, not every day
     go(8)
@@ -128,7 +129,7 @@ def test_a_notification_that_could_not_be_shown_is_tried_again(tmp_path, monkeyp
     monkeypatch.setattr(cw, "openrouter_key", lambda: None)
     monkeypatch.setattr(cw, "evaluate", lambda *a, **k: [cw.Line("season cap", "WARN", "too much")])
     for d in (0, 1):
-        cw.run(True, True, NOW + timedelta(days=d), tmp_path, tmp_path)
+        cw.run(True, True, EVENING + timedelta(days=d), tmp_path, tmp_path)
     assert len(tries) == 2
 
 
@@ -141,3 +142,46 @@ def test_the_archive_task_gets_the_warnings_and_is_never_blocked(monkeypatch):
 
     monkeypatch.setattr(cw, "run", boom)
     assert bm.cost_warnings() == ["cost watch failed: ValueError: synthetic"]
+
+
+def test_alerts_wait_for_the_evening_and_a_missed_evening_is_caught_up(tmp_path, monkeypatch):
+    """Christian, 2026-11-24: alerts around 10 pm. Runs at logon or in the morning hold them back."""
+    shown = []
+    monkeypatch.setattr(cw, "toast", lambda title, text: shown.append(text) or True)
+    monkeypatch.setattr(cw, "openrouter_key", lambda: None)
+    monkeypatch.setattr(cw, "evaluate", lambda *a, **k: [cw.Line("season cap", "WARN", "too much")])
+    go = lambda day, h, m=0, d=tmp_path: cw.run(True, True, datetime(2026, 11, day, h, m).astimezone(), d, d)  # noqa: E731
+    go(24, 9), go(24, 20, 8), go(24, 21, 44)
+    assert not shown
+    go(24, 22, 0)
+    assert len(shown) == 1
+    go(24, 23), go(25, 9), go(25, 22)
+    assert len(shown) == 1  # told once
+    off = tmp_path / "off"
+    off.mkdir()
+    go(24, 20, d=off)  # seen at logon, then the PC is off at 22:00
+    assert len(shown) == 1
+    go(25, 9, d=off)  # the next run shows it at once
+    assert len(shown) == 2
+    night = tmp_path / "night"
+    night.mkdir()
+    go(25, 0, 30, d=night)  # first seen after midnight: waits for that evening
+    go(25, 9, d=night)
+    assert len(shown) == 2
+    go(25, 22, d=night)
+    assert len(shown) == 3
+
+
+def test_the_notification_stays_on_screen_and_its_text_cannot_break_it(monkeypatch):
+    import xml.etree.ElementTree as ET
+
+    got = {}
+
+    class Done:
+        returncode = 0
+
+    monkeypatch.setattr(cw.subprocess, "run", lambda *a, **k: got.update(k["env"]) or Done())
+    assert cw.toast("a & b", "<x> \"y\" 'z' $100")
+    t = ET.fromstring(got["COST_WATCH_TOAST"])
+    assert t.get("scenario") == "reminder" and t.find("actions/action").get("arguments") == "dismiss"
+    assert [x.text for x in t.iter("text")] == ["a & b", "<x> \"y\" 'z' $100"]

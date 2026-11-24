@@ -2,8 +2,9 @@
 
 Compares what was really spent with the estimates and says OK or WARN per line. Read-only and free: it reads the archived run
 records and logs, the OpenRouter usage of the experiments key (GET /key) and a dated reading of the AskNews usage page. It runs in
-the daily archive task (tools/build_monitor.py --sync-only: WARN lines land in data/runs/_sync.log and a Windows notification is
-shown when a line turns WARN) and by hand:
+the daily archive task (tools/build_monitor.py --sync-only: WARN lines land in data/runs/_sync.log) and by hand. When a line turns
+WARN, a Windows notification that stays on screen until it is closed is shown in the evening (Christian, 2026-11-24: "around 10 pm";
+the task has a 22:00 start): a run earlier in the day holds it back, and if the PC was off that evening the next run shows it.
 
     poetry run python tools/cost_watch.py            # print the report; exit 1 if anything is WARN
     poetry run python tools/cost_watch.py --save --notify   # what the archive task does
@@ -25,13 +26,14 @@ import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "data" / "cost_watch"
+EVENING = time(21, 45)  # local time; the archive task's evening start is 22:00
 FASTLANE = ROOT.parent / "forecast_engine_data_fastlane" / "fastlane"
 
 
@@ -285,10 +287,23 @@ def new_warnings(lines: list[Line], previous: dict[str, Any] | None, now: dateti
     return [x for x in lines if x.status == "WARN" and told.get(x.key, "") < cut]
 
 
+def evening_due(first_seen: datetime, now: datetime, at: time = EVENING) -> bool:
+    """Show it now? Yes from `at` (local time) to midnight, or when an evening has passed since it was first seen (PC was off)."""
+    local = now.astimezone()
+    slot = datetime.combine(local.date(), at).astimezone()  # a local wall-clock time, also when the clocks change
+    if local >= slot:
+        return True
+    last = datetime.combine(local.date() - timedelta(days=1), at).astimezone()
+    return first_seen.astimezone() < last
+
+
 def toast(title: str, text: str) -> bool:
     """A Windows notification (PowerShell, no extra packages). False if it could not be shown; never raises."""
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")  # noqa: E731
-    xml = f'<toast><visual><binding template="ToastGeneric"><text>{esc(title)}</text><text>{esc(text[:400])}</text></binding></visual></toast>'
+    # "reminder" stays on screen until closed (it needs a button); an ordinary one is gone after seconds (missed on 2026-11-23/24)
+    xml = (f'<toast scenario="reminder"><visual><binding template="ToastGeneric"><text>{esc(title)}</text><text>{esc(text[:400])}</text>'
+           '</binding></visual><actions><action content="Close" activationType="system" arguments="dismiss"/></actions>'
+           '<audio src="ms-winsoundevent:Notification.Reminder"/></toast>')
     ps = ("[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]|Out-Null;"
           "[Windows.Data.Xml.Dom.XmlDocument,Windows.Data.Xml.Dom,ContentType=WindowsRuntime]|Out-Null;"
           "$x=New-Object Windows.Data.Xml.Dom.XmlDocument;$x.LoadXml($env:COST_WATCH_TOAST);"
@@ -327,13 +342,17 @@ def run(save: bool, notify: bool, now: datetime | None = None, out_dir: Path = O
     told = dict((previous or {}).get("notified", {}))
     warn_keys = {x.key for x in lines if x.status == "WARN"}
     told = {k: v for k, v in told.items() if k in warn_keys}  # a line that is fine again is notified anew next time
-    if notify and fresh and toast("Forecast bot: cost estimate does not hold", "; ".join(x.text for x in fresh)):
-        told.update({x.key: now.isoformat() for x in fresh})
+    waiting = (previous or {}).get("waiting", {})  # line -> when it was first due to be told, so a missed evening is caught up
+    waiting = {x.key: waiting.get(x.key, now.isoformat()) for x in fresh}
+    due = [x for x in fresh if evening_due(datetime.fromisoformat(waiting[x.key]), now)]
+    if notify and due and toast("Forecast bot: cost estimate does not hold", "; ".join(x.text for x in due)):
+        told.update({x.key: now.isoformat() for x in due})
+        waiting = {k: v for k, v in waiting.items() if k not in {x.key for x in due}}
     if save:
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "latest.md").write_text(report(lines, now), encoding="utf-8")
-        (out_dir / "latest.json").write_text(json.dumps({"at": now.isoformat(), "lines": [x.__dict__ for x in lines], "notified": told},
-                                                        indent=1), encoding="utf-8")
+        (out_dir / "latest.json").write_text(json.dumps({"at": now.isoformat(), "lines": [x.__dict__ for x in lines], "notified": told,
+                                                         "waiting": waiting}, indent=1), encoding="utf-8")
         if key:
             with out_dir_history.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rows[-1]) + "\n")
