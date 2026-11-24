@@ -7,8 +7,10 @@
 --resolve     look up outcomes of closed questions (no model call).
 --report      counts only (picked / resolved / voided / open, records per arm, AskNews and spend). No scores until the
               paired log-score analysis exists.
-Arms are names from forecast_engine.config.SHADOW_CONFIGS. Default: cheap (A, the live research package), cheap-old-prompt,
-exp013-c-writer. exp013-d-news costs 6 extra AskNews credits a question and is only used if named with --arms.
+Arms are names from forecast_engine.config.SHADOW_CONFIGS. Default: cheap (A, the baseline: base research, one AskNews search and one
+Gemini search), cheap-old-prompt, exp013-c-writer. A is not the live bot's research, which is the full EXP-013 package since 2026-11-23
+(about 7 AskNews credits a question, too dear here): results compare arms with each other, not with the live bot (Christian,
+2026-11-24). exp013-d-news costs 6 extra AskNews credits a question and is only used if named with --arms.
 """
 from __future__ import annotations
 
