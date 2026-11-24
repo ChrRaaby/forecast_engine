@@ -40,7 +40,7 @@
 - Bot monitor (forecasts, model answers, research, costs per run): `poetry run python tools/build_monitor.py` downloads new
   GitHub Actions run artifacts into `data/runs/` (gitignored, kept forever; artifacts on GitHub expire after 90 days) and writes
   `dashboard/monitor.html`. Published copy: https://claude.ai/artifact/JPhLSguYoWVJzs3AHNJDLS. On "refresh the monitor": run it, then republish to that URL. A Windows scheduled
-  task "forecast_engine archive runs" on Christian's PC runs `--sync-only` daily at 09:00 and at logon (also saves each run's log);
+  task "forecast_engine archive runs" on Christian's PC runs `--sync-only` daily in the morning, at 22:00 (since 2026-11-24) and at logon (also saves each run's log);
   it appends to `data/runs/_sync.log`. `data/` is its own git repo, pushed after each sync to the
   **private** repo ChrRaaby/forecast_engine_data (never make it public: it holds licensed news text).
 
@@ -70,8 +70,8 @@
   - served-model / host change alerts for the weekly report (B-94): `poetry run python tools/check_served_models.py` (exit 1 = a WARNING)
   - model catalogue (B-96): newer models per vendor, price changes, retirements, from the live lists: `poetry run python tools/model_catalog.py` (snapshot in `data/model_catalog/`; exit 1 = one of our models missing or retiring)
   - cost watch (B-101): real spend vs the estimates, per question and projected: `poetry run python tools/cost_watch.py` (runs in the
-    daily archive task: WARN lines in `data/runs/_sync.log`, report in `data/cost_watch/latest.md`, a Windows notification when a line
-    turns WARN; AskNews wallet and prices come from `data/cost_watch/asknews_usage.json` or the fast lane's reading). Tell Christian
+    daily archive task: WARN lines in `data/runs/_sync.log`, report in `data/cost_watch/latest.md`, a Windows notification that stays on
+    screen, held until about 22:00, when a line turns WARN; AskNews wallet and prices come from `data/cost_watch/asknews_usage.json` or the fast lane's reading). Tell Christian
     about new WARN lines
   - dry run: `poetry run python main.py --mode test_questions --max-questions 3`
   - outcomes of forecast questions: `poetry run python -m evals.outcomes` (also runs in the daily archive task)
