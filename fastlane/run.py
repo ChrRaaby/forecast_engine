@@ -5,12 +5,12 @@
               command or a workflow without the switch cannot spend. Guards: $80 cap on the lane's own ledger, AskNews guard; both fail closed.
               A question the AskNews guard refuses is skipped and counted, so all forecast questions have the same research.
 --resolve     look up outcomes of closed questions (no model call).
---report      counts only (picked / resolved / voided / open, records per arm, AskNews and spend). No scores until the
-              paired log-score analysis exists.
-Arms are names from forecast_engine.config.SHADOW_CONFIGS. Default: cheap (A, the baseline: base research, one AskNews search and one
-Gemini search), cheap-old-prompt, exp013-c-writer. A is not the live bot's research, which is the full EXP-013 package since 2026-11-23
-(about 7 AskNews credits a question, too dear here): results compare arms with each other, not with the live bot (Christian,
-2026-11-24). exp013-d-news costs 6 extra AskNews credits a question and is only used if named with --arms.
+--report      counts only (picked / resolved / voided / open, records per arm, AskNews and spend).
+--look        the experiment's one look (fastlane.analyze): refuses to print a score before the card's question count or date.
+A run serves one experiment (--experiment, default EXP-017; fastlane/experiments.py), which fixes its arms, cap and stops. Arms come
+from fastlane/arms.py. EXP-017's A is `cheap`: base research, one AskNews and one Gemini search. A is not the live bot's research
+(the full EXP-013 package since 2026-11-23, about 7 AskNews credits a question, too dear here): results compare arms with each
+other, not with the live bot (Christian, 2026-11-24). exp013-d-news costs 6 extra AskNews credits a question and is only used if named with --arms.
 """
 from __future__ import annotations
 
@@ -28,13 +28,15 @@ import requests
 
 from forecast_engine import prompt_versions, provenance, research_followup, research_v2
 from forecast_engine.clock import Clock, SystemClock
-from forecast_engine.config import DEFAULT_CONFIG, SHADOW_CONFIGS
 from forecast_engine.core import ForecastFailed, forecast
 from forecast_engine.llm import LlmClient, OpenRouterClient
 from forecast_engine.records import RecordWriter
 from forecast_engine.research import gather_research
+from forecast_engine.schema import ResearchBundle
 
-from . import picker, resolve, series
+from . import analyze, picker, resolve, series
+from .arms import ARMS
+from .experiments import DEFAULT_EXPERIMENT, EXPERIMENTS, PINNED_HOSTS, Experiment
 from .guard import AskNewsGuard, GuardStop, SpendGuard
 from .scrub import scrub_bundle
 from .types import FastQuestion, GetJson
@@ -42,7 +44,7 @@ from .types import FastQuestion, GetJson
 logger = logging.getLogger("fastlane")
 ROOT = Path("data/fastlane")
 DEFAULT_MAX_RUN_USD = 2.0  # one run is a handful of questions at about $0.05-0.10 each; the $80 lane cap is the long-run limit
-DEFAULT_ARMS = ("cheap", "cheap-old-prompt", "exp013-c-writer")
+DEFAULT_ARMS = EXPERIMENTS[DEFAULT_EXPERIMENT].arms
 NEWS_CREDITS = 1 + 5  # EXP-013 D: keyword latest search + historical search (research_v2.CREDITS_*)
 
 
@@ -59,10 +61,12 @@ def load_picks(root: Path = ROOT) -> list[dict[str, Any]]:
 
 def collect(get: GetJson, now: datetime, root: Path = ROOT, n_series: int = 6, cfg: picker.PickerConfig = picker.PickerConfig()
             ) -> list[FastQuestion]:
-    done = {p["key"] for p in load_picks(root)}
+    picks = load_picks(root)
+    done = {p["key"] for p in picks}
+    done_events = {str(p["meta"].get("event_slug")) for p in picks if p["source"] == "polymarket" and p["meta"].get("event_slug")}
     qs: list[FastQuestion] = []
     try:
-        qs += picker.pick(picker.fetch_events(get, now, cfg), now, done, cfg)
+        qs += picker.pick(picker.fetch_events(get, now, cfg), now, done, cfg, done_events)
     except Exception as e:
         logger.warning(f"Polymarket picker failed: {type(e).__name__}: {e}")
     qs += series.make_questions(get, now, n_series, done=done)
@@ -79,12 +83,18 @@ def pick_only(get: GetJson, clock: Clock, root: Path = ROOT, n_series: int = 6) 
 
 
 def _google_queries(calls) -> int:
-    """Grounding queries Gemini ran in these calls (a fee at list price per query, counted by the spend guard)."""
-    return sum(len(c.extra.get("search_queries") or []) for c in calls if c.provider == "gemini")
+    """Grounding queries Gemini ran in these calls, for the spend guard's fee at list price. A call whose cost already includes
+    the fee (the EXP-013 writer records `grounding_fee_usd`) is left out, so the fee is counted once."""
+    return sum(len(c.extra.get("search_queries") or []) for c in calls
+               if c.provider == "gemini" and "grounding_fee_usd" not in c.extra)
 
 
 async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Clock, llm: LlmClient, spend: SpendGuard,
-                        news: AskNewsGuard, root: Path = ROOT, max_run_usd: float = DEFAULT_MAX_RUN_USD) -> dict[str, Any]:
+                        news: AskNewsGuard, root: Path = ROOT, max_run_usd: float = DEFAULT_MAX_RUN_USD,
+                        experiment: str | None = None) -> dict[str, Any]:
+    unknown = [a for a in arms if a not in ARMS]
+    if unknown or ARMS[arms[0]].research != "shared":
+        raise ValueError(f"unknown arms {unknown}, or the baseline {arms[0]!r} has no research")
     run_id = clock.now().strftime("%Y%m%dT%H%M%SZ")
     run_info = provenance.gather_run_info(run_id, "fastlane", False)
     writers = {a: RecordWriter(f"{run_id}-fast-{a}", root=root / "forecasts") for a in arms}
@@ -94,7 +104,7 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
         if summary["usd"] >= max_run_usd:
             summary["stopped"] = f"run cost cap ${max_run_usd:g}"
             break
-        snap, base = fq.snapshot, SHADOW_CONFIGS[arms[0]]
+        snap, base = fq.snapshot, ARMS[arms[0]].cfg
         degraded: list[str] = []
         wants_news = "asknews_latest" in base.research.providers
         why = news.why_not(1) if wants_news else None
@@ -122,12 +132,12 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
             degraded.append(report.flag())
             summary["odds_scrubbed_questions"] += 1
         cache: dict = {}
-        _append(root / "picks.jsonl", fq.to_pick(clock.now()))
+        _append(root / "picks.jsonl", {**fq.to_pick(clock.now()), "experiment": experiment})
         if fq.price_at_pick is not None:  # private: no prompt, research call or record reads this file
             _append(root / "market_prices.jsonl", {"key": fq.key, "price_at_pick": fq.price_at_pick, "at": clock.now().isoformat()})
         summary["questions"] += 1
         for arm in arms:
-            scfg = SHADOW_CONFIGS[arm]
+            scfg = ARMS[arm].cfg
             if scfg.research.news is not None:  # EXP-013 D: more AskNews credits, taken up front or the arm skips this question
                 if not news.allow(NEWS_CREDITS):
                     news.skip(NEWS_CREDITS)
@@ -140,7 +150,10 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
             arm_flags = list(degraded)
             try:
                 bundle = research
-                if research_v2.active(scfg.research):
+                if ARMS[arm].research == "none":  # the sensitivity control: nothing fetched, nothing shown
+                    bundle = ResearchBundle(as_of=research.as_of, providers=[], items=[], calls=[],
+                                            errors=["fastlane: no-research control arm"])
+                elif research_v2.active(scfg.research):
                     bundle = await research_v2.apply(snap, bundle, clock, scfg.research, llm, cache)
                 if scfg.research.followup is not None:
                     bundle = await research_followup.followup(snap, bundle, clock, scfg.research, llm)
@@ -172,6 +185,14 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
     return summary
 
 
+def picking_over(exp: Experiment, root: Path, now: datetime) -> str | None:
+    """Why the experiment takes no new questions, or None."""
+    if now.date() > exp.last_pick_day:
+        return f"last picking day {exp.last_pick_day} has passed"
+    n = len([p for p in load_picks(root) if p.get("experiment") == exp.name])
+    return f"{n} questions picked, the card's maximum is {exp.max_picked}" if n >= exp.max_picked else None
+
+
 def _append(path: Path, row: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -182,10 +203,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     ap = argparse.ArgumentParser(description="FAST lane (EXP-017 screen)")
     g = ap.add_mutually_exclusive_group(required=True)
-    for flag in ("pick-only", "run", "resolve", "report", "check-feeds"):
+    for flag in ("pick-only", "run", "resolve", "report", "look", "check-feeds"):
         g.add_argument(f"--{flag}", action="store_true")
     ap.add_argument("--go", action="store_true", help="with --run: really call the models (also needs FASTLANE_ON=1)")
-    ap.add_argument("--arms", default=",".join(DEFAULT_ARMS))
+    ap.add_argument("--experiment", default=DEFAULT_EXPERIMENT, choices=sorted(EXPERIMENTS))
     ap.add_argument("--series", type=int, default=6, help="code-made questions per run")
     ap.add_argument("--max-picks", type=int, default=12, help="Polymarket questions per run")
     ap.add_argument("--max-run-usd", type=float, default=DEFAULT_MAX_RUN_USD)
@@ -201,6 +222,10 @@ def main(argv: list[str] | None = None) -> int:
     if a.report:
         print(json.dumps(resolve.counts(), indent=1))
         return 0
+    if a.look:
+        text, ok = analyze.look(EXPERIMENTS[a.experiment], ROOT, clock.now())
+        print(text)
+        return 0 if ok else 2
     if a.pick_only:
         print(pick_only(http_get, clock, n_series=a.series))
         return 0
@@ -208,12 +233,12 @@ def main(argv: list[str] | None = None) -> int:
     if not (a.go and os.getenv("FASTLANE_ON") == "1"):
         print("refusing to spend: --run needs both --go and FASTLANE_ON=1 (no model calls were made)")
         return 2
-    arms = tuple(x for x in a.arms.split(",") if x)
-    bad = [x for x in arms if x not in SHADOW_CONFIGS]
-    if bad:
-        print(f"unknown arms {bad}; choose from {sorted(SHADOW_CONFIGS)}")
-        return 2
-    spend = SpendGuard()
+    exp = EXPERIMENTS[a.experiment]
+    why_stop = picking_over(exp, ROOT, clock.now())
+    if why_stop:
+        print(f"{exp.name}: no new questions ({why_stop})")
+        return 0
+    spend = SpendGuard(experiment=exp.name, experiment_cap_usd=exp.cap_usd)
     try:
         spend.start(clock.now().date())
     except GuardStop as e:
@@ -227,7 +252,10 @@ def main(argv: list[str] | None = None) -> int:
     qs = collect(http_get, clock.now(), n_series=a.series, cfg=picker.PickerConfig(max_picks=a.max_picks))
     saved = True
     try:
-        summary = asyncio.run(run_questions(qs, arms, clock, OpenRouterClient(clock), spend, news, max_run_usd=a.max_run_usd))
+        qs = qs[:max(0, exp.max_picked - len([p for p in load_picks(ROOT) if p.get("experiment") == exp.name]))]
+        llm = OpenRouterClient(clock, pinned_hosts=PINNED_HOSTS)
+        summary = asyncio.run(run_questions(qs, exp.arms, clock, llm, spend, news, max_run_usd=a.max_run_usd,
+                                            experiment=exp.name))
     except GuardStop as e:
         summary = {"stopped": str(e)}
     finally:

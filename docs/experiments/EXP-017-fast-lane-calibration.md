@@ -6,7 +6,7 @@ analysis tool. Starting point: Christian's decisions and the draft card of 2026-
 `proposals/fast-lane-card-and-build-brief.md`) and the two design reviews of 2026-11-16._
 
 - **Frozen:** no
-- **Date / author:** 2026-11-24, Claude (PC thread), for Christian.
+- **Date / author:** 2026-11-24, Claude (PC thread), for Christian. Choices decided and prerequisites built 2026-11-26.
 
 ## In plain words
 The lane asks unpublished questions that resolve in 3–7 days, so an idea gets an answer in weeks instead of months. Before we trust
@@ -24,8 +24,8 @@ this card can change the live bot.
   | A | `cheap`: cheap roster, live prompt, base research (one AskNews + one Gemini search) | `714ff99803b1` | baseline |
   | B | `cheap-old-prompt`: A with the pre-EXP-002 prompt | `cd5e67c675c1` | candidate |
   | C | `exp013-c-writer`: A with the EXP-013 brief writer | `aabd61c581b0` | candidate |
-  | A2 | A again, same research, second set of calls | as A | control, proposed (choice 1) |
-  | N | A with an empty research bundle | as A, research emptied | control, proposed (choice 1) |
+  | A2 | `cheap-aa`: A again, same research, second set of calls | as A | control |
+  | N | `no-research`: A with an empty research bundle | as A, research emptied | control |
 
   A, B and C are the configs running as tournament shadows, so the comparison is like with like. A is **not** the live bot's
   research (full EXP-013 package since 2026-11-23): results compare arms with each other (Christian, 2026-11-24).
@@ -91,24 +91,31 @@ this card can change the live bot.
   this run.
 
 ## Must be done before "Frozen" (none of it spends)
-1. `fastlane/arms.py`: the lane's own arm table with A2 and N, kept out of every tournament list (test), no live fingerprint change.
-2. Analysis tool: paired baseline score, the clusters above, refuses to print scores before the look; checked by re-scoring and a
-   made-up A/A set (protocol §7).
-3. Picker: one market per event across days, not only per run; store all tags (today's records keep six, too few to cluster on).
-4. Ledger: the writer's search fee is counted twice today (in its cost and again per query). Safe side, but it would end the run early.
-5. Per-experiment cap and the stop dates above enforced in code.
-6. Pin DeepSeek to one host in lane runs (protocol §5, B-93).
-7. Dry-run lists 2 and 3, with the mix and weekly supply written here. First look, 24 Nov: 18 source A questions after theme caps
-   (25 with a $2k liquidity floor; a 2–10 day window barely helps), but that is the stock, not what arrives per week, and 7 of list 1's
-   12 were elections. The two lists of 24 Nov, 15 minutes apart, shared 17 of 18 questions, so only one counts.
+Items 1–6 built 2026-11-26 (same PR as this card; `fastlane/arms.py`, `fastlane/experiments.py`, `fastlane/analyze.py`, tests in
+`tests/test_fastlane_exp017.py`):
+1. ✓ Arm table `fastlane/arms.py`: A2 = `cheap-aa`, N = `no-research`; no tournament list contains them and the live fingerprint
+   is unchanged (tests).
+2. ✓ Analysis tool (`python -m fastlane.run --look`): paired baseline score, the clusters above; locked before the look (counts only);
+   tested by re-scoring (identical numbers twice), a made-up A/A set and a made-up large loss.
+3. ✓ Picker: one market per event for the whole lane; every tag kept.
+4. ✓ Ledger: the writer's search fee is counted once.
+5. ✓ EXP-017's $45 cap (on top of the lane's $80), picking stops (320 picked or after 2027-01-20) and the look are in
+   `fastlane/experiments.py`; a run serves one experiment.
+6. ✓ DeepSeek pinned to **Wafer** in lane runs, the host EXP-015 and EXP-016 used. Note: Wafer serves it quantized (mxfp4,
+   OpenRouter's endpoint list 2026-11-26), not the unquantized host protocol §5 asks for; chosen for comparability with those runs.
+   The tournament shadows B and C are compared with are not pinned.
+7. Dry-run lists: 24 Nov (×2, 15 minutes apart: 17 of 18 shared, counts once), 25 Nov (9 new), 26 Nov (10 new), on until 1 Dec
+   (Christian 2026-11-26). Over three days 23 different Polymarket questions from 22 events, about 7 new a day, plus 6 code-made, so
+   about 90 a week and **about three weeks to 280** (estimate). Mix: elections (Spain, Taiwan, Victoria, Gagauzia, Quito, Maribor),
+   share and commodity price levels, Musk's tweet count, Trump's meetings, Hormuz ship traffic, the FAA ground stop. Final count
+   and mix written here when the listing ends.
 8. Christian: secrets in the data repo, an AskNews reading (the 23 Nov one expires on 29 Nov), the cron-job.org trigger.
 
-## Choices for Christian
-1. **Controls A2 and N?** Recommended: yes (about $6). Without them the likely result is "inconclusive" with nothing learned.
-2. **Protocol text.** The proposed §3 addition (FAST results separate, screens only, price never shown, spend line) is in the 15 Nov
-   draft. Recommended: add it when this card is frozen.
-3. **Reasoning-effort arms in the same run?** The approved 2×2 (about $13, cap $25) recommends starting together, so A and C are paid
-   once. Recommended: yes if its arms and pilot are ready when this freezes; otherwise don't wait.
+## Choices (decided by Christian 2026-11-26: "i approve the recommendation for each of the three choices")
+1. **Controls A2 and N: yes** (about $6).
+2. **Protocol text: added when this card is frozen** (the §3 "FAST pool" text of the 15 Nov draft).
+3. **Reasoning-effort arms in the same run: yes, if its arms and pilot are ready when this freezes**; otherwise this run does not
+   wait. Its arms exist (`effort-high`, `writer-effort-high` in `fastlane/arms.py`); its card, pilot and contrast are not built.
 
 ## Later cards that fit this lane (not part of this one)
 Each gets its own card, its own m and its own look, and is compared with arm A on the same questions and research (no extra AskNews
