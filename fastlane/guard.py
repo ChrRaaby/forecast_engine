@@ -61,9 +61,11 @@ def _write(path: Path, obj: dict) -> None:
 
 @dataclass
 class SpendGuard:
-    cap_usd: float = 80.0
+    cap_usd: float = 80.0  # the whole lane
     state_path: Path = STATE_DIR / "spend.json"
     init_ok: bool = field(default_factory=init_allowed)
+    experiment: str | None = None  # the experiment this run serves; its own cap applies too
+    experiment_cap_usd: float | None = None
     run_usd: float = 0.0
     google_queries: int = 0
 
@@ -76,20 +78,32 @@ class SpendGuard:
         st = _read(self.state_path, self.init_ok)
         if self.spent(st) >= self.cap_usd:
             raise GuardStop(f"FAST lane spend ${self.spent(st):.2f} has reached the ${self.cap_usd:g} cap")
+        if self.experiment_cap_usd is not None and self.spent_experiment(st) >= self.experiment_cap_usd:
+            raise GuardStop(f"{self.experiment} spend ${self.spent_experiment(st):.2f} has reached its ${self.experiment_cap_usd:g} cap")
 
     def spent(self, st: dict | None = None) -> float:
         st = _read(self.state_path, self.init_ok) if st is None else st
         return float(st.get("ledger_usd", 0.0)) + self.run_usd
 
+    def spent_experiment(self, st: dict | None = None) -> float:
+        st = _read(self.state_path, self.init_ok) if st is None else st
+        return float((st.get("by_experiment") or {}).get(self.experiment or "", 0.0)) + self.run_usd
+
     def add(self, usd: float, google_queries: int = 0) -> None:
         self.google_queries += google_queries
         self.run_usd += max(0.0, usd) + google_queries * GOOGLE_USD_PER_QUERY
-        if self.spent() >= self.cap_usd:
+        st = _read(self.state_path, self.init_ok)
+        if self.spent(st) >= self.cap_usd:
             raise GuardStop(f"FAST lane spend reached ${self.cap_usd:g}")
+        if self.experiment_cap_usd is not None and self.spent_experiment(st) >= self.experiment_cap_usd:
+            raise GuardStop(f"{self.experiment} spend reached its ${self.experiment_cap_usd:g} cap")
 
     def save(self) -> None:
         st = _read(self.state_path, self.init_ok)
         st["ledger_usd"] = round(float(st.get("ledger_usd", 0.0)) + self.run_usd, 6)
+        if self.experiment:
+            by = st.setdefault("by_experiment", {})
+            by[self.experiment] = round(float(by.get(self.experiment, 0.0)) + self.run_usd, 6)
         st["google_queries"] = int(st.get("google_queries", 0)) + self.google_queries
         self.run_usd, self.google_queries = 0.0, 0
         _write(self.state_path, st)

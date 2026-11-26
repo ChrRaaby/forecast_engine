@@ -132,13 +132,15 @@ def to_question(m: Market, ev: dict[str, Any], now: datetime, price: float | Non
         open_time=now, scheduled_resolution_time=m.end)
     return FastQuestion(key=f"pm:{m.market_id}", source="polymarket", snapshot=q, closes=m.end,
                         meta={"market_id": m.market_id, "event_slug": ev.get("slug"), "url": m.url,
-                              "tags": [t.get("slug") for t in ev.get("tags") or []][:6]}, price_at_pick=price)
+                              "tags": [t.get("slug") for t in ev.get("tags") or []]}, price_at_pick=price)
 
 
 def pick(events: Iterable[dict[str, Any]], now: datetime, already: set[str] = frozenset(),
-         cfg: PickerConfig = PickerConfig()) -> list[FastQuestion]:
+         cfg: PickerConfig = PickerConfig(), already_events: set[str] = frozenset()) -> list[FastQuestion]:
     """Seeded-hash sample: at most `per_event` per event, at most `max_picks` in all, none picked before."""
-    pairs = [(m, ev, p) for m, ev, p in eligible(events, now, cfg) if f"pm:{m.market_id}" not in already]
+    # one market per event for the whole lane, not only per run: an event's sister markets resolve together (EXP-017 card)
+    pairs = [(m, ev, p) for m, ev, p in eligible(events, now, cfg)
+             if f"pm:{m.market_id}" not in already and str(ev.get("slug") or ev.get("id")) not in already_events]
     pairs.sort(key=lambda p: _rank(p[0].market_id, cfg.salt))
     per_event: dict[str, int] = {}
     per_tag: dict[str, int] = {}
