@@ -7,8 +7,9 @@
 --resolve     look up outcomes of closed questions (no model call).
 --report      counts only (picked / resolved / voided / open, records per arm, AskNews and spend).
 --look        the experiment's one look (fastlane.analyze): refuses to print a score before the card's question count or date.
-A run serves one experiment (--experiment, default EXP-017; fastlane/experiments.py), which fixes its arms, cap and stops. Arms come
-from fastlane/arms.py. EXP-017's A is `cheap`: base research, one AskNews and one Gemini search. A is not the live bot's research
+--pilot-effort --go   EXP-018's pilot: 10 open questions, arms cheap and effort-high, a table per model, no scores (FASTLANE_ON=1 too).
+A run serves one experiment, or several on the same questions (--experiment EXP-017,EXP-018; the first is primary; see
+fastlane/experiments.py `plan`), which fix their arms, caps and stops. Arms come from fastlane/arms.py. EXP-017's A is `cheap`: base research, one AskNews and one Gemini search. A is not the live bot's research
 (the full EXP-013 package since 2026-11-23, about 7 AskNews credits a question, too dear here): results compare arms with each
 other, not with the live bot (Christian, 2026-11-24). exp013-d-news costs 6 extra AskNews credits a question and is only used if named with --arms.
 """
@@ -36,7 +37,8 @@ from forecast_engine.schema import ResearchBundle
 
 from . import analyze, picker, resolve, series
 from .arms import ARMS
-from .experiments import DEFAULT_EXPERIMENT, EXPERIMENTS, PINNED_HOSTS, Experiment
+from .experiments import (DEFAULT_EXPERIMENT, EFFORT_PILOT_MAX_SECONDS, EFFORT_PILOT_MIN_OK, EFFORT_PILOT_QUESTIONS, EXPERIMENTS,
+                          PINNED_HOSTS, Experiment, plan)
 from .guard import AskNewsGuard, GuardStop, SpendGuard
 from .scrub import scrub_bundle
 from .types import FastQuestion, GetJson
@@ -91,7 +93,11 @@ def _google_queries(calls) -> int:
 
 async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Clock, llm: LlmClient, spend: SpendGuard,
                         news: AskNewsGuard, root: Path = ROOT, max_run_usd: float = DEFAULT_MAX_RUN_USD,
-                        experiment: str | None = None) -> dict[str, Any]:
+                        experiment: str | None = None, owners: dict[str, str] | None = None) -> dict[str, Any]:
+    """owners: arm -> the experiment whose ledger line pays for it (default: `experiment` for all). The shared research is paid by
+    the primary `experiment`; a joined experiment whose cap is used up loses only its own arms."""
+    owners = owners or {}
+    served = [experiment] + sorted({o for o in owners.values() if o and o != experiment}) if experiment else []
     unknown = [a for a in arms if a not in ARMS]
     if unknown or ARMS[arms[0]].research != "shared":
         raise ValueError(f"unknown arms {unknown}, or the baseline {arms[0]!r} has no research")
@@ -99,7 +105,7 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
     run_info = provenance.gather_run_info(run_id, "fastlane", False)
     writers = {a: RecordWriter(f"{run_id}-fast-{a}", root=root / "forecasts") for a in arms}
     summary = {"questions": 0, "records": 0, "failed": 0, "usd": 0.0, "asknews_credits": 0, "asknews_skipped": 0,
-               "odds_scrubbed_questions": 0, "research_incomplete": 0, "stopped": None}
+               "odds_scrubbed_questions": 0, "research_incomplete": 0, "arms_capped": 0, "stopped": None}
     for fq in qs:
         if summary["usd"] >= max_run_usd:
             summary["stopped"] = f"run cost cap ${max_run_usd:g}"
@@ -132,12 +138,16 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
             degraded.append(report.flag())
             summary["odds_scrubbed_questions"] += 1
         cache: dict = {}
-        _append(root / "picks.jsonl", {**fq.to_pick(clock.now()), "experiment": experiment})
+        _append(root / "picks.jsonl", {**fq.to_pick(clock.now()), "experiment": experiment, "experiments": served})
         if fq.price_at_pick is not None:  # private: no prompt, research call or record reads this file
             _append(root / "market_prices.jsonl", {"key": fq.key, "price_at_pick": fq.price_at_pick, "at": clock.now().isoformat()})
         summary["questions"] += 1
         for arm in arms:
             scfg = ARMS[arm].cfg
+            line = owners.get(arm, experiment)
+            if line != experiment and spend.exhausted(line):  # a joined experiment's cap: only its own arms stop
+                summary["arms_capped"] += 1
+                continue
             if scfg.research.news is not None:  # EXP-013 D: more AskNews credits, taken up front or the arm skips this question
                 if not news.allow(NEWS_CREDITS):
                     news.skip(NEWS_CREDITS)
@@ -163,7 +173,7 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
                 bundle, rep2 = scrub_bundle(bundle)  # steps that add research (EXP-013) are scrubbed too
                 if rep2.any and rep2.flag() not in arm_flags:
                     arm_flags.append(rep2.flag())
-                spend.add(step_usd, step_queries)  # the research steps' own calls, charged once here
+                spend.add(step_usd, step_queries, line=line)  # the research steps' own calls, charged once here
                 rec = await forecast(snap, clock, bundle, scfg, llm)
                 usd = rec.cost_usd - bundle.cost_usd  # the forecasters (and polarity check) only: the research is already charged
                 status = "fastlane"
@@ -180,7 +190,7 @@ async def run_questions(qs: list[FastQuestion], arms: tuple[str, ...], clock: Cl
             writers[arm].write(rec, provenance=prov, published=False, status=status)
             summary["records"] += 1
             summary["usd"] += usd + step_usd
-            spend.add(usd)
+            spend.add(usd, line=line)
         spend.save()  # after every question: a crash loses at most one question's spend record
     return summary
 
@@ -189,8 +199,49 @@ def picking_over(exp: Experiment, root: Path, now: datetime) -> str | None:
     """Why the experiment takes no new questions, or None."""
     if now.date() > exp.last_pick_day:
         return f"last picking day {exp.last_pick_day} has passed"
-    n = len([p for p in load_picks(root) if p.get("experiment") == exp.name])
+    n = picked_for(exp, root)
     return f"{n} questions picked, the card's maximum is {exp.max_picked}" if n >= exp.max_picked else None
+
+
+def picked_for(exp: Experiment, root: Path) -> int:
+    return len([p for p in load_picks(root) if exp.name in (p.get("experiments") or [p.get("experiment")])])
+
+
+def _median(xs: list[float]) -> float:
+    xs = sorted(xs)
+    return float("nan") if not xs else (xs[len(xs) // 2] if len(xs) % 2 else (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2)
+
+
+def pilot_table(root: Path, low: str = "cheap", high: str = "effort-high") -> tuple[str, bool]:
+    """EXP-018 pilot table from the pilot's records, per model: output tokens at medium and high, cost, seconds, finish reasons,
+    answers that parsed. Pass rule from the card. Scores nothing (the questions are open)."""
+    rows: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for path in sorted((root / "forecasts").glob("*-fast-*/q*.json")):
+        arm = path.parent.name.split("-fast-", 1)[1]
+        if arm not in (low, high):
+            continue
+        for f in json.loads(path.read_text(encoding="utf-8")).get("forecasters", []):
+            rows.setdefault((f["model"], arm), []).append(f)
+    lines = ["| Model | Arm | Answers | Parsed | Median output tokens | Max seconds | Mean $ | Cut off (length) |",
+             "|---|---|---|---|---|---|---|---|"]
+    ok = bool(rows)
+    for model in sorted({m for m, _ in rows}):
+        for arm in (low, high):
+            fs = rows.get((model, arm), [])
+            calls = [f["call"] for f in fs]
+            parsed = sum(1 for f in fs if f.get("prediction") is not None)
+            secs = max([c.get("latency_s") or 0.0 for c in calls], default=0.0)
+            cut = sum(1 for c in calls if (c.get("extra") or {}).get("finish_reason") == "length")
+            cost = sum(c.get("cost_usd") or 0.0 for c in calls) / max(1, len(calls))
+            lines.append(f"| {model} | {arm} | {len(fs)} | {parsed} | {_median([c.get('tokens_out') or 0 for c in calls]):.0f} | "
+                         f"{secs:.0f} | {cost:.4f} | {cut} |")
+            if arm == high and (parsed < min(EFFORT_PILOT_MIN_OK, len(fs)) or len(fs) < EFFORT_PILOT_MIN_OK
+                                or secs > EFFORT_PILOT_MAX_SECONDS):
+                ok = False
+    verdict = ("**Pass**: every model answered and parsed on at least "
+               f"{EFFORT_PILOT_MIN_OK} of {EFFORT_PILOT_QUESTIONS} at high effort, no call over {EFFORT_PILOT_MAX_SECONDS:.0f} s."
+               if ok else "**Not passed**: see the card (raise that model's max_tokens once and repeat, else report).")
+    return "\n".join(["# EXP-018 pilot (no scores)", "", *lines, "", verdict]), ok
 
 
 def _append(path: Path, row: dict) -> None:
@@ -203,14 +254,19 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     ap = argparse.ArgumentParser(description="FAST lane (EXP-017 screen)")
     g = ap.add_mutually_exclusive_group(required=True)
-    for flag in ("pick-only", "run", "resolve", "report", "look", "check-feeds"):
+    for flag in ("pick-only", "run", "resolve", "report", "look", "check-feeds", "pilot-effort"):
         g.add_argument(f"--{flag}", action="store_true")
     ap.add_argument("--go", action="store_true", help="with --run: really call the models (also needs FASTLANE_ON=1)")
-    ap.add_argument("--experiment", default=DEFAULT_EXPERIMENT, choices=sorted(EXPERIMENTS))
+    ap.add_argument("--experiment", default=DEFAULT_EXPERIMENT,
+                    help=f"one of {sorted(EXPERIMENTS)}, or several joined with commas (the first is primary)")
     ap.add_argument("--series", type=int, default=6, help="code-made questions per run")
     ap.add_argument("--max-picks", type=int, default=12, help="Polymarket questions per run")
     ap.add_argument("--max-run-usd", type=float, default=DEFAULT_MAX_RUN_USD)
     a = ap.parse_args(argv)
+    names = [x.strip() for x in a.experiment.split(",") if x.strip()]
+    if not names or any(n not in EXPERIMENTS for n in names) or len(set(names)) != len(names):
+        print(f"unknown or repeated experiment in {a.experiment!r}; choose from {sorted(EXPERIMENTS)}")
+        return 2
     clock = SystemClock()
     if a.check_feeds:
         res = series.check_feeds(http_get)
@@ -223,22 +279,25 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(resolve.counts(), indent=1))
         return 0
     if a.look:
-        text, ok = analyze.look(EXPERIMENTS[a.experiment], ROOT, clock.now())
-        print(text)
-        return 0 if ok else 2
+        texts = [analyze.look(EXPERIMENTS[n], ROOT, clock.now()) for n in names]
+        print("\n\n".join(t for t, _ in texts))
+        return 0 if all(ok for _, ok in texts) else 2
     if a.pick_only:
         print(pick_only(http_get, clock, n_series=a.series))
         return 0
-    # --run
+    # --run / --pilot-effort
     if not (a.go and os.getenv("FASTLANE_ON") == "1"):
-        print("refusing to spend: --run needs both --go and FASTLANE_ON=1 (no model calls were made)")
+        print("refusing to spend: --run and --pilot-effort need both --go and FASTLANE_ON=1 (no model calls were made)")
         return 2
-    exp = EXPERIMENTS[a.experiment]
-    why_stop = picking_over(exp, ROOT, clock.now())
+    if a.pilot_effort:
+        names = ["EXP-018"]
+    exp = EXPERIMENTS[names[0]]
+    joined = [EXPERIMENTS[n] for n in names[1:] if not picking_over(EXPERIMENTS[n], ROOT, clock.now())]
+    why_stop = None if a.pilot_effort else picking_over(exp, ROOT, clock.now())
     if why_stop:
         print(f"{exp.name}: no new questions ({why_stop})")
         return 0
-    spend = SpendGuard(experiment=exp.name, experiment_cap_usd=exp.cap_usd)
+    spend = SpendGuard(experiment=exp.name, experiment_cap_usd=exp.cap_usd, extra_caps={e.name: e.cap_usd for e in joined})
     try:
         spend.start(clock.now().date())
     except GuardStop as e:
@@ -249,13 +308,24 @@ def main(argv: list[str] | None = None) -> int:
     if why:
         print(f"stopped before picking: {why}")
         return 0
-    qs = collect(http_get, clock.now(), n_series=a.series, cfg=picker.PickerConfig(max_picks=a.max_picks))
     saved = True
     try:
-        qs = qs[:max(0, exp.max_picked - len([p for p in load_picks(ROOT) if p.get("experiment") == exp.name]))]
         llm = OpenRouterClient(clock, pinned_hosts=PINNED_HOSTS)
-        summary = asyncio.run(run_questions(qs, exp.arms, clock, llm, spend, news, max_run_usd=a.max_run_usd,
-                                            experiment=exp.name))
+        if a.pilot_effort:  # open questions only, kept apart from every experiment's pool, never scored
+            pilot_root = ROOT / "pilot-effort"
+            qs = collect(http_get, clock.now(), root=pilot_root, n_series=4,
+                         cfg=picker.PickerConfig(max_picks=EFFORT_PILOT_QUESTIONS - 4))[:EFFORT_PILOT_QUESTIONS]
+            summary = asyncio.run(run_questions(qs, ("cheap", "effort-high"), clock, llm, spend, news, root=pilot_root,
+                                                max_run_usd=a.max_run_usd, experiment="EXP-018"))
+            table, passed = pilot_table(pilot_root)
+            (pilot_root / f"pilot-{clock.now():%Y%m%dT%H%M%SZ}.md").write_text(table, encoding="utf-8")
+            summary["pilot"] = table
+        else:
+            qs = collect(http_get, clock.now(), n_series=a.series, cfg=picker.PickerConfig(max_picks=a.max_picks))
+            qs = qs[:max(0, exp.max_picked - picked_for(exp, ROOT))]
+            run_arms, owners = plan([exp.name] + [e.name for e in joined])
+            summary = asyncio.run(run_questions(qs, run_arms, clock, llm, spend, news, max_run_usd=a.max_run_usd,
+                                                experiment=exp.name, owners=owners))
     except GuardStop as e:
         summary = {"stopped": str(e)}
     finally:

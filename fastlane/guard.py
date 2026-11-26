@@ -61,13 +61,27 @@ def _write(path: Path, obj: dict) -> None:
 
 @dataclass
 class SpendGuard:
+    """Lane ledger plus one line per experiment. The run's primary experiment (`experiment`) and the lane cap stop the run; a joined
+    experiment's line (`extra_caps`) only stops that experiment's own arms (`exhausted`), the run goes on."""
+
     cap_usd: float = 80.0  # the whole lane
     state_path: Path = STATE_DIR / "spend.json"
     init_ok: bool = field(default_factory=init_allowed)
-    experiment: str | None = None  # the experiment this run serves; its own cap applies too
+    experiment: str | None = None  # the experiment this run serves first; its own cap applies too
     experiment_cap_usd: float | None = None
-    run_usd: float = 0.0
+    extra_caps: dict[str, float] = field(default_factory=dict)  # experiments that joined this run: name -> cap
+    run_by: dict[str, float] = field(default_factory=dict)  # this run's spend per line (not yet saved)
     google_queries: int = 0
+
+    @property
+    def run_usd(self) -> float:
+        return sum(self.run_by.values())
+
+    def _line(self, line: str | None) -> str:
+        return line or self.experiment or ""
+
+    def _cap(self, line: str) -> float | None:
+        return self.experiment_cap_usd if line == self._line(None) else self.extra_caps.get(line)
 
     def start(self, today: date) -> None:
         if today > LANE_ENDS:
@@ -85,27 +99,36 @@ class SpendGuard:
         st = _read(self.state_path, self.init_ok) if st is None else st
         return float(st.get("ledger_usd", 0.0)) + self.run_usd
 
-    def spent_experiment(self, st: dict | None = None) -> float:
+    def spent_experiment(self, st: dict | None = None, line: str | None = None) -> float:
         st = _read(self.state_path, self.init_ok) if st is None else st
-        return float((st.get("by_experiment") or {}).get(self.experiment or "", 0.0)) + self.run_usd
+        name = self._line(line)
+        return float((st.get("by_experiment") or {}).get(name, 0.0)) + self.run_by.get(name, 0.0)
 
-    def add(self, usd: float, google_queries: int = 0) -> None:
+    def exhausted(self, line: str | None) -> bool:
+        """True when this line's cap is used up (a joined experiment then skips its own arms)."""
+        name = self._line(line)
+        cap = self._cap(name)
+        return cap is not None and self.spent_experiment(line=name) >= cap
+
+    def add(self, usd: float, google_queries: int = 0, line: str | None = None) -> None:
+        name = self._line(line)
         self.google_queries += google_queries
-        self.run_usd += max(0.0, usd) + google_queries * GOOGLE_USD_PER_QUERY
+        self.run_by[name] = self.run_by.get(name, 0.0) + max(0.0, usd) + google_queries * GOOGLE_USD_PER_QUERY
         st = _read(self.state_path, self.init_ok)
         if self.spent(st) >= self.cap_usd:
             raise GuardStop(f"FAST lane spend reached ${self.cap_usd:g}")
-        if self.experiment_cap_usd is not None and self.spent_experiment(st) >= self.experiment_cap_usd:
+        if name == self._line(None) and self.experiment_cap_usd is not None and self.spent_experiment(st) >= self.experiment_cap_usd:
             raise GuardStop(f"{self.experiment} spend reached its ${self.experiment_cap_usd:g} cap")
 
     def save(self) -> None:
         st = _read(self.state_path, self.init_ok)
         st["ledger_usd"] = round(float(st.get("ledger_usd", 0.0)) + self.run_usd, 6)
-        if self.experiment:
-            by = st.setdefault("by_experiment", {})
-            by[self.experiment] = round(float(by.get(self.experiment, 0.0)) + self.run_usd, 6)
+        by = st.setdefault("by_experiment", {})
+        for name, usd in self.run_by.items():
+            if name:
+                by[name] = round(float(by.get(name, 0.0)) + usd, 6)
         st["google_queries"] = int(st.get("google_queries", 0)) + self.google_queries
-        self.run_usd, self.google_queries = 0.0, 0
+        self.run_by, self.google_queries = {}, 0
         _write(self.state_path, st)
 
 

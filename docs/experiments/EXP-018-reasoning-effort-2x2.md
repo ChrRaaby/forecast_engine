@@ -78,21 +78,26 @@ research, by running four versions on the same FAST lane questions:
 - **Pilot before freezing (needs Christian's "go", about $0.50, no scores):** ten open FAST questions, arms A and B only. Per model:
   output tokens at medium and at high, cost, seconds, finish reason, parse result.
   - **Pass:** every model answers and parses on at least 9 of 10 at high, and no call takes longer than 5 minutes.
-  - **Model fails:** raise its `max_tokens` once (48,000) and repeat for that model. If it still fails, report to Christian before
-    freezing.
+  - **Model fails:** report to Christian before freezing. A repeat with that model's `max_tokens` raised once (48,000) needs a
+    small arm change first; it is not built.
 
-## To build before the pilot (code, no spend)
-1. **Joint run:** one daily run serves EXP-017 and EXP-018 on the same questions. Arms run once each, B and D cost goes to EXP-018's
-   ledger line and the rest to EXP-017's. Each card keeps its own cap; if EXP-018 hits $25, only B and D stop. Today a run serves one
-   experiment (`fastlane/experiments.py`).
-2. **The contrast in `fastlane/analyze.py`:** ½·[(B − A) + (D − C)] and the interaction, with the same lock until the look, plus the
-   per-model and per-arm tables.
-3. **Pilot command:** `python -m fastlane.run --pilot-effort --go`, which also needs `FASTLANE_ON=1`. It writes the table above and
-   scores nothing.
-4. **Thinking tokens:** OpenRouter can report reasoning tokens separately, but `forecast_engine/llm.py` doesn't record them, and
-   changing it changes the live code fingerprint. Recommended: use output tokens (which include thinking) and cost, not a core change.
-5. **Tests (offline):** effort and `max_tokens` reach B's and D's forecaster calls and nothing else; C and D share one writer brief;
-   the contrast arithmetic on a small made-up set; the lock; cost attribution between the two cards.
+## To build before the pilot (code, no spend): built 2026-11-26
+1. ✓ **Joint run** (`--experiment EXP-017,EXP-018`; `fastlane/experiments.py` `plan`): every arm runs once; B's and D's calls are
+   paid from EXP-018's line, the rest and the shared research from EXP-017's. Each card keeps its own cap; at $25 only B and D stop
+   (`SpendGuard.extra_caps`). Picks record every experiment they serve.
+2. ✓ **The contrast** (`fastlane/analyze.py`, `--look --experiment EXP-018`): ½·[(B − A) + (D − C)] with its 95% CI and the card's
+   verdict line; the interaction, B − A and D − C, each by source and without flagged questions; the per-model table (each model's
+   own answers, high − medium); the per-arm table (cut off, failed, unparsed, output tokens, seconds, $). Locked until the look,
+   like EXP-017's.
+3. ✓ **Pilot command:** `python -m fastlane.run --pilot-effort --go` (also needs `FASTLANE_ON=1`): 10 open questions (6 Polymarket, 4
+   code-made), arms A and B, kept apart from every experiment's pool in `data/fastlane/pilot-effort/`, paid from EXP-018's line. It
+   writes the table above and the pass rule; it scores nothing. In GitHub Actions it is a manual workflow mode that also needs the
+   switch file `fastlane/PILOT_EFFORT` in the data repo (created only on Christian's "go").
+4. ✓ **Thinking tokens:** not recorded separately (that would change the live code fingerprint). Output tokens, which include the
+   thinking, and cost are used.
+5. ✓ **Tests** (`tests/test_fastlane_exp018.py`, offline): effort and `max_tokens` reach B's and D's forecaster calls and nothing
+   else; one writer brief per question for C and D; the ledger split and the cap of a joined card; the contrast arithmetic on a small
+   set; a made-up real gain found, and no gain not called a win; the lock; the pilot's pass and fail.
 
 ## Changes against the 16 Nov draft
 - **Metric:** the draft wanted binary log score, with number questions reported separately. This card uses the baseline score over
